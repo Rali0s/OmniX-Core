@@ -3,34 +3,30 @@
 #include <utility>
 
 #include "ExpressionUtils.h"
+#include "FunctionProfile.h"
 
 VersusComparator::VersusComparator(FuncType left, FuncType right)
     : left_(std::move(left)), right_(std::move(right)) {}
 
 bool VersusComparator::compare() const {
-    const std::string leftExpression = getExpression(left_);
-    const std::string rightExpression = getExpression(right_);
-
-    const OperationType leftType = FunctionAnalyzer::identifyOperation(leftExpression);
-    const OperationType rightType = FunctionAnalyzer::identifyOperation(rightExpression);
-
-    if (leftType != rightType) {
-        return false;
-    }
-
-    if (leftType == OperationType::Mathematical) {
-        const auto leftValue = ExpressionUtils::evaluateBinaryExpression(leftExpression);
-        const auto rightValue = ExpressionUtils::evaluateBinaryExpression(rightExpression);
-
-        if (leftValue && rightValue) {
-            return ExpressionUtils::areNearlyEqual(*leftValue, *rightValue);
-        }
-    }
-
-    return ExpressionUtils::normalizeWhitespace(leftExpression) ==
-           ExpressionUtils::normalizeWhitespace(rightExpression);
+    return compareDetailed().isMatch();
 }
 
-std::string VersusComparator::getExpression(FuncType func) {
-    return func ? func() : std::string{};
+ComparisonResult VersusComparator::compareDetailed() const {
+    ComparisonResult result{};
+    result.left = FunctionProfile::analyze(left_);
+    result.right = FunctionProfile::analyze(right_);
+
+    result.areTypesCompatible = result.left.type == result.right.type;
+    result.areNormalizedEqual =
+        result.left.normalizedExpression == result.right.normalizedExpression;
+    result.areNumericallyComparable =
+        result.left.numericValue.has_value() && result.right.numericValue.has_value();
+
+    if (result.areNumericallyComparable) {
+        result.areNumericallyEqual = ExpressionUtils::areNearlyEqual(
+            *result.left.numericValue, *result.right.numericValue);
+    }
+
+    return result;
 }

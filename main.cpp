@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
 
-#include "VersusComparator.h"
+#include "AgileWorkflow.h"
 
 std::string expressionOne() {
     return "1 + 1";
@@ -12,10 +12,10 @@ std::string expressionTwo() {
 }
 
 int main() {
-    VersusComparator comparator(expressionOne, expressionTwo);
-    const bool areEqual = comparator.compare();
+    AgileWorkflow workflow("Expression One", expressionOne, "Expression Two", expressionTwo);
+    const AnalysisReport report = workflow.runComparison();
 
-    std::cout << "The functions are " << (areEqual ? "equal." : "not equal.") << std::endl;
+    std::cout << report.summary() << std::endl;
 
     return 0;
 }

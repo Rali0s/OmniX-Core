@@ -3,7 +3,7 @@
 #include <functional>
 #include <string>
 
-#include "FunctionAnalyzer.h"
+#include "ComparisonResult.h"
 
 class VersusComparator {
 public:
@@ -12,10 +12,9 @@ public:
     VersusComparator(FuncType left, FuncType right);
 
     bool compare() const;
+    ComparisonResult compareDetailed() const;
 
 private:
-    static std::string getExpression(FuncType func);
-
     FuncType left_;
     FuncType right_;
 };
