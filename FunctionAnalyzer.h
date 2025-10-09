@@ -1,11 +1,10 @@
-// FunctionAnalyzer.h
+#pragma once
 
 #include <string>
-#include <functional>
 
 enum class OperationType {
     Mathematical,
-    Other // Add more as needed
+    Other
 };
 
 class FunctionAnalyzer {
