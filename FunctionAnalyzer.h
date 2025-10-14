@@ -1,7 +1,9 @@
 // FunctionAnalyzer.h
 
-#include <string>
+#pragma once
+
 #include <functional>
+#include <string>
 
 enum class OperationType {
     Mathematical,
