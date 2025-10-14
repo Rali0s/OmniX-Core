@@ -15,7 +15,8 @@ target_compile_features(tze PUBLIC cxx_std_20)
 add_executable(omnix
     main.cpp
     FunctionAnalyzer.cpp
+    src/versus_comparator.cpp
 )
 
-target_include_directories(omnix PRIVATE include)
+target_include_directories(omnix PRIVATE include .)
 target_link_libraries(omnix PRIVATE tze)
