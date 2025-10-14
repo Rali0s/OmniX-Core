@@ -2,7 +2,7 @@
 #include <string>
 #include <sstream>
 #include <chrono>
-#include "functionAnalyzer.h"
+#include "FunctionAnalyzer.h"
 
 using namespace std;
 using FuncType = std::function<std::string()>;

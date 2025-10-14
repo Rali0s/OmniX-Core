@@ -70,10 +70,14 @@ iterations.
 
 ## Next steps
 
-1. Translate the catalogue into C++ interfaces (see `include/tze/operand.hpp`).
+1. Translate the catalogue into C++ interfaces (see `include/tze/operand.hpp`
+   alongside the modular headers in `include/tze`, such as
+   `include/tze/processing_engine.hpp`).
 2. Back the interfaces with stub implementations that simply log intent. This
    allows tests to validate the orchestration logic before real systems are
-   built.
+   built. The first orchestration pass now lives in the dedicated modules under
+   `src/cache_coordinator.cpp`, `src/knowledge_engine.cpp`,
+   `src/security_manager.cpp`, and `src/processing_engine.cpp`.
 3. Continue expanding the glossary—particularly the language detection and
    Omni-network operators—once the cache and security foundations are stable.
 
