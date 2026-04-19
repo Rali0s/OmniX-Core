@@ -1,2 +1,45 @@
 /deps
 /Bloopers
+/build/
+/cmake-build-*/
+/out/
+/dist/
+/tmp/
+/temp/
+
+# macOS / editor noise
+.DS_Store
+**/.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs and local runtime scratch
+*.log
+*.tmp
+*.bak
+*.orig
+
+/WebApp/node_modules
+/WebApp/.next
+/WebApp/out
+/WebApp/.vercel
+/WebApp/.env
+/WebApp/.env.local
+/WebApp/.env.*
+!/WebApp/.env.example
+
+# Large Files & Resources
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.iso
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdf

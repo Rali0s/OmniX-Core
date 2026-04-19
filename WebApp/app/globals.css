@@ -1,0 +1,238 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: var(--font-heading);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: oklch(0.965 0.012 83);
+  --foreground: oklch(0.2 0.012 70);
+  --card: oklch(0.985 0.008 84 / 88%);
+  --card-foreground: oklch(0.2 0.012 70);
+  --popover: oklch(0.985 0.008 84 / 96%);
+  --popover-foreground: oklch(0.2 0.012 70);
+  --primary: oklch(0.68 0.14 77);
+  --primary-foreground: oklch(0.14 0.015 70);
+  --secondary: oklch(0.94 0.014 82);
+  --secondary-foreground: oklch(0.24 0.018 72);
+  --muted: oklch(0.94 0.01 82 / 92%);
+  --muted-foreground: oklch(0.46 0.014 71);
+  --accent: oklch(0.91 0.02 78);
+  --accent-foreground: oklch(0.2 0.012 70);
+  --destructive: oklch(0.62 0.19 28);
+  --border: oklch(0.82 0.012 80 / 48%);
+  --input: oklch(0.82 0.012 80 / 48%);
+  --ring: oklch(0.72 0.1 77 / 60%);
+  --chart-1: oklch(0.7 0.14 77);
+  --chart-2: oklch(0.55 0.07 46);
+  --chart-3: oklch(0.42 0.03 255);
+  --chart-4: oklch(0.85 0.06 90);
+  --chart-5: oklch(0.3 0.016 65);
+  --radius: 1rem;
+  --sidebar: oklch(0.975 0.008 84);
+  --sidebar-foreground: oklch(0.2 0.012 70);
+  --sidebar-primary: oklch(0.68 0.14 77);
+  --sidebar-primary-foreground: oklch(0.14 0.015 70);
+  --sidebar-accent: oklch(0.94 0.014 82);
+  --sidebar-accent-foreground: oklch(0.24 0.018 72);
+  --sidebar-border: oklch(0.82 0.012 80 / 48%);
+  --sidebar-ring: oklch(0.72 0.1 77 / 60%);
+}
+
+.dark {
+  --background: oklch(0.13 0.008 70);
+  --foreground: oklch(0.94 0.01 85);
+  --card: oklch(0.16 0.008 70 / 84%);
+  --card-foreground: oklch(0.94 0.01 85);
+  --popover: oklch(0.16 0.008 70 / 96%);
+  --popover-foreground: oklch(0.94 0.01 85);
+  --primary: oklch(0.76 0.15 76);
+  --primary-foreground: oklch(0.13 0.008 70);
+  --secondary: oklch(0.19 0.008 68);
+  --secondary-foreground: oklch(0.92 0.01 85);
+  --muted: oklch(0.18 0.008 69 / 90%);
+  --muted-foreground: oklch(0.68 0.012 80);
+  --accent: oklch(0.22 0.01 68);
+  --accent-foreground: oklch(0.93 0.01 85);
+  --destructive: oklch(0.69 0.18 28);
+  --border: oklch(0.4 0.01 73 / 28%);
+  --input: oklch(0.4 0.01 73 / 28%);
+  --ring: oklch(0.76 0.12 76 / 60%);
+  --chart-1: oklch(0.76 0.15 76);
+  --chart-2: oklch(0.61 0.08 46);
+  --chart-3: oklch(0.58 0.05 255);
+  --chart-4: oklch(0.85 0.08 88);
+  --chart-5: oklch(0.34 0.02 68);
+  --sidebar: oklch(0.15 0.008 70);
+  --sidebar-foreground: oklch(0.94 0.01 85);
+  --sidebar-primary: oklch(0.76 0.15 76);
+  --sidebar-primary-foreground: oklch(0.13 0.008 70);
+  --sidebar-accent: oklch(0.19 0.008 68);
+  --sidebar-accent-foreground: oklch(0.92 0.01 85);
+  --sidebar-border: oklch(0.4 0.01 73 / 28%);
+  --sidebar-ring: oklch(0.76 0.12 76 / 60%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply scroll-smooth font-sans;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at top, color-mix(in oklab, var(--primary) 8%, transparent), transparent 30%),
+      linear-gradient(to bottom, color-mix(in oklab, black 14%, transparent), color-mix(in oklab, var(--background) 2%, black 36%));
+    background-repeat: no-repeat;
+    background-position: center top, center;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 26%, transparent);
+    color: var(--foreground);
+  }
+
+  a {
+    @apply transition-colors;
+  }
+}
+
+@layer components {
+  .markdown-body {
+    @apply space-y-4 text-sm leading-7 text-foreground sm:text-[15px];
+  }
+
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4 {
+    @apply font-heading tracking-[-0.03em] text-foreground;
+  }
+
+  .markdown-body h1 {
+    @apply text-4xl leading-none;
+  }
+
+  .markdown-body h2 {
+    @apply mt-8 text-3xl leading-none;
+  }
+
+  .markdown-body h3 {
+    @apply mt-6 text-2xl leading-none;
+  }
+
+  .markdown-body p,
+  .markdown-body ul,
+  .markdown-body ol,
+  .markdown-body blockquote,
+  .markdown-body table {
+    @apply text-muted-foreground;
+  }
+
+  .markdown-body ul,
+  .markdown-body ol {
+    @apply space-y-2 pl-5;
+  }
+
+  .markdown-body ul {
+    @apply list-disc;
+  }
+
+  .markdown-body ol {
+    @apply list-decimal;
+  }
+
+  .markdown-body li > ul,
+  .markdown-body li > ol {
+    @apply mt-2;
+  }
+
+  .markdown-body a {
+    @apply text-primary underline decoration-primary/35 underline-offset-4;
+  }
+
+  .markdown-body strong {
+    @apply font-semibold text-foreground;
+  }
+
+  .markdown-body code {
+    @apply rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.92em] text-foreground;
+  }
+
+  .markdown-body pre {
+    @apply overflow-x-auto rounded-xl border border-white/10 bg-card p-4;
+  }
+
+  .markdown-body pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .markdown-body blockquote {
+    @apply border-l border-primary/30 pl-4 italic;
+  }
+
+  .markdown-body hr {
+    @apply border-0 border-t border-white/10;
+  }
+
+  .markdown-body table {
+    @apply w-full border-collapse overflow-hidden rounded-xl border border-white/10;
+  }
+
+  .markdown-body thead {
+    @apply bg-muted/60 text-foreground;
+  }
+
+  .markdown-body th,
+  .markdown-body td {
+    @apply border border-white/10 px-3 py-2 text-left;
+  }
+}

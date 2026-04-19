@@ -1,0 +1,22 @@
+if(NOT DEFINED RELEASE_DIR)
+    message(FATAL_ERROR "RELEASE_DIR is required.")
+endif()
+
+file(GLOB release_packages "${RELEASE_DIR}/omnix-*.tar.gz")
+list(LENGTH release_packages package_count)
+if(package_count EQUAL 0)
+    message(FATAL_ERROR "No release package found in ${RELEASE_DIR}")
+endif()
+
+foreach(required_file IN ITEMS "${RELEASE_DIR}/SHA256SUMS.txt" "${RELEASE_DIR}/MANIFEST.txt")
+    if(NOT EXISTS "${required_file}")
+        message(FATAL_ERROR "Missing release artifact: ${required_file}")
+    endif()
+endforeach()
+
+file(READ "${RELEASE_DIR}/MANIFEST.txt" manifest_text)
+if(manifest_text MATCHES "version=")
+    message(STATUS "Validated release manifest in ${RELEASE_DIR}")
+else()
+    message(FATAL_ERROR "Release manifest did not contain a version entry.")
+endif()

@@ -1,0 +1,1082 @@
+#include <iostream>
+using namespace std;
+
+/*
+Pseudo: X++
+"For every action there is a reaction."
+"For every cause, an effect."
+"To weild power without knowledge, is to act blindly."
+"To use this pseudo-setX without vision, direction, hope, and proper intent is to act blindly."
+"Though it may be a movie, Harrison Ford knew to choose wood..."
+"A warning to whomeveer lays unpremitted eyes upon this code..."
+
+'I, and only I, will finish it!'
+
+God help us if it is leaked, I have not solved the security-engine yet.
+
+When I was 11 I began coding VB & Delphi :) aside from HTML and such. I began searching Security Websites and programming forums...
+I was amazed that no one had self-modifing code...
+
+Solutions I Know:
+Easily Self Compile Via Shell
+
+Solutions I Might Know:
+Security For Omni::X++ Communication
+
+Solutions I Am Afrid To Know:
+Hardened Comm's System For Omni-Omni Network
+	(Need The Math First Though)
+
+Solutions Needed:
+DoomsDay Workaround (Conceptualized Idea - Need Hours To Sit And PsudoCode Away)
+
+
+===========
+1,0,T,F
+1,0,Y,N
+
+X$:Build CMake
+X++$:Processing...
+X++$:Utilzing Contextual Based Structure...
+	Read >> "Build Cmake"
+	Define( For aZ; In Read ):
+		a: 'Build'
+		b: 'Cmake'
+		xProcessingCache(findStorage);
+			xize ( estimatedSize for aZ; )
+			//x_Size
+				xAz -> a
+				xAz -> b
+				//x_Has
+					if (firstRun);
+						assignCache -> 5.0GB <-vs-> Unbound;
+						xCell_Create(5.Unbound::C:\xMap_Temp)
+					if (else);
+						read xMap_Perm;
+						xtrapolate_avg.init search();
+							with aZ;
+								count aZ;
+									aZ (containing a::'Build' && b::'Cmake')
+									aZ == 2;
+									search xMap_Perm::aZ
+										with ( x_key )
+											x_Key == aZ;
+												x_Key == 2;
+													return avg(xMap_Temp.Current)
+														read xX.Current();
+															find.Current( EPOCH );
+						x.Store(results.xtrapolate_avg.init --in--> xMap_Temp.Current.aZ.aZ_Int.aZ_Prime)
+							//aZ = Above
+							//aZ_Int = Interger of aZ
+							//aZ_Prime = 1st Letters of aZ values
+							xStream >> 'epochd_x.Store_file.xX';
+						x.Return(xize_value)
+						assignCache -> x.Return(xize_value)
+						xCell_Create(xize_value.OperatingFile::C:\)
+		xProcessingDefine(useStorage);
+			in_x.Define(seek_Unbound)
+			//Seek Define until xCache = Full
+				x.Destroy(PostSuccess/PostFail)
+				//Destroy after True/False
+				//Using x. -> Determines what to keep before destruction
+			x.Define.Low(aZ::1);
+				read(aZ::1);
+					aZ::1 == Build;
+						x3m::"Build";
+							seek(xMap_Perm_Prioritys.SearchExtranet)
+								//reads Priority File
+								if(False)
+								//No Assigned Rules
+									x.Comms(Admin -> PrioritizeNow)
+										x.Comms::Begin();
+											x.C_P.1() //Phase 1
+												x.Security //Are You Admin?
+													if(True ~~Then~~> Continue)
+													if(False ~~> xX_Kill.All)
+														xX_Kill.All::CheckPoints
+															xX_KA(seek::History);
+															xX_KA(Privlidges::Seek_AdminGatewayLogs)
+																xX_KA(determin::HabitualFor___Admin)
+																//Does *User.Admin* Frequently MisType Passwords
+																//Bound To xX-Only (internal xX not External ie: Chrome, FB, Twitter)
+																	if(True ~~> Break_KillAll)
+																		xX.Allow_Attempt.2();
+																	if(False ~~> DestroyTempAll)
+																		DTA.Log(xMap_Perm_AdminProcessingGate)
+																		Record.Reason
+																		Decide::xAction();
+																			seek_Intruter <--> seek_Safe.Threat(Family) <--> seek.Drunk()
+																			xRespond ~~x xAction();
+																			// ~~x = "As Per Latter"
+											x.C_P.2()
+												x.DisplayPriorityProcessingGate
+												//x.DPPG
+													seek ~~x aZ(init) //seek as per aZ's first question
+													xout >> "Build -> Searching PriorityList For This.x While Online"
+														x3m::google(Define: 'aZ.1')
+														display(seek.xCP2.Preferance || top3(); )
+															store::placement.Previous_Preferance || default();
+																store::Location(xMap_temp_define.aZ.aZ_int.epoch.xXX)
+															xout >> "A.Wikipedia"
+															xout >> "B.Oxford"
+															xout >> "C.Webster"
+															xout >> Rank A,B,C, with 2,1,3 Combination
+																xin << x.Current(); //Temp_Memory Access For CurrentProcess Only
+																read_xin.response();
+																	store_xin.response ~~x store::Location;
+																		if (store::Location == NULL)
+																			X.ERROR(!);
+																				self().DestroyedTempData || admin(class)DestroyedTempData
+																					seek_app.Action();
+																						x.determin_cause();
+																							cause ~~x last_Null_Log;
+																								if x.ERROR(!)
+																									self(True-Unbound)
+																										self(ThreatToGateway_Hub)
+																											self(init_Lockdown)
+																							phase_Admin(Prompt);
+																								xout >> Did You Delete ~~X?
+																									if (False)
+																										self(~~~X True)
+																									if (True)
+																										seek.Reason()
+																											reason_Internal_Gateway_Intrusion()
+																											enum::questionair ~~X seek.Reason();
+																												xout >> Why?
+																												x.Store(xin_Perm_Gateway_Security.xXXX());
+																												seek.Reason(at 1% CPU)
+																													//run Seek on Answer in background at min CPU Usage
+																													store::Seek.Reason.Answer(xMap_DeepGate.Xx);
+																														self(Prioritize.Answer)
+																														self(Never_Complete)
+																															self(Never True || Never False)
+																																if self.Determine.Answer == True || False:
+																																	Alert_Admin();
+																																		xout_Emergency << I Know Why, on << epoch ~~x << You did << ~~X store.DeepGate << . ((( How Did You Do That '.' )))
+																																		xout.ERROR(*) >> xUlation* //Formulate Seek.Response&Action();
+																																		xout_Emergency << [Example] Since you tested me, I will test my own GateWay_Systems the same way more often and notify you.
+																		else (continue)
+											//MemoryCheck For Security & Self-Efficancy
+											x.C_P.3()
+												x.DisplayFeedBackLoop()
+													//x.DFBL()
+													seek x~~
+														// x~~ last"ThisCase" of ~~X
+													 if (seek x~~ != True --> seek.Last_epoch::indexd())
+													 	// --> this
+													 else (reCall::x.C_P.2())
+													 run.codeForAnalysis::admin_class(access)
+													 	if (access == True)
+													 		xout << "Displaying Definations For: " << aZ[x] "\n";
+													 		read.aZ[x].lastMemoryCall::->CachedOperation.epoch || *.epoch >= 10% delta::Now % epoch;
+													 		for ( x in lMC::Cache ~~X; x >= 3 || x == x.DPPG_SeekSize(parms.x); X++)
+													 			xout << "xXx$: " << x.data << assign.xX(kEy);
+													 				x.C_P.3::assign.xX(kEy)
+													 				{
+																		for n in x.data; n = read.aZ[x].index ~~X; n++;
+																			x.convert(aZ[x].index ~~X of x.data):
+																				x.BinaryPreProcessor()
+																					//convert
+																					x.generateBinaryKeyStoreAddress()
+																						q(series) = *memAddress(x.BPP()sizeof(x.data)))
+																						//q(1,2,3,4,)
+																						x.reGen(sizeof(q(series)))
+																							x.index(xMap_Perm.epoch.aZ[x].q(series) || *.q)
+																							x.store (&q(series)xMap_Temp.epoch.aZ[x].kEy))
+																							x.recallEfficiancy()
+																								{
+																									x~~ kEy() *.epoch >= 10% delta::Now % epoch;
+																									x.read &kEy(series(sizeOf(q(series))))
+																										if(q(series) == x.index(xMap_Temp.epoch ~~X))
+																											x.recallEfficiancy() = SUCCESS!
+																												continue;
+																										else
+																											x.MemLeakProtocol()
+																									return(x.BPP(Results))
+																								}
+																				x.store(x.BPP(Results))
+																					x.xZe(xMap_Perm.epoch.aZ[x].kEy.01)
+													 				}
+													 				// [example]
+													 					//Wiki= Build: Defin'd {xX-78...}
+													 					//Oxford= Build: Defin'd {xX-872...}
+													 					//Webster = Build: Defin'd {xX-22...}
+													 			x.store::x.DFBL(xout::lMC::Cache.x.data())
+													 				x.store(x_xMap_temp.P3.epoch.GENx):
+													 					for (GENx == True)
+													 						xModulate::Random.Self.Key()
+													 							xZe.data:
+													 								permitRead::epoch
+													 								permitRead::MAC
+													 								permitRead::Serial
+													 								permitUse::SHA-256.RanGen()
+													 								//xZe == use
+													 							GENx = x.Summation(xMap_Perm sizeOf(xZe.data)):
+													 								GENx -~> 8 / 9 * maxMemAlloc::FileNameSize() 
+
+													 									// -~> can Only be
+													 									//Notice For X++'s Co-DeCo::Algo...
+																				x.store GENx (xMap_Perm.GENxMap())
+																				x.GENxEngine()
+																				{
+																					x.read(~~x *.GENxMap)
+																					x.reGENx()
+																						xZe.data:
+																							permitRead::epoch
+															 								permitRead::MAC
+															 								permitRead::Serial
+															 								Cipher::SHA-256.ReGENx()
+															 							return(x.reGENx(x.data.kEy))
+															 						x.read::indexOf(xMap_Perm.epoch*r.aZ[x].kEy.01)
+															 							//*r == Epoch Modulation For Last % Time Spread
+															 						x.store(xMap_Perm.CoreAccessLog)
+															 							xout << decompressionCipher syntax call
+															 							xout << epoch.xUser.premissionLevel.aZ[x](sizeOf(case));
+																				}
+											x.C_P.4()
+												x.InterpetFeedBackLoop()
+													//x.IFBL()
+													check.x.C_P.3::Operations()
+														xX.silent(x.C_P.3())
+															xX.read x~~ GENx::Key()
+																if GENx::Key() != aZ[x].epoch ~~x || *.epoch ~~x >= 10% deltaNow % epoch;
+																	ERROR(!) == xX.silent(x.C_P.3) ^ MemoryLeak();
+																		x.read_last 1 * cmd.epoch.X.C_P.3(fileStores)
+																		x.prompt(admin_class):
+																			xout << "I encountered an error! I am sorry!!!"
+																			xout << "Which Data was I working with"
+																			xout << x.read_last 1
+																			xin >> correct.X.C_P.3(check_x.C_P.4)
+																			if (correct.X.C_P.3(check_x.C_P.4 == NULL!))
+																				xX.AdminProcessing()
+																					xout << "If you last process was more than 1-Stored Epoch Prior To The Last You Must Have Admin Access";
+																					xin.sequence::admin_prompt(admin_class)
+																						if (admin = true)
+																							xout << x.read_last 1 + 1;
+																							xin >> correct.X.C_P.3(check_x.C_P.4)
+																								if (correct.X.C_P.3(check_x.C.P.4 == NULL!)
+																									x.seek::xMap_perm(coreGateWayData)
+																										x.seek::Rules
+																											x.seek::Phase.Epoch(AttrbutionRankingSys)
+																												x.compare::AttributionRankingSys
+																													//x.compare::ARS
+																													X.C_P.3(fileStores)
+																														if fileStores::ARS <= 5
+																															series.xout >= epoch * 15 % deltaNow % epoch
+																														else fileStores::ARS > 5 || fileStores::ARS == xX10
+																															x.superAdmin()
+																																x.lockOut
+																																	x.sA(prompt)
+																																		if x.sA == FirstRun()
+																																			xout << "Welcome To SuperAdmin Security LockOut Mode"
+																																			xout << "Please SSH Into My File System via External Device Only"
+																																		x.sA_SSH()
+																																			if (admin_SSH_lockout = SUCCESS!)
+																																				allow_R00t;
+																																				log.r00t
+																																				log.R00t
+																																					prompt(admin_SSH)
+																																						xout << "Do You Want Me To Delete Admin Logs"
+																																						xin >> x.CautiousDestructor()
+																																							if (x.cDestructor = True)
+																																								destroy::log.R00t;
+																																							self.Identify ~~x destroy();
+																																								if (True)
+																																									destory::log.r00t;
+																																								if (False)
+																																									swoop::log.r00t;
+																																										disect::log.r00t;
+																																										move::xXXX.[x++;.GENx-(1/2)]
+																																											seek.xMap_Core::ALL
+																																											x.write::swoop(move) % whiteLocation[x]
+																																											x.store::*swoop(move) % whiteLocation[x*x]
+																																											x.read::swoop.move_xX;
+																																											x.stall::deletion_duration();
+																																											x.reassemble:swoop.move_xX;
+																																											x.compare::swoop.move_xX <--> log.r00t;
+																																											xout << "Would You Like Me To Delete My BackUp AdminLog(s)?"
+																																												if (yes)
+																																													destroy::log.r00t;
+																																													xout << "Thank You, Admin. This Will Come In Handy For Me"
+																																												if (no)
+																																													destroy::swoop:move_ALL.xX
+																																													xout << "Thank You, Admin. I Will Do As You Wish"
+																																													xX.seek(sizeOf)::swoop.move.origional()
+																																														if (xX.seek == NULL!)
+																																															x.task = SUCCESS!
+																																														if (xX.seek == True)
+																																															x.task == FAILED!
+																																															x.promp::delay();
+																																															x.clearCache()
+																																															xX.seek(sizeOf)::swoop.move.orioninal()
+																																																if (xX.seek == NULL!)
+																																																	x.task == SUCCESS!
+																																																if (xX.seel == True)
+																																																	x.task == FAILED!
+																																																	x.reTask::swoop * 2;
+																																																	loop(x.Levels ~~x)
+																																																	x.seek == SUCCESS! ~~x::swoop;
+																																																		if (~~x::swoop == SUCCESS!)
+																																																		break!
+																																																		return admin;
+																else(continue)
+													x.Display::x.C_P.3(parms)
+													xout << aZ[x] ~~x << which defination of << aZ[x] << best fits << case.epoch.aZ[current.mem] << "\n";
+													xin >> determin x.C_P.4(caseBest);
+														//[example]
+														//Wikipedia
+														//Build: To Construct or To Create
+														//Cmake: A Compiler for Windows OperatingSystem For C++ Tasks
+													//xout << Is it safe for me to assume: << aZ[x]==aZ[cache] << & << aZ[x]==aZ[cache] << "?";
+													xout << "                          " << aZ[x_Series] == aZ[x_cacheSeries] << "?";
+													xin >> answer.last()
+														if (answer.last() = True)
+															answer.last(SUCCESS!)
+															x.store(xMap.DictKey.epoch.aZ.aZCache_binary/2)
+														if (answer.last() == False)
+															xout << "Please Stand By"
+															seek.answer.last(OnLine_xMap_Preferances)
+															x.Generate.suitableAnswer()
+															x.try::answerSeries()
+																seek::SUCCESS!
+															//dirty_lazy_cheep_hack
+															//call x.DLCH
+															//x.DLCH == BAD!
+											x.P_C.5()
+												x.InterpetFeedBakAnswer()
+													//x.IFBA()
+													if (x.IFBL = True && SUCCESS!)
+														xX.seek::core_xMap_Dict(~~x())
+															xX.Check ~~x();
+																if (~~x != 0.5% epoch <--> deltaNow epoch )
+																	ERROR(!)
+																	xX.Check(ERROR(!-IntervalCount))
+																		if (ERROR(!-IntervalCount >= 3))
+																			xXX.SSH_Admin(Core.ThreatLevel(memAllocAttack))
+															xX.seek::value(core_xMap_Dict(~~x))
+															x.display(x.IFBA::data(~~x))
+																x.generate::x.IFBA(Outcomes)
+																	x.Interpet(x.IFBA)
+																		x.contextualize(x.IFBA)
+																			x.crawl(OnLine::x.contextualization(x.IFBA ~~x))
+																				x.decipher(x.IFBA + x.contextualization(x.IFBA ~~x))
+																					x.rank(x.IFBA + x.contextualization(x.IFBA ~~x) + x.decipher(x.contextualization(x.IFBA ~~X)))
+																						x.calculate::xMap_Preferances <--> x.rank
+																							x.IFBA::GeneratePotiential();
+																								xout << "Did you want me to " << x.IFBA(Outcomes <--> aZ[x])
+																									//[example]
+																									//"Did you want me to build Cmake so you can code & compile C++ programs?"
+																								if (x.IFBA::GeneratePotiential == True)
+																									x.SUCCESS!
+																									x.Kinetic(F);
+																									xout << "Building Cmake"
+																								if (x.IFBA::GeneratePotiential == False)
+																									xout << "Type Where I Went Wrong, I Will Try And Correct MySelf Later While Using My Hard-Code'd Core To Better Suit Your Needs"
+																									xin >> xMap_Perm_Failure.epoch.xXGenKey;
+																									reLoop.and.reAssess(x.P_C.5(x))
+																										x.store(x.P_C.5(FAILURE!))
+																										x.allow::x.P_C.5(ReRun)
+																										xX.Loop (x.carry::Case != FAILURE || x.carry::Case == SUCCESS!)
+																											if (x.carry::Case != FAILURE || x.carry::Case != SUCCESS!)
+																												x.Kinetic(F.Check)
+																													if (aZ == True & success)
+																														x.is
+																															check::newEpoch_FilePresence()
+																																check_subtract(!=Self.Install)
+																																	if(newEpoch_FilePresence && x.Kinetic(F) == FAILURE!)
+																																		check.x.P_C_SeriesX()
+																																			x.is:
+																																				aZ[x] <--> check::newEpoch_FilePresence()
+																																					if (aZ[x] == check::newEpoch_FilePresence())
+																																						xX.index xMap_Perm.Self;
+																																						//This can only occure if Kinetic is run by Self();
+																																						xout << "Admin, I just seek'd, determin'd, and install'd: " << check::newEpoch_FilePresence(<--~-->)
+																																							//<--~--> Comparative solutuin
+																																							//[exmaple]
+																																							//"Admin, I just installed CMake For You, Is That Okay?"
+																																						xin >> Kinetic(Fear->Attributes);
+
+
+																	// ^ = Has
+																//classCreator??
+<<<============================================>>>
+		::: X++ Language Engine :::
+<<<============================================>>>
+//The Omni Language Engine Is A Universal Native Lanague Engine
+//Used as part of main X++
+//Can be call as a Pre-Processor or During Any/All Operations Of Processing
+
+class xLanguageEngine()
+{	
+	x.detectNativeLanguage()
+	//x.dNL()
+	{
+		x.readNativeOS()
+		x.store(OS_Type)	
+			x.map::OS_Type.Store(x.Map_Perm_Admin_OS.Epoch.OSdat)
+		x.read(OS_Type.Store(xMap_Perm_Admin_OS.Epoch.OSdat))
+		if(x.readNativeOS() == x.map ~~X*.xMap_Perm_Admin_OS.Epoch.OSdat)
+		{
+			x.index=SUCCESS;
+		}
+		else:
+			x.index=FAIL;
+			x.index(FAIL::Sizeof(x.readNativeOS()))
+				parse(FileSystem);
+				locateKeyOSTerms:
+				//Allow Parse Of List Of OS_KeyTerms
+					if(System32 == 1)
+					{
+						OS_Type == Windows
+						x.index(WindowsOSCaseFile)
+					}
+					if(OSx == 1)
+					{
+						OS_Type == Mac || Apple
+						x.index(Mac.AppleOSCaseFile)
+					}
+					if(Linux Headers == 1)
+					{
+						OS_Type == Linux //Address Full Distro List
+						x.index(Linux + *.DistroCaseFile)
+					}
+					if(Unix Header == 1)
+					{
+						OS_Type == UNIX //Address Unix Distro List
+						x.index(Unix + *.DistroCaseFile)
+					}
+					else If(Fiat_OSClassCases == 0) //Fiat_OS == All Known Operating Systems (Win32-Unix)
+					{
+						xccess.SearchEngine();
+						localSearchIndex()
+							xZe.RunningProcessList(PID)
+							x.store(AllSystemCritical::PID)
+								xMap_Temp_NonNativeOS.store.epoch.DNL_Parse.CaseAddress
+							traceBack::PID_TempList()
+							x.locate(KeySystemPID_Locations)
+						x.search::FileSystemBranch()
+							xZe.PID_Temp_Location(List)
+						x.determine(OS)
+							xRuling(5-of-All);
+							x.run(ProbabilityCalculation);
+							x.index(xMap_Temp_PossibleOSList.OS.Epoch.Algo)
+							x.determine(CalcOf(65% <~> BCOS)) //BCOS=BestCaseOS
+								x.narrow(t.5)//Top5
+								x.find(x.Results >= CalcOf(BCOS of 65%));
+								x.store(xMap_Perm.NativeOSDetection.Epoch.Algo())
+									//Since a % is used to choose the best probabile OS, the work of X++ is never done, and it should always re-run check to ensure it has the correct one until it is 100% sure				
+					}
+					else:
+						xout << "What is the name of the Operating System you are using?"
+						xin >> x.store(xMap_Perm.NativeOS.Quest.Epoch)
+							x.check ~~X.Results
+							x.run else if(Case::xccess.SearchOS)
+		x.Map_NativeOSLanguage();
+		x.determineOSLanguage();
+			if(OS != Fiat_OSClassCase)
+			{
+				x.permitUnboundParse()
+				x.parse(FileSystem)
+					doSearch(LanguageFiles)
+					matchOSNativeLanguageFiles <~> xccess(SearchOfLanguage)
+					x.index(xMap_Perm_NativeOSLanguage)
+			}
+			else:
+				x.index(xMap_Perm_NativeOSLanguage();
+	}
+	x.detectNativeLanguageIndexOperating()
+	//x.DNLIO()
+		x.check(NativeOSLanguage)
+		x.read(xMap_Perm_NativeOSLanguage())
+		if(NOSL == x.Read(Results ~~X))
+		{
+				x.DNLIO = SUCCESS
+		}
+		else
+		{
+			x.DNLIO = FAIL
+			x.sweep(SearchOfLocal(Documents))
+			x.find(User || Admin InputBoundFiles)
+			x.match x.find(Results) <~> xccess(SearchOfLanguageDetection())
+			x.index(xMap_Perm.Epoch.Manual.LanguageSystem) 
+		}
+		x.DNLIO(OnBoardTranslationEngine())
+			x.read(xMap_Perm.Epoch.Manual.LanguageSystem || xMap_Perm_NativeOSLanguage())
+			xtrans("Can You Read This Prompt? [Y/n]")
+			xout << xTrans(Results)
+			xin >> xTrans(AdminCheck)
+			if(xTrans(AdminCheck) == Y)
+			{
+				xTrans = SUCCESS;
+				x.index(xTransLanguageInput())
+				x.store(xMap_Perm_AdminLanguage.Epoch.Lang)
+			}
+			if(xTrans(AdminCheck) == N)
+			{
+				x.DNLIO(OnBoardTranslationEngine(run_2))
+				x.seek(SUCCESS)
+				if(x.DNLIO(OBTE(run_2++) == run_n > 4 || FAIL == 1)))
+					{
+						x.DNLIO.PostProcessing = FAIL
+						x.index(xMap_Perm_Index.FailReport.Epoch.OSLangTranslation.Lang)
+						x.seek(Unbound::SearchOf(NativeOSLanguage()));
+						x.display(VisualProcessingLoadBar())
+						x.sweep(FileSystem)
+							ruling == 100%++;
+						x.holdTemp(UserAdminFileNames())
+						x.holdTemp(UserAdminFileHeader())
+						x.holdTemp(UserAdminFileContent < 1GB)
+							x.movIndex(fileType(*.exe && *.Binary* *.HexReadFiles*))
+							x.index(moveOfType::xMap_Temp_MoveIndexNames.Epoch.OSNativeLangDetection.Fail.Lang)
+						x.read(holdTemp(Results))
+						xccess.compare(keyTypeAddress <~> knownNativeOSLanguages())
+						x.find(NativeLanguage())
+							if(x.find(NativeLanguage()) == 1)
+							{
+								x.find ~~X == SUCCESS
+							}
+							else if(x.find(NativeLanguage()) == 0)
+							{
+								x.file ~~X == FAIL
+								call(GENx)
+									xEncrypt(x.index)
+									x.index(xMap_Perm_NativeOSLang.Epoch.Fail.DeepDetection.GENx.Lang);
+									xZe(CryptoDegrapherEngine(LanguageParse()))
+									//CDE_LP();
+							}
+
+					}
+			}
+	x.CDE_LP();
+		x.seek(X~~ DNLIO.DEEP.Index)
+		if(fileRead == Fiat_OSNative())
+			load(imagingX)
+			x.mkdir(xMap_CDE_Store in xMap_Pem_Core_RootSystem)
+			x.call(xMap_CDE_Store as xBase)
+			capture(char4char imagingOf(x.seek.index X~~ DNLIO.DEEP.Index))
+				seekRuling:
+						calculate(whiteSpace)
+							seek(whiteSpace of symbol <~> symbol == 0)
+							x.determine(%avg sizeOfWhite());
+								x.seekParms(2)
+									index(sizeOfWhite::"char4char:StandardWhiteSpace")
+									index(sizeOfWhite::"char4period:StandardWhiteSpace")
+			x.indexMark(AllWhite);
+			capture(char4char X~~);
+				seekRuling:
+					match(allRepeating duplicatesOfSymbol())
+					match(all char4char pairs < 4 Symbols)
+					match(all char4char paris < 2 Symbols)
+					assume(all char4char pairs < 2 == 'IS || *twoLetterVariations')
+					match('IS || TLV()' <~> x.CDE_LP(DeepStore))
+					match('Pairs < 4' <~> x.CDE_LP(DeepStore))
+					assume(symbolOf(MatchPairCase(< 2 && < 4 Operation))) //2.4Operation();
+					match(placeOf(2.4Operation() of x.CDE_LP(DeepStore))
+					continue(matchingSymbolProcessing())
+						//Need Try (Lang.Crypto.CipherEngine)
+		if(fileRead != Fiat_OSNative())
+			xZe.BinaryDecompresser()
+				x.checkFile(Coherence)
+					if(checkFile == 1)
+					{
+						Convert Binary to ASCII;
+					}
+					else if(checkFile == 0)
+					{
+						determineFileOrigin();
+							x.seek(fileCompression)
+								x.seek(Ruling):
+									xZe.NativeCompressionAlgoClasses()
+							if(x.seek ~~X == 1)
+								x.seek = SUCCESS
+								x.index(Success)
+								x.Decompress(decomOfCompress.Index())
+								xTrans.CDE_LP(DeepStore)
+							else if(x.seek ~~X == 0)
+								x.seek = FAIL
+								x.index(Fail)
+								x.know(xXOmni.Index << File Compression Unknown)
+								try(TernaryDecompression);
+									x.seek(readableSuccess());
+									if(try(TD()) = 0 )
+									try = FAIL;
+									index(Fail)
+									try(Base4Decompression());
+										x.seek(readableSuccess());
+										if(try(TD()) = 0 )
+										try = FAIL;
+										index(Fail)
+											try(ParticleIO_Read)
+												load(HPQ_StoreageEngine())
+													x.seek(readableSuccess());
+													if(try(TD()) = 0 )
+													try = FAIL;
+													index(Fail)
+					}
+				if(checkFile(Coherence) == FAIL)
+				{
+					xXOmni::Premit(RSRD) //RunSilentRunDeep
+					xXOmni::Map&Index(UserAdmin_Traffic())
+					xXOmni::LoadNativOSBound(xXOmniBase())
+					xXOmni::RequestSecureKeyTunnel()
+						GenX::TunnelPair(GENxOf > 100++.xPair)
+					xXOmni::TestTunnelSecurity()
+						x.Trans(HoneyPot(CreditCardDummy)) //CCD_Test()
+						x.ActivePing(LocateCCD_Test != xXOmni_X2(TunnelConnectionMachineAddress()))
+						if(x.ActivePing == NULL)
+							{
+								GenX::TunnelPair == Secure;
+								SUCCESS
+								x.CCD_Test(RanX + 30sec)
+							}
+						if(x.ActivePing == TraceOf(CCD_Test()))
+							{
+								GenX::TunnelPair == Compromised;
+								x.seek(GenX::TunnelPair == Secure) || Process(KILL)
+							}
+					xXOmni::Request(RSRD_NativeOperation())
+						xXIndex(AllNativeUserPattern)
+						xXIndex(MonitorPatterns)
+						xXIndex(MethodOfMonitor && MethodOfPatternDetection)
+						xXMap(Map_NativeSystem)
+						xXDetect&Check(NativeOSLanguage)
+					xXOmni::Host(LegacyCommLink)
+					xXOmni::Read(LegacyCommData)
+					xXOmni::Map(UnknownSystem <~> LegacyEngine)
+					xXOmni::Seek&Index(All_UFSDataMaps)
+					xXOmni::Match(Legacy <~> UFS)
+					xXOmni::ContextualizeCache(UFS)
+					xXOmni::ContextualizeCache(LegacyEngine)
+					xXOmni::Seek&&IdentifyPatters(MatchOf(LegacyEngine <~> UFS))
+				}
+
+
+<<<============================================>>>
+		::: X++ Security Engine :::
+<<<============================================>>>
+//OnBoard Security && Defense Engine
+//Thrice Compression & Encryption
+//Thrice Detection
+//Thrice OmniLegacyScan
+//Thrice OmniScope
+//Thrice OmniSuperRoot
+
+class cThriceDefense()
+{
+	xXOmni::LegacyScan()
+		for each *Omni::Operation || each usrAdmin interation()
+			xXOmniScope();
+				scan(PortRange >= All Valid++) //Including New Ports Opening During Scan
+				x.index(PortsOpen())
+				xXOmni(LocalScopeRestriction)
+					try:
+						x.Penetration() //xout would be silenced in live use
+							x.seek(standardListOfZer0_Day())
+								//Buffer-Overflow
+								//Strncpy
+								//Heatbleed || Handshake
+								//Remote Monitor
+								//etc.,
+							if (x.seek(return(NULL))
+								x.Penetration(PortRange == SECURE)
+								xout << "Your System Is Secure, Did You Want Me To Scape ALl Known Comm Gateway's For New Exploits To Test Against Your Local Machine?";
+								xin >> xXOmni::Self(Protection);
+									if (xXOmni::Self(Protection == 1 || True || T || Y || y ))
+										x.seek(epochOf(CurrentYear))
+											x.variables:
+												nativeOS;
+												livePID_Processes;
+												openPorts;
+												antivirusReportingDatabases;
+										x.implementExploits()
+											if (~~X Self::Penetration == True || 1 || SUCCESS)
+												xout << "ADMIN! You Are Vurlnlable to: " << resultsOfbreakPenTest() << "\n";
+												xout << "I Will try and repair at a low processing power unless otherwise specified.";
+											if (~~X Self::Penetration == Fale ~v) //~v Variation Of SelfExplanitoryNature
+												xout << "You Are Secured, No Need To Progress"
+	xXOmni::Detection()
+	{
+		xXOmni::LegacyScan()
+			~~x ruling of SilentOperation();
+			x.Sleep_Until_Awoken();
+				x.loopLegacyNetworkUtilities(untilThreat())
+					if (Threat == True)
+						//Threat Is Defined In LegacyScan(Class) -> Scan Until Live Intruder (Virus Scanning Is For Virus Software)
+						xXOmniScopeDefense();
+					else:
+						continue;
+
+	}
+	xXOmni::ScopeDefense()
+	{
+		x.locate threat()
+		x.identify intrusion()
+			x.isolate intrusionGateway()
+			x.classify threatLevel()
+			x.IPConterScan()
+				x.TraceBack(Index&Log)
+					xMap_Perm_Thrice_ThreatLog_Epoch.3x
+			measureAgainst::threatBrackets()
+				tier1 -> wardriver()
+					mobileDevice || laptop
+						classID:
+							pingTraceBackIP()
+							x.index(LegacyGbsMbs_NetworkSpeed())
+								legacyGbsMbsNetworkSpeed <~> IntrusionProfile_NetowrkSpeed()
+							if (weakConnection(IP_NS <= 0.85 * lGM_NS) == True)
+								setTier : "1";
+				tier2 -> remote()
+					if (threatAgent != tier1)
+						threatAgent == Remote();
+						classAddress(Critical);
+			if (Tier1 == True ~v)
+				x.permitRouterAdmin();
+				x.isolateEnteryGateway();
+				x.activateVirtualBox(HoneyPotSeries());
+					foreActiveSwap(Legacy to HoneyPotSeries(Tier1->Defense))
+					allowExit()
+						x.dropFalseKeyData
+						x.dropWarning
+						wait(2.0) //2.0min
+							monitor::ThreatAgent()
+					if (wait >= 2.0 || threatAgent(Tier1) == Activity(Positive))
+						xXOmni::LegacyScan(Target::xMap_Perm_Thrice_ThreatLog_%Epoch%.3x)
+							locateLeechSystemFlaws();
+								xXOmni::Pry&Penetrate()
+								x.seek(AllThreatData())
+								x.download(FileSystem(BackgroundProcess->>LowPriority(3))) //Ranking 1-10 [10 High <~> 0.1 [Low]]
+								x.obtainLock(ThreatPenetrationMethod())
+									//seekUtilities: RAT, TCP/IP, Zer0Day, Explots, Etc.,
+									x.CopyMethod()
+									x.index(xMap_Perm_Thrice_ScopeDSystemology.Epoch.3Xx)
+										x.reverseEngineer || x.seek weaknessOf(Methodology())
+										self::CraftSecurity || self::ImplementFix
+								try ("Reason Of Intrusion")
+									try ("Threat Level To Core Legacy System")
+										try ("Rank Legacy Content")
+											model::("What If:Attack == SUCCESS")
+											x.determine(Possible % Outcome For usrAdmin Class)
+											if(Outcome == Detrimental(profileOfusrAdmin_Data || Filesystem))
+											xXXOmni::Inject&Extirpate();
+												xXXOmni::usrAdmin(PremissionClass())
+													If (Proceede == True)
+														load(GhostEngine(ofScopeDefense()));
+															GhostsScope::ObtainLock()
+															GhostScope::FetchData
+																NativeOS
+																NativeLanguage
+																FileSystem
+																Kernel
+																HardwareBrands
+															GhostScope::Push(OS_OverRide)
+															GhostScope::Run(KernelFlow-1)
+															GS::Tunnel(xXXOmni::CompilerSuite())
+															GS::Pull && Assess Kernel()
+															GS::Obtain(TunnelLock)
+															GS::DetachThreatConnection(Remove::Leech-Legacy)
+															GS::SetVoltage(0.10 * > FactorySet)++
+																GS::MonitorTemperature()
+																GS::SeekOverHeat()
+																GS::FanState='0'
+																	if(TargetGS_System(FanState = ManualOverRide))
+																		GS::FanState='100'
+																		GS::OverClockVolate(FanState(OverRun))
+																			GS.Seek(BurnOut)
+															GS.seek(ConnectionTermination())
+																GS.wait(ReConnection)
+																	if(Connection == NULL >= 72Hrs)
+																		GS == Termination()
+																		Ensure.No_GSLogs()
+					If (Tier2 == True ~v)
+						//fuck Im tired
+						//seek
+						//lock
+						//download
+						//index
+						//predator_fix_for-Self
+						//assess_potiential damnage if Success==True
+						//If damnage == critial to usrAdmin || usrAdminGroup/known Associates || Business || Co || *.Org
+						//Kernal Scripting
+						//Delopy OmniClone::GS(OnBoardPayload)
+						//RemoveAdmin Controls For PlausableDenaliablity
+						//Fully Automated Security::AntiThreat
+						//TargetRemote Threat::SelfArrest
+						[ REDACTED ]
+						//OverWrite FileSystem
+						//SleepFor USB Backups
+						//WatchFor Alternetate Victims
+						//Halt Future Attacks
+						//Sleep GS()
+						//Allow ThreatPC/IP To Operate >>> Alter All Obtained Info [#CC #SS #Leak'd Info]
+						//Protect Unknowns
+						//Unload OmniClone
+						//Self::Destruction
+						//Use of Shred(Linux)
+						//SelfPurging *.Bash to Delete Shred (If :: wget used)
+						//Initiate Self::GS_OmniClone Sequence
+						//Destry OmniClone
+						//Destroy Self::GS_OS's Self Destructor
+						//Destroy Down-Ladder Until Filesystem == Factory Delete Tool
+						//Ensure No Recover of GS::OmniClone Operations
+						\\Developer::Sleep( :) ) Hehe
+
+
+	}
+
+}
+<<<============================================>>>
+	  ::: X++ Self Pre-Processor Engine :::
+<<<============================================>>>
+if(Active == 1)
+{
+	#define retroPreProcessorEngine
+	#define longitudinalProcessorEngine
+	#define userAdminClass
+		#define uAC_Traits
+		#unbound MonitorRulings //Zer0-Limit Caching -> LocalOnly
+}
+else()
+{
+	xout >> "Error: S_PPE Deactivated";
+	//If SelfActivated, Can Only Fit Code Into 'else()'
+	//Thus, 'xout >> Error...'' Must Print First
+	//It "Should" Never Print Outside uAC Scope
+	seek(aC_ProcessorClass);
+		{
+			xin << strctInt_123;
+			if(strictInt_123 == aCPC_ID) //if 3Char Int entered
+			{
+				return(accordingly()); //& 3Char Matches Core x_Map_Perm_Ranking_AdminClassProcessing Protocals/Standards |&| Requirements...Return As Per Lrnd&Desired Actions
+			}
+			else()
+			{
+				return 0;
+			}
+		}
+
+}
+
+class cRetro_uAC_TraitCache
+{
+	x.build(store(dynamicallyAllocated(sizeOf(25% * HDD || Specificed(indexBoundLimits >= 25%)))));
+	{
+		x.store(xMap_Perm_uAC);
+		x.index::uAC(Pre + uACTraitSeriesCodex() + GenXCompression() + Epoch + MachineIdentifier + *.uAC);
+		x.build(ChapterIndex.uAC());
+			x.encode(ChapterIndex.uAC())
+			x.encrypt(ChapterIndex.uAC(*MachineID))
+	}
+	begin retroCache(seekPreCompilationDefination(Active = 1 || InActive == 0));
+		build.systemTreeMap()
+			index::uAC(all)
+			prioritize(date * epoch)
+			priortize(*.txt + *.doc + *.ppt *.uAC(Created)) //All uAC Files
+		systemRecovery(all uAC::priority -> epochCreation 1)
+			seek(currentEpoch - uAC_SystemTreeMapEpoch)
+				index::uAC(Epoch == Native OS Init Date || +15% * Epoch NOSID() || Epoch::Earliest )
+					classify(uAC(1) = P1)
+					Series = 1;
+					sort && index uAC(Series++)
+				restoreDeleted;
+				restoreAutoSave;
+				restoreSystemHiddenCache;
+				restoreAllSearchData(KeyStoneClass()) //Necessary For Operation
+				try::USB_Tail(uAC(systemRecovery ~~x));
+				store(uAC(SystemRecovery))
+					x_Map_Zer0_Tmp; //Protect Self()
+						zer0 -> epoch;
+						zer0 -> uACID;
+						encodedID == True;
+				convert(uAC::SystemStore(x_Map_Zer0_Tmp))
+					ternary_mID_reading::strict();
+		for(uACSeries + EpochID)
+		{
+			map(uAC::OperationalUsageHabit)
+				termPeriodA = Epoch 1
+				termPeriodB = Next Epoch
+				defineAllSearchData -> tPA (Delta) tPB;
+				x.index::uAC_Search(n_TPA; n++);
+			map(uAC::DeletionDescrepancies&Corrections <~> ActualSave*.File)
+				index.uAC_ChangeEpoch <~> SearchEpoch_n;
+			try: map(uAC::TimeOnSite(SearchTraits) <~> (LengthOfContext(*.File::Cache())))
+			try: map(uAC::SearchKeyContext) <~> uAC::Entered(Context)
+				seek(differances);
+					differances < SearchKeyContext = 9;
+					differances > SKC = 5;
+					differances = SKC = NULL + FalseID_Notice; //Index The Copy/Paste Trait Context( UseOfLater)
+					differances >= 4x SKC = 2;
+					differances >= 90% Save*.File = 1; 
+		}
+		replicate(uAC Search&Type); //Seeking The "How...?"
+
+}
+
+
+
+*/
+int main()
+{	
+	// /container
+	int m;
+	char alpha;
+	float w = 1;
+	int payload = w++;
+	char deliminate = payload;
+
+	double j;
+	double i = j;
+
+	int q;
+	int k = q;
+
+	int x;
+
+	float p;
+	float p1;
+	float p2;
+
+	float z;
+	float z1;
+	float z2;
+
+	for (i >= j; m++;)
+	{
+		j++;
+		x = 12;
+
+		//progressive
+		i * x;
+		i--;
+
+		//heavy
+		k++;
+		k * x;
+		q--;
+
+
+		x++;
+
+		if ( i = j )
+		{
+			//cout << "\n\nI-low: " << i << " J-low: "<< j << "\n";
+			j--;
+			i * x;
+			i++;
+		}
+		p1 = j - i;
+
+		//TheHold
+		if ( j = i )
+		{
+			//cout << "\n\nI-high: " << i << " J-high: "<< j << "\n";
+			j++;
+			i * x;
+			i--;
+
+			//SelfExplainatory
+			alpha = deliminate;
+			cout << "\n\t\t w: " << deliminate << "\n";
+		}
+		p2 = i - j;
+
+		//TheProgressiveSwitch
+		if ( i = j )
+		{
+			//cout << "\n\nI-low: " << i << " J-low: "<< j << "\n";
+			j--;
+			i * x;
+			i++;
+		}
+		//RotationalValueCheckP
+		p = p1 / p2;
+
+
+		// Divider // 
+
+
+		if ( k = q )
+		{
+			//cout << "\n\nK-low: " << k << " Q-low: " << q << "\n";
+			k--;
+			k * x;
+			q++;
+		}
+		z1 = q - k;
+
+		//TheHold
+		if ( q = k )
+		{
+			//cout << "\n\nK-high: " << k << " Q-high: " << q << "\n";
+			k++;
+			k * x;
+			q--;
+		}
+		z2 = k - q;
+
+		//TheHeavySwitch
+		if ( k = q )
+		{
+			//cout << "\n\nK-low: " << k << " Q-low: " << q << "\n";
+			k--;
+			k * x;
+			q++;
+		}
+		//RotationalValueCheckZ
+		z = z2 / z1;
+
+		if ( i == 990 && j == 988  )
+		{
+			int xxx;
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+			cin >> xxx;
+			cout << ": " << xxx << "\n";
+		}
+		
+		
+		
+		
+		
+
+		//change in y 
+		//--over--
+		//change in x
+		//* sqRT 100
+
+
+		
+		cout << "\ni: " << i << " j: " << j << "\t k: " << k << " q: " << q << " p: " << p << " z: " << z << "\n";
+	}
+	cout << "Sun Tzu said: The Are Of War Is Of Vital Importance To The State.";
+
+}

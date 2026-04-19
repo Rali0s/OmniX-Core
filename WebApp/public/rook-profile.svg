@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <radialGradient id="bgGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 360) rotate(90) scale(420 420)">
+      <stop stop-color="#2A2012"/>
+      <stop offset="0.5" stop-color="#120E09"/>
+      <stop offset="1" stop-color="#070605"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="320" y1="160" x2="704" y2="864" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F1D49A"/>
+      <stop offset="0.48" stop-color="#D8B06B"/>
+      <stop offset="1" stop-color="#8D6530"/>
+    </linearGradient>
+    <linearGradient id="goldDark" x1="384" y1="320" x2="640" y2="832" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0B86E"/>
+      <stop offset="1" stop-color="#7A5627"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bgGlow)"/>
+  <circle cx="512" cy="356" r="256" fill="#C6974C" opacity="0.08"/>
+  <circle cx="512" cy="356" r="176" fill="#E2BA72" opacity="0.08"/>
+
+  <path
+    d="M312 174H426V300H470V174H554V300H598V174H712V360L642 450V626H692V728H332V626H382V450L312 360V174Z"
+    fill="url(#gold)"
+  />
+  <path
+    d="M410 450H614V626H410V450Z"
+    fill="url(#goldDark)"
+    opacity="0.96"
+  />
+  <rect x="466" y="502" width="92" height="92" rx="16" fill="#0C0907"/>
+  <rect x="388" y="728" width="248" height="64" rx="16" fill="url(#gold)"/>
+  <rect x="338" y="814" width="348" height="70" rx="16" fill="url(#goldDark)"/>
+
+  <path
+    d="M312 174H712V360L642 450V626H692V728H332V626H382V450L312 360V174Z"
+    stroke="#F4D79F"
+    stroke-opacity="0.22"
+    stroke-width="18"
+  />
+</svg>

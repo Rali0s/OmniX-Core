@@ -1,84 +1,154 @@
-# Operand Catalogue (Initial Pass)
+# OmniX
 
-This document summarizes the recurring operands and namespaces that appear in
-`tze.cpp`. The pseudo code mixes terminology from C/C++, C#, shell scripting,
-and bespoke DSL keywords. The goal of this catalogue is to provide a first-pass
-interpretation of the vocabulary so that we can begin carving out real library
-interfaces around the original intent of the program.
+OmniX is a local-first C++ analyst console and TZE runtime for investigation,
+deterministic orchestration, native tool execution, and guarded Ollama-assisted
+shell workflows.
 
-## Methodology
+## What OmniX Does
 
-1. Extracted every token that begins with `x` or `X` to surface custom
-   operations that are not part of the C++ standard library.
-2. Clustered the tokens by the context in which they are used (cache, security,
-   networking, storage, etc.).
-3. Wrote human-readable descriptions for the most frequently referenced
-   operands that form the "spine" of the pseudo program.
-4. Proposed initial library responsibilities for each cluster so that future
-   refactors can grow into normal C++ projects incrementally.
+- Runs a deterministic TZE pipeline backed by [`res/tze.txt`](res/tze.txt)
+- Ingests and analyzes local evidence into cases, incidents, reports, and run history
+- Discovers and reuses native tools like `nmap`, `tshark`, `grep`, `awk`, and `ssh`
+- Replays, diffs, reports, and explains TZE runs with persistent memory
+- Exposes a compact interactive shell with optional guarded Ollama assist
 
-The catalogue below focuses on the operations that drive the early
-`Build Cmake` scenario and the associated security workflow. Follow-up passes
-can extend the table with additional domains (language detection, Omni network
-controls, etc.).
+## Current Status
 
-## Core cache & storage operands
+- `v1`: shipped
+- `v2`: deterministic TZE completion
+- `v3`: guarded Ollama-assisted shell and command routing
 
-| Operand | Observed usage | Proposed responsibility |
-| --- | --- | --- |
-| `xProcessingCache(target)` | Bootstraps scratch storage before the engine inspects a request such as `"Build CMake"`. | Entry point that prepares cache state and orchestrates subsequent storage calls. Lives in a cache coordination module. |
-| `xize(estimatedSize)` | Immediately follows `xProcessingCache` to size working storage based on the amount of context that will be cached. | Utility that estimates byte requirements for a cache cell. Should move into a `tze::storage::Sizing` helper. |
-| `xCell_Create(spec)` | Creates either a temporary cell (`xMap_Temp`) or a persistent cell depending on whether the run is a "first run". | Storage allocator responsible for provisioning directories or memory mapped regions. |
-| `xProcessingDefine(useStorage)` | Declares how the cache can be consumed after it is created. Often followed by definitions such as `seek_Unbound`. | Configuration API that toggles cache behaviour (retention policy, locking strategy, destruction semantics). |
-| `x.Destroy(mode)` | Tears down cache content after a success or failure. Modes such as `PostSuccess`/`PostFail` hint at selective persistence. | Cache cleanup primitive that should live next to `xProcessingCache`. |
+Project planning and architecture tracks live in:
 
-## Query & preference operands
+- [`Goal.md`](Goal.md)
+- [Prime-Arc-A roadmap](docs/agile/00-roadmap.md)
+- [Prime-Arc-B roadmap](docs/agile/B-00-prime-arc-b-roadmap.md)
+- [Prime-Arc-C reference map](docs/agile/C-00-prime-arc-c-reference-map.md)
 
-| Operand | Observed usage | Proposed responsibility |
-| --- | --- | --- |
-| `x.Define.Low(aZ::n)` | Reads an indexed instruction (e.g., `aZ::1 == Build`). | Decoder that maps symbolic slots (`aZ::1`) to high-level commands. |
-| `x3m::"Build"` | Appears to invoke an external search/knowledge mechanism for the string literal. | Knowledge fetcher (searching Google/Wikipedia) that resolves definitions for the operand. |
-| `x.DisplayPriorityProcessingGate()` (`x.DPPG`) | Presents ranked reference material (Wikipedia, Oxford, Webster) and records administrator preferences. | User-facing priority engine that queries, presents, and stores preference orderings. |
-| `x.DisplayFeedBackLoop()` (`x.DFBL`) | Reviews prior responses to similar questions to improve recall efficiency. | Feedback/learning module that associates cache keys with historical answers. |
-| `x.Return(value)` | Returns computed sizing or lookup results back to the cache coordinator. | Generic return wrapper that packages values for storage; ultimately can become `return` statements or strongly typed results. |
-| `x.Store(data -> destination)` | Persists results into `xMap_Temp` or `xMap_Perm`. | Storage API for writing structured records. |
+## Core Capabilities
 
-## Security & governance operands
+- Analyst console:
+  - `ingest`, `analyze`, `decide`, `case`, `incident`
+- Deterministic TZE runtime:
+  - `tze runs`, `tze replay`, `tze diff`, `tze report`, `tze explain-change`
+- Native tooling:
+  - `tool list`, `tool locate`, `tool doctor`, `tool <name> -- <args...>`
+- Managed builds:
+  - `doctor`, `preflight`, `build`
+- Local shell:
+  - `omnix shell --assist`
 
-| Operand | Observed usage | Proposed responsibility |
-| --- | --- | --- |
-| `x.Comms(target)` | Requests administrator intervention (e.g., `PrioritizeNow`). | Communications façade for raising human approvals or alerts. |
-| `x.Security` | Validates the caller ("Are You Admin?"). | Authentication guard that integrates with OS or custom identity providers. |
-| `xX_Kill.All()` | Emergency kill switch that wipes volatile state on failed authentication. | Security response routine that revokes access and cleans temporary buffers. |
-| `x.C_P.1()`, `x.C_P.2()`, `x.C_P.3()` | Sequential phases of an administrative workflow, culminating in feedback loop analysis. | Pipeline stages that compose the review process; each phase will map to a concrete function in an admin module. |
-| `x.superAdmin()` / `x.lockOut()` | Transition to high-security mode when anomalies appear in attribution ranking. | Escalation path that triggers lockdown scripts and secure communication steps. |
+## Build
 
-## Data map namespaces
+```bash
+cmake -S . -B build
+cmake --build build -j4
+```
 
-The pseudo code references multiple hierarchical maps. These appear to be
-persistent stores rather than operations. The most common ones include:
+## Test
 
-* `xMap_Temp`: Ephemeral working directory used by the cache pipeline.
-* `xMap_Perm`: Canonical persistent map. Variants such as
-  `xMap_Perm_AdminProcessingGate` and
-  `xMap_Perm_Prioritys.SearchExtranet` likely represent logical tables.
-* `xMap_Core`: Root of the core system data, accessed only in elevated modes.
+```bash
+ctest --test-dir build --output-on-failure
+cmake --build build --target validate_generated_xpp
+cmake --build build --target validate_tze_conformance
+```
 
-These should be translated into typed repositories (e.g.,
-`Storage::TempMap`, `Storage::PermanentMap`) with schemas documented in future
-iterations.
+## Quick Start
 
-## Next steps
+Show the command surface:
 
-1. Translate the catalogue into C++ interfaces (see `include/tze/operand.hpp`
-   alongside the modular headers in `include/tze`, such as
-   `include/tze/processing_engine.hpp`).
-2. Back the interfaces with stub implementations that simply log intent. This
-   allows tests to validate the orchestration logic before real systems are
-   built. The first orchestration pass now lives in the dedicated modules under
-   `src/cache_coordinator.cpp`, `src/knowledge_engine.cpp`,
-   `src/security_manager.cpp`, and `src/processing_engine.cpp`.
-3. Continue expanding the glossary—particularly the language detection and
-   Omni-network operators—once the cache and security foundations are stable.
+```bash
+./build/omnix --help
+```
 
-This document will evolve as we perform deeper dives into each subsystem.
+Inspect provider readiness:
+
+```bash
+./build/omnix provider probe
+```
+
+Run the interactive shell:
+
+```bash
+./build/omnix shell
+```
+
+Run the guarded Ollama shell:
+
+```bash
+OMNIX_REASONING_PROVIDER=ollama OMNIX_OLLAMA_MODEL=deepnimsec-omni:latest ./build/omnix shell --assist
+```
+
+### Example Shell Session
+
+```text
+provider probe
+Run NMAP with a local /24 scan
+nmap results
+Ollama, secure my system
+what should I do next
+```
+
+## Common Commands
+
+```bash
+./build/omnix ask "Build TShark" --assist
+./build/omnix ingest /path/to/log.txt
+./build/omnix analyze /path/to/log.txt
+./build/omnix decide <case-id>
+./build/omnix case timeline <case-id>
+./build/omnix incident list
+./build/omnix tze latest
+./build/omnix tze explain-change-latest --assist
+./build/omnix tze report latest --assist
+./build/omnix tool list
+./build/omnix doctor nmap
+./build/omnix build tshark --assist
+```
+
+## Repository Layout
+
+- [`main.cpp`](main.cpp): CLI entrypoint and interactive shell
+- [`src/session_coordinator.cpp`](src/session_coordinator.cpp): routing, guarded command flow, TZE execution
+- [`src/tool_flow_interpreter.cpp`](src/tool_flow_interpreter.cpp): native and built-in tool execution
+- [`src/build_flow_interpreter.cpp`](src/build_flow_interpreter.cpp): preflight and managed builds
+- [`src/analyst_flow_interpreter.cpp`](src/analyst_flow_interpreter.cpp): ingest, analyze, decide, case and incident flows
+- [`src/reasoning_provider.cpp`](src/reasoning_provider.cpp): guarded provider seam
+- [`res/tze.txt`](res/tze.txt): TZE source material
+- [`docs/agile`](docs/agile): roadmap, epics, and architecture planning
+
+## Ollama Notes
+
+OmniX uses Ollama as an assistive layer, not as the execution authority.
+
+- deterministic execution stays in OmniX
+- assist output must validate before use
+- command routing is allowlisted
+- tool execution and build selection remain guarded
+
+For the local DeepNimSec profile:
+
+```bash
+./scripts/create_deepnimsec_ollama_model.sh
+./scripts/omnix_deepnimsec.sh --probe --compact
+./scripts/omnix_deepnimsec.sh
+```
+
+## GitHub Readiness
+
+This repository now ignores:
+
+- build output
+- WebApp local artifacts
+- macOS `.DS_Store` files
+- editor swap files and local scratch logs
+
+If previously tracked macOS metadata exists in your index, remove it once with:
+
+```bash
+git rm --cached .DS_Store include/.DS_Store docs/.DS_Store
+```
+
+## License
+
+[`LICENSE`](LICENSE)
