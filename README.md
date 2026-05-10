@@ -1,7 +1,7 @@
 # OmniX
 
 OmniX is a local-first C++ analyst console and TZE runtime for investigation,
-deterministic orchestration, native tool execution, and guarded Ollama-assisted
+deterministic orchestration, native tool execution, and guarded model-assisted
 shell workflows.
 
 ## What OmniX Does
@@ -10,13 +10,13 @@ shell workflows.
 - Ingests and analyzes local evidence into cases, incidents, reports, and run history
 - Discovers and reuses native tools like `nmap`, `tshark`, `grep`, `awk`, and `ssh`
 - Replays, diffs, reports, and explains TZE runs with persistent memory
-- Exposes a compact interactive shell with optional guarded Ollama assist
+- Exposes a compact interactive shell with optional guarded Ollama or OpenAI assist
 
 ## Current Status
 
 - `v1`: shipped
 - `v2`: deterministic TZE completion
-- `v3`: guarded Ollama-assisted shell and command routing
+- `v3`: guarded Ollama/OpenAI-assisted shell and command routing are available behind explicit assist enablement and remain deterministic-first
 
 Project planning and architecture tracks live in:
 
@@ -33,6 +33,8 @@ Project planning and architecture tracks live in:
   - `tze runs`, `tze replay`, `tze diff`, `tze report`, `tze explain-change`
 - Native tooling:
   - `tool list`, `tool locate`, `tool doctor`, `tool <name> -- <args...>`
+- OmniXTView packet viewer:
+  - `tview doctor`, `tview port <port>`, `tview pcap <file>`
 - Managed builds:
   - `doctor`, `preflight`, `build`
 - Local shell:
@@ -61,10 +63,26 @@ Show the command surface:
 ./build/omnix --help
 ```
 
+Authoritative command dictionary:
+
+```bash
+man -l docs/man/omnix.1
+```
+
+Mirror for repo browsing:
+
+- [`docs/man/omnix.1.md`](docs/man/omnix.1.md)
+
 Inspect provider readiness:
 
 ```bash
 ./build/omnix provider probe
+```
+
+Author a local-path build recipe through the X++ module phase:
+
+```bash
+OMNIX_REASONING_PROVIDER=ollama OMNIX_OLLAMA_MODEL=fixture ./build/omnix recipe author /path/to/project --no-install
 ```
 
 Run the interactive shell:
@@ -77,6 +95,18 @@ Run the guarded Ollama shell:
 
 ```bash
 OMNIX_REASONING_PROVIDER=ollama OMNIX_OLLAMA_MODEL=deepnimsec-omni:latest ./build/omnix shell --assist
+```
+
+Run the guarded OpenAI shell:
+
+```bash
+OMNIX_REASONING_PROVIDER=openai OPENAI_API_KEY=... OPENAI_MODEL=gpt-4.1-mini ./build/omnix shell --assist
+```
+
+Run OpenAI assist through repo-local `./.env`:
+
+```bash
+./scripts/omnix_openai.sh shell --assist
 ```
 
 ### Example Shell Session
@@ -102,8 +132,14 @@ what should I do next
 ./build/omnix tze explain-change-latest --assist
 ./build/omnix tze report latest --assist
 ./build/omnix tool list
+./build/omnix recipe author /path/to/project --no-install
 ./build/omnix doctor nmap
 ./build/omnix build tshark --assist
+./build/omnix tview doctor
+./build/omnix tview port 5000 --interface lo0
+./build/omnix tview pcap /path/to/capture.pcap --port 5000 --out /tmp/omnix-tview.jsonl
+./build/omnix defend diag cpu
+./build/omnix defend diag port 5000
 ```
 
 ## Repository Layout
@@ -117,9 +153,9 @@ what should I do next
 - [`res/tze.txt`](res/tze.txt): TZE source material
 - [`docs/agile`](docs/agile): roadmap, epics, and architecture planning
 
-## Ollama Notes
+## Provider Notes
 
-OmniX uses Ollama as an assistive layer, not as the execution authority.
+OmniX uses Ollama or OpenAI as an assistive layer, not as the execution authority.
 
 - deterministic execution stays in OmniX
 - assist output must validate before use
@@ -133,6 +169,21 @@ For the local DeepNimSec profile:
 ./scripts/omnix_deepnimsec.sh --probe --compact
 ./scripts/omnix_deepnimsec.sh
 ```
+
+For the OpenAI profile, copy `.env.example` to `.env`, fill in the key and model, then use the wrapper. The wrapper only reads approved OpenAI/OmniX keys and does not print secrets:
+
+```bash
+./scripts/omnix_openai.sh provider probe --compact
+./scripts/omnix_openai.sh ask --assist "What should I do next?"
+./scripts/omnix_openai.sh "Define Turning Scale"
+./scripts/omnix_openai.sh omnix tview port 5000
+./scripts/omnix_openai.sh defend diag cpu
+./scripts/omnix_openai.sh defend diag port 5000
+```
+
+TView JSONL exports are local SIEM-ready packet events (`omnix.tview.packet.v1`) with stable `NET.TCP.*`
+analysis codes. Defensive commands are diagnostic-first: OmniX may recommend a manual PID kill, service stop, or
+port-closure path, but it does not perform destructive action in this slice.
 
 ## GitHub Readiness
 
