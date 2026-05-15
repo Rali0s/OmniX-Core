@@ -43,6 +43,7 @@ public:
     std::string prune_memory(MemorySnapshot& snapshot,
                              std::size_t keep_count,
                              bool important_only) const;
+    std::string prune_expired(MemorySnapshot& snapshot) const;
     bool mark_tze_run_feedback(MemorySnapshot& snapshot,
                                std::string_view reference,
                                std::string_view feedback_value,

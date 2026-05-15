@@ -21,6 +21,9 @@ neuromorphic programming||A future OmniX research track for brain-inspired, even
 backtrace||Trace an answer, action, packet observation, or memory artifact backward through source evidence, TZE stages, provider input, and stored provenance.
 backtest||Replay historical runs or evidence against newer rules, classifiers, definitions, Simplex codes, or guardrails to measure regressions and improvements without mutating memory.
 back-add||Safely add validated historical findings back into glossary entries, compact memory artifacts, test fixtures, or rules without re-ingesting full reasoning chains.
+context reset|omnix|A safe OmniX operation that clears volatile learned/runtime caches and shell observer state without deleting source glossary entries, TZE ledgers, cases, recipes, tools, or persona.
+memory TTL|omnix|A retention boundary for temporary learned runtime entries so sticky definitions or history can expire without deleting durable source truth.
+next action|omnix|A compact OmniX readout that selects the safest recommended continuation from the latest or selected TZE run.
 neural network||A computing model made of connected units with weights and biases that learn patterns from examples through training and inference.
 perceptron||A simple single-layer neural network unit that applies weighted inputs, a bias, and an activation rule to make a binary decision.
 tensor||A structured numeric array used to represent scalars, vectors, matrices, and higher-dimensional data in neural-network math.
@@ -31,3 +34,11 @@ backpropagation||The training process that sends error information backward thro
 TensorFlow||A machine-learning framework for tensor math, model training, and inference; in OmniX it is a future optional adapter, not a core dependency.
 neural simulation||Running neural-network learning or inference in software without requiring specialized neural hardware; hardware limits shape speed and model size, but do not block small local experiments.
 neural signal router||A future OmniX advisory classifier that routes local evidence such as packet events, logs, definitions, and defense diagnostics into labels like benign control, suspicious port, unknown service, or needs human review.
+recursive why||An OmniX explanation mode that frames the latest run into four reasoning slots, compares observed path against success path, and returns the actionable diff.
+recursive diff engine||A deterministic OmniX engine that compares a failing or uncertain path with a generated successful path to identify missing steps, bad assumptions, dependency order problems, and next actions.
+recursive route learning||An OmniX process that compares a failed or uncertain route against operating memory caches, prior successful runs, glossary entries, and local artifacts to infer the route that should have been taken.
+success path mining||The process of generating or retrieving a likely successful operation sequence so a failing path can be compared against it.
+operating memory cache||The local memory layer OmniX searches during Recursive Route Learning, including definitions, prior TZE runs, compact history, and glossary entries.
+reasoning slot||A bounded local state frame used by Recursive Why/Diff to hold initial facts, intermediate evidence, target state, or present observer context.
+failure path||The observed run path from logs, stages, artifacts, and status that Recursive Why/Diff compares against a successful path pattern.
+dependency-safe state transition||An ordered operational move that preserves system safety by satisfying prerequisites before changing state, like draining queues before stopping a database.

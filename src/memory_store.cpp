@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <ctime>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -51,6 +52,33 @@ std::string now_timestamp() {
     std::ostringstream out;
     out << std::put_time(&local, "%Y-%m-%dT%H:%M:%S");
     return out.str();
+}
+
+std::string timestamp_after_hours(int hours) {
+    using clock = std::chrono::system_clock;
+    const std::time_t raw = clock::to_time_t(clock::now() + std::chrono::hours(hours));
+    std::tm local{};
+#if defined(__APPLE__) || defined(__unix__)
+    localtime_r(&raw, &local);
+#else
+    local = *std::localtime(&raw);
+#endif
+    std::ostringstream out;
+    out << std::put_time(&local, "%Y-%m-%dT%H:%M:%S");
+    return out.str();
+}
+
+bool timestamp_expired(std::string_view expires_at) {
+    const std::string expiry = trim(expires_at);
+    return !expiry.empty() && expiry <= now_timestamp();
+}
+
+bool is_expired(const StoredDefinition& entry) {
+    return entry.scope == "temporary" && timestamp_expired(entry.expires_at);
+}
+
+bool is_expired(const MemoryHistoryEntry& entry) {
+    return entry.scope == "temporary" && timestamp_expired(entry.expires_at);
 }
 
 std::string make_scoped_id(std::string_view prefix, std::string_view seed) {
@@ -429,6 +457,9 @@ MemoryHistoryEntry parse_history_entry(std::string_view line) {
     entry.project = extract_json_string(line, "project");
     entry.status = extract_json_string(line, "status");
     entry.summary = extract_json_string(line, "summary");
+    entry.scope = extract_json_string(line, "scope");
+    entry.created_at = extract_json_string(line, "created_at");
+    entry.expires_at = extract_json_string(line, "expires_at");
     return entry;
 }
 
@@ -477,6 +508,55 @@ MathAttribution parse_math_attribution_entry(std::string_view object_text) {
     entry.contribution = extract_json_double(object_text, "contribution", 0.0);
     entry.source = extract_json_string(object_text, "source");
     entry.rationale = extract_json_string(object_text, "rationale");
+    return entry;
+}
+
+ReasoningSlotRecord parse_reasoning_slot_entry(std::string_view object_text) {
+    ReasoningSlotRecord entry;
+    entry.slot_id = extract_json_string(object_text, "slot_id");
+    entry.label = extract_json_string(object_text, "label");
+    entry.facts = extract_json_string_array(object_text, "facts");
+    entry.evidence_refs = extract_json_string_array(object_text, "evidence_refs");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    return entry;
+}
+
+RecursivePathRecord parse_recursive_path_entry(std::string_view object_text) {
+    RecursivePathRecord entry;
+    entry.path_type = extract_json_string(object_text, "path_type");
+    entry.ordered_steps = extract_json_string_array(object_text, "ordered_steps");
+    entry.assumptions = extract_json_string_array(object_text, "assumptions");
+    entry.evidence_refs = extract_json_string_array(object_text, "evidence_refs");
+    entry.score = extract_json_double(object_text, "score", 0.0);
+    return entry;
+}
+
+RecursiveDiffReport parse_recursive_diff_report_entry(std::string_view object_text) {
+    RecursiveDiffReport entry;
+    entry.status = extract_json_string(object_text, "status");
+    entry.route_learning_status = extract_json_string(object_text, "route_learning_status");
+    entry.source_run_id = extract_json_string(object_text, "source_run_id");
+    entry.current_state = extract_json_string(object_text, "current_state");
+    entry.likely_goal = extract_json_string(object_text, "likely_goal");
+    entry.logs_and_reasoning = extract_json_string(object_text, "logs_and_reasoning");
+    entry.successful_path_pattern = extract_json_string(object_text, "successful_path_pattern");
+    entry.difference_found = extract_json_string(object_text, "difference_found");
+    entry.best_estimate_answer = extract_json_string(object_text, "best_estimate_answer");
+    entry.why_this_matters = extract_json_string(object_text, "why_this_matters");
+    entry.next_action = extract_json_string(object_text, "next_action");
+    entry.diff_category = extract_json_string(object_text, "diff_category");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    for (const std::string& slot_text : extract_object_entries(object_text, "slots")) {
+        entry.slots.push_back(parse_reasoning_slot_entry(slot_text));
+    }
+    const std::string success_text = extract_json_object(object_text, "success_path");
+    if (!success_text.empty()) {
+        entry.success_path = parse_recursive_path_entry(success_text);
+    }
+    const std::string failure_text = extract_json_object(object_text, "failure_path");
+    if (!failure_text.empty()) {
+        entry.failure_path = parse_recursive_path_entry(failure_text);
+    }
     return entry;
 }
 
@@ -1144,6 +1224,10 @@ TzeRunRecord parse_tze_run_entry(std::string_view object_text) {
     if (!freeform_assist_answer_text.empty()) {
         entry.freeform_assist_answer = parse_freeform_assist_answer_entry(freeform_assist_answer_text);
     }
+    const std::string recursive_diff_text = extract_json_object(object_text, "recursive_diff_report");
+    if (!recursive_diff_text.empty()) {
+        entry.recursive_diff_report = parse_recursive_diff_report_entry(recursive_diff_text);
+    }
     const std::string security_audit_text = extract_json_object(object_text, "security_audit");
     if (!security_audit_text.empty()) {
         entry.security_audit = parse_security_audit_entry(security_audit_text);
@@ -1227,6 +1311,9 @@ StoredDefinition parse_definition_entry(std::string_view object_text) {
     entry.source_type = extract_json_string(object_text, "source_type");
     entry.authority_tier = extract_json_string(object_text, "authority_tier");
     entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.scope = extract_json_string(object_text, "scope");
+    entry.created_at = extract_json_string(object_text, "created_at");
+    entry.expires_at = extract_json_string(object_text, "expires_at");
     return entry;
 }
 
@@ -1466,7 +1553,10 @@ std::string render_history_entry(const MemoryHistoryEntry& entry) {
         << "\",\"intent\":\"" << escape_json(entry.intent)
         << "\",\"project\":\"" << escape_json(entry.project)
         << "\",\"status\":\"" << escape_json(entry.status)
-        << "\",\"summary\":\"" << escape_json(entry.summary) << "\"}";
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"scope\":\"" << escape_json(entry.scope)
+        << "\",\"created_at\":\"" << escape_json(entry.created_at)
+        << "\",\"expires_at\":\"" << escape_json(entry.expires_at) << "\"}";
     return out.str();
 }
 
@@ -1579,6 +1669,86 @@ std::string render_query_candidate_json(const QueryCandidate& entry) {
         << "\",\"score\":" << entry.score
         << ",\"matched_context\":" << render_string_array(entry.matched_context)
         << ",\"reasons\":" << render_string_array(entry.reasons) << "}";
+    return out.str();
+}
+
+std::string render_reasoning_slot_json(const ReasoningSlotRecord& entry) {
+    std::ostringstream out;
+    out << "{\"slot_id\":\"" << escape_json(entry.slot_id)
+        << "\",\"label\":\"" << escape_json(entry.label)
+        << "\",\"facts\":" << render_string_array(entry.facts)
+        << ",\"evidence_refs\":" << render_string_array(entry.evidence_refs)
+        << ",\"confidence\":" << entry.confidence << "}";
+    return out.str();
+}
+
+std::string render_recursive_path_json(const RecursivePathRecord& entry) {
+    std::ostringstream out;
+    out << "{\"path_type\":\"" << escape_json(entry.path_type)
+        << "\",\"ordered_steps\":" << render_string_array(entry.ordered_steps)
+        << ",\"assumptions\":" << render_string_array(entry.assumptions)
+        << ",\"evidence_refs\":" << render_string_array(entry.evidence_refs)
+        << ",\"score\":" << entry.score << "}";
+    return out.str();
+}
+
+std::string render_recursive_diff_json(const RecursiveDiffReport& entry) {
+    std::ostringstream out;
+    out << "{\"status\":\"" << escape_json(entry.status)
+        << "\",\"route_learning_status\":\"" << escape_json(entry.route_learning_status)
+        << "\",\"source_run_id\":\"" << escape_json(entry.source_run_id)
+        << "\",\"current_state\":\"" << escape_json(entry.current_state)
+        << "\",\"likely_goal\":\"" << escape_json(entry.likely_goal)
+        << "\",\"logs_and_reasoning\":\"" << escape_json(entry.logs_and_reasoning)
+        << "\",\"successful_path_pattern\":\"" << escape_json(entry.successful_path_pattern)
+        << "\",\"difference_found\":\"" << escape_json(entry.difference_found)
+        << "\",\"best_estimate_answer\":\"" << escape_json(entry.best_estimate_answer)
+        << "\",\"why_this_matters\":\"" << escape_json(entry.why_this_matters)
+        << "\",\"next_action\":\"" << escape_json(entry.next_action)
+        << "\",\"diff_category\":\"" << escape_json(entry.diff_category)
+        << "\",\"confidence\":" << entry.confidence
+        << ",\"slots\":[";
+    for (std::size_t index = 0; index < entry.slots.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << render_reasoning_slot_json(entry.slots[index]);
+    }
+    out << "],\"success_path\":" << render_recursive_path_json(entry.success_path)
+        << ",\"failure_path\":" << render_recursive_path_json(entry.failure_path)
+        << "}";
+    return out.str();
+}
+
+std::string render_recursive_diff_summary(const RecursiveDiffReport& entry) {
+    std::ostringstream out;
+    out << "Recursive Why/Diff:\n";
+    if (!entry.route_learning_status.empty()) {
+        out << " - Recursive Route Learning: " << entry.route_learning_status << "\n";
+    }
+    out << " - Source run: " << entry.source_run_id << "\n";
+    out << " - Status: " << entry.status << "\n";
+    out << " - Confidence: " << entry.confidence << "\n";
+    out << "Current State\n" << entry.current_state << "\n";
+    out << "Likely Goal\n" << entry.likely_goal << "\n";
+    out << "What the Logs/Reasoning Show\n" << entry.logs_and_reasoning << "\n";
+    out << "Successful Path Pattern\n" << entry.successful_path_pattern << "\n";
+    out << "Difference Found\n" << entry.difference_found << "\n";
+    out << "Best Estimate Answer\n" << entry.best_estimate_answer << "\n";
+    out << "Why This Matters\n" << entry.why_this_matters << "\n";
+    out << "Next Action\n" << entry.next_action << "\n";
+    if (!entry.diff_category.empty()) {
+        out << " - Diff category: " << entry.diff_category << "\n";
+    }
+    if (!entry.slots.empty()) {
+        out << "Reasoning slots:\n";
+        for (const ReasoningSlotRecord& slot : entry.slots) {
+            out << " - " << slot.slot_id << " " << slot.label << " confidence=" << slot.confidence << "\n";
+            for (const std::string& fact : slot.facts) {
+                out << "   - " << fact << "\n";
+            }
+        }
+    }
     return out.str();
 }
 
@@ -2373,6 +2543,8 @@ std::string render_tze_runs_json(const MemorySnapshot& snapshot) {
             << (entry.case_summary_assist_plan.has_value() ? render_case_summary_assist_plan_json(*entry.case_summary_assist_plan) : "null")
             << ",\"freeform_assist_answer\":"
             << (entry.freeform_assist_answer.has_value() ? render_freeform_assist_answer_json(*entry.freeform_assist_answer) : "null")
+            << ",\"recursive_diff_report\":"
+            << (entry.recursive_diff_report.has_value() ? render_recursive_diff_json(*entry.recursive_diff_report) : "null")
             << ",\"security_audit\":"
             << (entry.security_audit.has_value() ? render_security_audit_json(*entry.security_audit) : "null")
             << ",\"language_resolution\":"
@@ -2458,7 +2630,10 @@ std::string render_definitions_json(const std::vector<StoredDefinition>& entries
             << "\",\"source\":\"" << escape_json(entry.source)
             << "\",\"source_type\":\"" << escape_json(entry.source_type)
             << "\",\"authority_tier\":\"" << escape_json(entry.authority_tier)
-            << "\",\"confidence\":" << entry.confidence << "}";
+            << "\",\"confidence\":" << entry.confidence
+            << ",\"scope\":\"" << escape_json(entry.scope)
+            << "\",\"created_at\":\"" << escape_json(entry.created_at)
+            << "\",\"expires_at\":\"" << escape_json(entry.expires_at) << "\"}";
         if (index + 1 < entries.size()) {
             out << ",";
         }
@@ -4049,6 +4224,9 @@ std::string MemoryStore::render_tze_run(const MemorySnapshot& snapshot, std::str
         out << "Freeform assist answer:\n";
         out << render_freeform_assist_answer_summary(*entry->freeform_assist_answer);
     }
+    if (entry->recursive_diff_report.has_value()) {
+        out << render_recursive_diff_summary(*entry->recursive_diff_report);
+    }
     if (!entry->next_action.empty()) {
         out << " - Next action: " << entry->next_action << "\n";
     }
@@ -4956,6 +5134,31 @@ std::string MemoryStore::prune_memory(MemorySnapshot& snapshot,
     return out.str();
 }
 
+std::string MemoryStore::prune_expired(MemorySnapshot& snapshot) const {
+    const std::size_t definitions_before = snapshot.definitions.size();
+    const std::size_t history_before = snapshot.history.size();
+    snapshot.definitions.erase(
+        std::remove_if(snapshot.definitions.begin(),
+                       snapshot.definitions.end(),
+                       [](const StoredDefinition& entry) {
+                           return is_expired(entry);
+                       }),
+        snapshot.definitions.end());
+    snapshot.history.erase(
+        std::remove_if(snapshot.history.begin(),
+                       snapshot.history.end(),
+                       [](const MemoryHistoryEntry& entry) {
+                           return is_expired(entry);
+                       }),
+        snapshot.history.end());
+
+    std::ostringstream out;
+    out << "Pruned expired temporary memory: definitions_removed="
+        << (definitions_before - snapshot.definitions.size())
+        << ", history_removed=" << (history_before - snapshot.history.size()) << ".";
+    return out.str();
+}
+
 bool MemoryStore::mark_tze_run_feedback(MemorySnapshot& snapshot,
                                         std::string_view reference,
                                         std::string_view feedback_value,
@@ -5542,6 +5745,9 @@ void MemoryStore::record_interaction(MemorySnapshot& snapshot, const ProcessingR
     entry.project = report.resolved_project;
     entry.status = report.answer_status;
     entry.summary = summarize_interaction_for_history(report);
+    entry.scope = "temporary";
+    entry.created_at = entry.timestamp;
+    entry.expires_at = timestamp_after_hours(24);
     snapshot.history.push_back(entry);
 
     std::ofstream output(snapshot.paths.history_path, std::ios::app);
@@ -5711,6 +5917,11 @@ void MemoryStore::remember_definition(MemorySnapshot& snapshot, const Definition
         return 0;
     };
     const std::string authority_tier = infer_authority_tier();
+    const std::string created_at = now_timestamp();
+    const bool durable_source = answer.selected_source_type == "local_glossary" ||
+        answer.selected_source_type == "source_map";
+    const std::string scope = durable_source ? "durable" : "temporary";
+    const std::string expires_at = scope == "temporary" ? timestamp_after_hours(24) : std::string{};
 
     const auto existing = std::find_if(snapshot.definitions.begin(), snapshot.definitions.end(), [&answer](const StoredDefinition& entry) {
         const std::string entry_normalized =
@@ -5736,6 +5947,9 @@ void MemoryStore::remember_definition(MemorySnapshot& snapshot, const Definition
         existing->source_type = answer.selected_source_type.empty() ? "memory" : answer.selected_source_type;
         existing->authority_tier = authority_tier;
         existing->confidence = answer.confidence;
+        existing->scope = scope;
+        existing->created_at = existing->created_at.empty() ? created_at : existing->created_at;
+        existing->expires_at = expires_at;
         return;
     }
 
@@ -5752,6 +5966,9 @@ void MemoryStore::remember_definition(MemorySnapshot& snapshot, const Definition
         answer.selected_source_type.empty() ? "memory" : answer.selected_source_type,
         authority_tier,
         answer.confidence,
+        scope,
+        created_at,
+        expires_at,
     });
 }
 

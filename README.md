@@ -77,6 +77,14 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Then commands such as `omnix gg search --port 11434 --compact` and `tze replay latest` work without the `./build/` prefix. Use `./scripts/link_omnix.sh --with-gg` if you also want `gg search ...` as a direct shim.
 
+OmniX also has native link/shim creation under the built-in tool runtime:
+
+```bash
+./build/omnix link install --with-tze --prefix ~/.local/bin
+./build/omnix tool symlink -- create ./build/omnix ~/.local/bin/omnix --force
+./build/omnix tool symlink -- shim tze tze --prefix ~/.local/bin --bin ./build/omnix --force
+```
+
 Authoritative command dictionary:
 
 ```bash
@@ -91,7 +99,28 @@ Inspect provider readiness:
 
 ```bash
 ./build/omnix provider probe
+./build/omnix api status --compact
+./build/omnix api template huggingface
 ```
+
+Explain the last run with the Recursive Why/Diff engine:
+
+```bash
+./build/omnix why latest --compact
+./build/omnix next latest --compact
+```
+
+When a failed definition route can be repaired from learned definitions, prior TZE runs, compact history, or `res/local_glossary.tsv`, normal `ask` now consumes that Recursive Route Learning path before returning unresolved output. `why` backtraces the route, and `next` prints only the next recommended action.
+
+Reset volatile learned/runtime context when a temporary association gets sticky:
+
+```bash
+./build/omnix context reset --compact
+./build/omnix memory reset-context --compact
+./build/omnix memory prune-expired --compact
+```
+
+This clears cached definitions, history, language/uAC state, and assist learning while keeping source glossary entries, TZE ledgers, cases, recipes, tools, and persona intact.
 
 Author a local-path build recipe through the X++ module phase:
 

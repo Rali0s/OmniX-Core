@@ -4550,6 +4550,271 @@ void test_cli_shell_provider_and_context() {
             "Expected shell output to execute plain OmniX commands through the shared engine.");
 }
 
+void test_cli_recursive_why_api_and_link_ux() {
+    const std::filesystem::path root = kBinaryRoot / "cli-recursive-api-link";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path api_root = root / "api";
+    const std::filesystem::path link_prefix = root / "bin";
+    safe_remove_all(root);
+    std::filesystem::create_directories(memory_root);
+    std::filesystem::create_directories(api_root);
+    std::filesystem::create_directories(link_prefix);
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string common = shell_quote(binary.string()) + " ";
+    const std::string memory_args = " --memory-root " + shell_quote(memory_root.string());
+
+    const CommandCapture probe =
+        run_command_capture(common + "provider probe --compact" + memory_args);
+    require(probe.exit_code == 0, "Expected provider probe to create a TZE run for Recursive Why/Diff.");
+
+    const CommandCapture why =
+        run_command_capture(common + "why latest --compact" + memory_args);
+    require(why.exit_code == 0, "Expected `omnix why latest` to complete.");
+    require(why.output.find("Current State:") != std::string::npos,
+            "Expected compact Recursive Why/Diff output to include the Current State section.");
+    require(why.output.find("Successful Path Pattern:") != std::string::npos,
+            "Expected compact Recursive Why/Diff output to include the success path section.");
+    require(why.output.find("Why This Matters:") != std::string::npos,
+            "Expected compact Recursive Why/Diff output to include why the diff matters.");
+
+    const CommandCapture replay =
+        run_command_capture(common + "tze replay latest" + memory_args);
+    require(replay.exit_code == 0, "Expected replay of Recursive Why/Diff run to succeed.");
+    require(replay.output.find("recursive_why_diff_complete") != std::string::npos ||
+                replay.output.find("Recursive Why/Diff") != std::string::npos,
+            "Expected replay to retain compact Recursive Why/Diff metadata.");
+
+    const std::string shell_command =
+        "printf '%s\\n' '/provider' '/why' 'next' '/next' '/api' '/quit' | " +
+        common + "shell --compact" + memory_args;
+    const CommandCapture shell = run_command_capture(shell_command);
+    require(shell.exit_code == 0, "Expected shell `/why` and `/api` shortcuts to complete.");
+    require(shell.output.find("Current State:") != std::string::npos,
+            "Expected shell `/why` to route through Recursive Why/Diff.");
+    require(shell.output.find("api_status:") != std::string::npos,
+            "Expected shell `/api` to route through API status.");
+    require(shell.output.find("next_action:") != std::string::npos,
+            "Expected shell next aliases to route through top-level next.");
+
+    const CommandCapture api_template =
+        run_command_capture(common + "api template huggingface --compact");
+    require(api_template.exit_code == 0, "Expected HuggingFace API template to render.");
+    require(api_template.output.find("HUGGINGFACE_API_TOKEN") != std::string::npos &&
+                api_template.output.find("HF_MODEL") != std::string::npos,
+            "Expected HuggingFace template to stay placeholder-based.");
+
+    const std::string configure_command =
+        "cd " + shell_quote(api_root.string()) +
+        " && printf '%s\\n' 'gpt-test-mini' 'sk-test-secret' | " +
+        shell_quote(binary.string()) + " api configure openai --compact";
+    const CommandCapture configure = run_command_capture(configure_command);
+    require(configure.exit_code == 0, "Expected OpenAI API configure to write repo-local .env.");
+    require(configure.output.find("sk-test-secret") == std::string::npos,
+            "Expected API configure output not to print the secret.");
+    require(std::filesystem::exists(api_root / ".env"), "Expected API configure to write .env.");
+
+    const CommandCapture api_status =
+        run_command_capture("cd " + shell_quote(api_root.string()) +
+                            " && " + shell_quote(binary.string()) + " api status --compact");
+    require(api_status.exit_code == 0, "Expected API status to read repo-local .env.");
+    require(api_status.output.find("provider=openai") != std::string::npos,
+            "Expected API status to report configured OpenAI provider.");
+    require(api_status.output.find("sk-test-secret") == std::string::npos,
+            "Expected API status to mask the OpenAI key.");
+    require(api_status.output.find("sk-t...cret") != std::string::npos,
+            "Expected API status to show a masked key hint.");
+
+    const CommandCapture link_install =
+        run_command_capture("cd " + shell_quote(kSourceRoot.string()) + " && " +
+                            shell_quote(binary.string()) + " link install --prefix " +
+                            shell_quote(link_prefix.string()) + " --with-tze --force --compact" + memory_args);
+    require(link_install.exit_code == 0, "Expected top-level link install to create user-local shims.");
+    require(std::filesystem::is_symlink(link_prefix / "omnix"),
+            "Expected top-level link install to create an omnix symlink.");
+    require(std::filesystem::exists(link_prefix / "tze"),
+            "Expected top-level link install to create the tze shim.");
+
+    const CommandCapture run_tze_shim =
+        run_command_capture(shell_quote((link_prefix / "tze").string()) + " latest --compact" + memory_args);
+    require(run_tze_shim.exit_code == 0, "Expected top-level installed tze shim to execute.");
+
+    const CommandCapture link_remove =
+        run_command_capture(shell_quote(binary.string()) + " link remove --prefix " +
+                            shell_quote(link_prefix.string()) + " --compact");
+    require(link_remove.exit_code == 0, "Expected top-level link remove to succeed.");
+    require(!std::filesystem::exists(link_prefix / "omnix") && !std::filesystem::exists(link_prefix / "tze"),
+            "Expected top-level link remove to remove OmniX-managed link names.");
+}
+
+void test_cli_recursive_why_mines_learned_definition_route() {
+    const std::filesystem::path root = kBinaryRoot / "cli-recursive-learned-definition-route";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(memory_root);
+
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string common = shell_quote(binary.string()) + " ";
+    const std::string args = " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture apple_ask =
+        run_command_capture(common + "ask " + shell_quote("what is Apple in technology") + args + " --compact");
+    require(apple_ask.exit_code == 0, "Expected Apple technology ask to be handled.");
+    require(apple_ask.output.find("defined: The brainchild of Steve Jobs and his team.") != std::string::npos,
+            "Expected normal ask to consume Recursive Route Learning before returning unknown_query.");
+    require(apple_ask.output.find("definition-source: recursive_route_learning") != std::string::npos,
+            "Expected compact ask output to show Recursive Route Learning provenance.");
+
+    const CommandCapture apple_why =
+        run_command_capture(common + "why latest --compact --memory-root " + shell_quote(memory_root.string()));
+    require(apple_why.exit_code == 0, "Expected Recursive Why/Diff to explain the Apple route use.");
+    require(apple_why.output.find("Recursive Route Learning: recursive_route_learning_used") != std::string::npos,
+            "Expected Recursive Route Learning to be first-class in compact why output.");
+    require(apple_why.output.find("Ask used the learned route") != std::string::npos,
+            "Expected Recursive Why/Diff to report the route was used, not merely discovered after failure.");
+    require(apple_why.output.find("route-learning: memory-search:") != std::string::npos,
+            "Expected Recursive Why/Diff to include learned-memory search evidence.");
+    require(apple_why.output.find("local_glossary:apple") != std::string::npos ||
+                apple_why.output.find("prior_tze_definition:Apple[technology]") != std::string::npos,
+            "Expected Recursive Why/Diff to mine the Apple technology glossary route.");
+    require(apple_why.output.find("The brainchild of Steve Jobs and his team.") != std::string::npos,
+            "Expected Recursive Why/Diff to surface the learned Apple answer.");
+
+    const CommandCapture next =
+        run_command_capture(common + "next latest --compact --memory-root " + shell_quote(memory_root.string()));
+    require(next.exit_code == 0, "Expected `omnix next` to report the latest next action.");
+    require(next.output.find("next_action:") != std::string::npos,
+            "Expected `omnix next` compact output to include the next action only.");
+
+    const CommandCapture jobs_ask =
+        run_command_capture(common + "ask " + shell_quote("who is Steve Jobs") + args + " --compact");
+    require(jobs_ask.exit_code == 0, "Expected Steve Jobs ask to be handled.");
+    require(jobs_ask.output.find("defined: Read his damn book.") != std::string::npos,
+            "Expected single-domain Biography ambiguity to auto-select instead of asking for clarification.");
+
+    const CommandCapture jobs_why =
+        run_command_capture(common + "why latest --compact --memory-root " + shell_quote(memory_root.string()));
+    require(jobs_why.exit_code == 0, "Expected Recursive Why/Diff to explain the Steve Jobs route miss.");
+    require(jobs_why.output.find("local_glossary:Steve Jobs[Biography]") != std::string::npos ||
+                jobs_why.output.find("local_glossary matched Steve Jobs domain=Biography") != std::string::npos,
+            "Expected Recursive Why/Diff to mine the Steve Jobs biography glossary route.");
+    require(jobs_why.output.find("Recursive Route Learning: recursive_route_learning_observed") != std::string::npos,
+            "Expected Recursive Why/Diff to observe the successful Steve Jobs route without treating it as a miss.");
+
+    const CommandCapture replay =
+        run_command_capture(common + "tze replay latest --memory-root " + shell_quote(memory_root.string()));
+    require(replay.exit_code == 0, "Expected replay of route-learning run to succeed.");
+    require(replay.output.find("x.Recursive.RouteLearning") != std::string::npos,
+            "Expected TZE replay to include the Recursive Route Learning stage.");
+}
+
+void test_cli_context_reset_clears_volatile_definition_cache() {
+    const std::filesystem::path root = kBinaryRoot / "cli-context-reset";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(memory_root);
+
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string common = shell_quote(binary.string()) + " ";
+    const std::string memory_args = " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    tze::MemoryStore store;
+    tze::MemorySnapshot snapshot = store.load(memory_root);
+    tze::DefinitionAnswer answer;
+    answer.query = "Apple";
+    answer.normalized_concept = "apple";
+    answer.domain_hint = "technology";
+    answer.found = true;
+    answer.summary = "The brainchild of Steve Jobs and his team.";
+    answer.semantic_family = "general_knowledge";
+    answer.selected_source_type = "memory";
+    answer.selected_source_label = "test-runtime-cache";
+    answer.selected_authority_tier = "operator_override";
+    answer.confidence = 0.82;
+    store.remember_definition(snapshot, answer);
+    store.persist_snapshot(snapshot);
+
+    const std::string seeded_definitions = xpp::read_text_file(memory_root / "definitions.json");
+    require(seeded_definitions.find("Steve Jobs") != std::string::npos,
+            "Expected seeded runtime definitions cache to contain the temporary Apple association.");
+
+    const CommandCapture reset =
+        run_command_capture(common + "context reset --compact --memory-root " + shell_quote(memory_root.string()));
+    require(reset.exit_code == 0, "Expected top-level context reset to complete.");
+    require(reset.output.find("context_reset") != std::string::npos,
+            "Expected context reset to report the reset status.");
+
+    const std::string reset_definitions = xpp::read_text_file(memory_root / "definitions.json");
+    require(reset_definitions.find("Steve Jobs") == std::string::npos,
+            "Expected context reset to clear the volatile runtime definition cache.");
+
+    const CommandCapture apple_default =
+        run_command_capture(common + "ask " + shell_quote("what is apple") + memory_args + " --compact");
+    require(apple_default.exit_code == 0, "Expected Apple ask to resolve after context reset.");
+    require(apple_default.output.find("round fruit") != std::string::npos,
+            "Expected source truth to return the default fruit definition after context reset.");
+    require(apple_default.output.find("Steve Jobs") == std::string::npos,
+            "Expected reset source truth not to stay pinned to the temporary Apple technology association.");
+
+    const CommandCapture memory_reset =
+        run_command_capture(common + "memory reset-context --compact --memory-root " + shell_quote(memory_root.string()));
+    require(memory_reset.exit_code == 0, "Expected memory reset-context alias to complete.");
+    require(memory_reset.output.find("context_reset") != std::string::npos,
+            "Expected memory reset-context alias to share the same reset status.");
+
+    const std::string shell_command =
+        "printf '%s\\n' '/status' '/reset' '/quit' | " +
+        common + "shell --compact --memory-root " + shell_quote(memory_root.string());
+    const CommandCapture shell = run_command_capture(shell_command);
+    require(shell.exit_code == 0, "Expected shell /reset to complete.");
+    require(shell.output.find("Shell context reset.") != std::string::npos,
+            "Expected shell /reset to clear observer state.");
+
+    tze::MemorySnapshot expiring = store.load(memory_root);
+    expiring.definitions.push_back({
+        "Temporary Apple",
+        "temporary apple",
+        "technology",
+        "Expired sticky association.",
+        "",
+        "general_knowledge",
+        "test",
+        "memory",
+        "memory_artifact",
+        0.9,
+        "temporary",
+        "2000-01-01T00:00:00",
+        "2000-01-01T00:00:01",
+    });
+    expiring.history.push_back({
+        "2000-01-01T00:00:00",
+        "what is Temporary Apple",
+        "general_definition_query",
+        "",
+        "defined",
+        "Expired sticky association.",
+        "temporary",
+        "2000-01-01T00:00:00",
+        "2000-01-01T00:00:01",
+    });
+    store.persist_snapshot(expiring);
+    const CommandCapture prune_expired =
+        run_command_capture(common + "memory prune-expired --compact --memory-root " + shell_quote(memory_root.string()));
+    require(prune_expired.exit_code == 0, "Expected memory prune-expired to complete.");
+    require(prune_expired.output.find("memory_pruned_expired") != std::string::npos,
+            "Expected prune-expired to report compact status.");
+    const std::string pruned_definitions = xpp::read_text_file(memory_root / "definitions.json");
+    const std::string pruned_history = xpp::read_text_file(memory_root / "history.jsonl");
+    require(pruned_definitions.find("Expired sticky association") == std::string::npos,
+            "Expected prune-expired to remove expired temporary definitions.");
+    require(pruned_history.find("Expired sticky association") == std::string::npos,
+            "Expected prune-expired to remove expired temporary history.");
+}
+
 void test_cli_shell_nmap_results_alias() {
     const std::filesystem::path root = kBinaryRoot / "cli-shell-nmap-results";
     const std::filesystem::path bin_dir = root / "bin";
@@ -5562,6 +5827,49 @@ void test_cli_tool_namespace_commands() {
     require(gg_route.output.find("neural_route_complete") != std::string::npos,
             "Expected neural router to complete on Ghostline-converted evidence.");
 
+    const std::filesystem::path symlink_target = root / "symlink-target.txt";
+    const std::filesystem::path symlink_path = root / "links" / "target-link.txt";
+    {
+        std::ofstream out(symlink_target);
+        out << "linked-data\n";
+    }
+    const CommandCapture locate_symlink = run_command_capture(
+        command_prefix + " tool locate symlink --memory-root " + shell_quote(memory_root.string()));
+    require(locate_symlink.exit_code == 0, "Expected `tool locate symlink` to resolve the built-in module.");
+    require(locate_symlink.output.find("Tool: symlink") != std::string::npos,
+            "Expected symlink locate output to name the built-in tool.");
+
+    const CommandCapture doctor_symlink = run_command_capture(
+        command_prefix + " tool doctor symlink --memory-root " + shell_quote(memory_root.string()));
+    require(doctor_symlink.exit_code == 0, "Expected `tool doctor symlink` to succeed.");
+    require(doctor_symlink.output.find("namespace-shim") != std::string::npos ||
+                doctor_symlink.output.find("namespace shims") != std::string::npos,
+            "Expected symlink doctor to describe namespace shim creation.");
+
+    const CommandCapture create_symlink = run_command_capture(
+        command_prefix + " tool symlink --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- create " + shell_quote(symlink_target.string()) + " " + shell_quote(symlink_path.string()));
+    require(create_symlink.exit_code == 0, "Expected `tool symlink create` to create a filesystem symlink.");
+    require(std::filesystem::is_symlink(symlink_path), "Expected symlink tool to create a real symlink.");
+    require(xpp::read_text_file(symlink_path).find("linked-data") != std::string::npos,
+            "Expected symlink to point at the requested target file.");
+
+    const std::filesystem::path shim_prefix = root / "shim-bin";
+    const std::filesystem::path shim_path = shim_prefix / "tze-test";
+    const CommandCapture create_shim = run_command_capture(
+        command_prefix + " tool symlink --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- shim tze-test tze --prefix " + shell_quote(shim_prefix.string()) +
+        " --bin " + shell_quote(binary.string()));
+    require(create_shim.exit_code == 0, "Expected `tool symlink shim` to write a POSIX shim.");
+    require(std::filesystem::exists(shim_path), "Expected symlink shim tool to write the shim file.");
+    require(xpp::read_text_file(shim_path).find("exec ") != std::string::npos,
+            "Expected generated shim to use exec for namespace dispatch.");
+    const CommandCapture run_shim = run_command_capture(shell_quote(shim_path.string()) + " latest --compact --memory-root " +
+                                                        shell_quote(memory_root.string()));
+    require(run_shim.exit_code == 0, "Expected generated TZE shim to execute through OmniX.");
+    require(run_shim.output.find("tze_run") != std::string::npos || run_shim.output.find("No TZE runs") != std::string::npos,
+            "Expected generated TZE shim to route into the TZE command surface.");
+
     const std::filesystem::path thresholds_scenario = kSourceRoot / "res" / "thresholds" / "rabbitmq-xxb-incident.json";
     const std::filesystem::path thresholds_seasonal =
         kSourceRoot / "res" / "thresholds" / "rabbitmq-xxb-seasonal-tolerated.json";
@@ -6209,6 +6517,9 @@ int main() {
         test_cli_openai_freeform_security_guidance_is_non_executing();
         test_cli_openai_freeform_does_not_override_command_route();
         test_cli_shell_provider_and_context();
+        test_cli_recursive_why_api_and_link_ux();
+        test_cli_recursive_why_mines_learned_definition_route();
+        test_cli_context_reset_clears_volatile_definition_cache();
         test_cli_shell_nmap_results_alias();
         test_cli_shell_secure_my_system_routes_to_inspect_host();
         test_cli_shell_local_slash24_routes_to_safe_nmap_discovery();

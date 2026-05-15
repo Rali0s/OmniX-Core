@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <fstream>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -16,6 +18,7 @@
 #include <vector>
 
 #if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -185,7 +188,12 @@ void print_usage() {
     std::cout << "  omnix preflight <project-or-path> [--assist] [--compact|--verbose] [--memory-root dir] [--target name] [--install-prefix dir] [--recipe id] [--ref git-ref] [--offline] [--local-only]\n";
     std::cout << "  omnix doctor <project-or-path> [--compact|--verbose] [--memory-root dir] [--recipe id] [--offline] [--local-only]\n";
     std::cout << "  omnix provider probe [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix api status|doctor|configure <openai|ollama>|template <openai|ollama|huggingface> [--compact|--verbose]\n";
     std::cout << "  omnix persona mode <premise|cynic|professional|neutral> [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix why [latest|run-id] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix next [latest|run-id] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix context reset [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix link install|remove|doctor [--with-tze] [--with-gg] [--prefix dir] [--force]\n";
     std::cout << "  omnix gg doctor|search|run|audit|actions [args...] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix nn math perceptron --dataset or|and|xor [--epochs n] [--learning-rate r] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix nn route tview <file.jsonl> [--out routes.jsonl] [--compact|--verbose] [--memory-root dir]\n";
@@ -194,6 +202,7 @@ void print_usage() {
     std::cout << "  omnix tview doctor [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix shell [--source-map file] [--memory-root dir] [--assist] [--compact|--verbose]\n";
     std::cout << "  omnix memory [history|prefs|definitions|language|security|uac|cases|runs|tze|legacy|persona|operator|assist] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix memory reset-context|prune-expired [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix memory prune [--keep n] [--important-only] [--memory-root dir]\n";
     std::cout << "  omnix tze runs [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tze latest [--compact|--verbose] [--memory-root dir]\n";
@@ -213,7 +222,7 @@ void print_usage() {
     std::cout << "  omnix tool locate <name> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tool doctor <name> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tool <name> -- <args...> [--compact|--verbose] [--memory-root dir]\n";
-    std::cout << "    Built-in analyst modules: inspect-log, inspect-build, inspect-host, report-case, text-pipeline, mlp-lens, thresholds, gg\n";
+    std::cout << "    Built-in analyst modules: inspect-log, inspect-build, inspect-host, report-case, text-pipeline, mlp-lens, thresholds, symlink, gg\n";
     std::cout << "  omnix legacy coverage [file]\n";
     std::cout << "  omnix legacy report [file]\n";
     std::cout << "  omnix map <file>\n";
@@ -476,6 +485,9 @@ std::string compact_summary(const tze::ProcessingReport& report) {
     if (report.neural_route_report.has_value() && !report.neural_route_report->summary.empty()) {
         return report.neural_route_report->summary;
     }
+    if (report.recursive_diff_report.has_value() && !report.recursive_diff_report->best_estimate_answer.empty()) {
+        return report.recursive_diff_report->best_estimate_answer;
+    }
     if (report.definition_answer.has_value() && !report.definition_answer->summary.empty()) {
         return report.definition_answer->summary;
     }
@@ -575,6 +587,17 @@ void print_processing_report_compact(const tze::ProcessingReport& report) {
     if (report.case_summary_assist_plan.has_value() && report.assist_status == "assist_used") {
         std::cout << "assist summary: " << report.case_summary_assist_plan->executive_summary << "\n";
     }
+    if (report.definition_answer.has_value() &&
+        report.definition_answer->selected_source_type == "recursive_route_learning") {
+        std::cout << "definition-source: recursive_route_learning";
+        if (!report.definition_answer->domain_hint.empty()) {
+            std::cout << " domain=" << report.definition_answer->domain_hint;
+        }
+        if (report.definition_answer->confidence > 0.0) {
+            std::cout << " confidence=" << report.definition_answer->confidence;
+        }
+        std::cout << "\n";
+    }
     if (report.preflight_report.has_value() && !report.preflight_report->recipe_id.empty()) {
         std::cout << "recipe: " << report.preflight_report->recipe_id << "\n";
     } else if (report.build_execution.has_value() && !report.build_execution->selected_recipe_id.empty()) {
@@ -644,6 +667,27 @@ void print_processing_report_compact(const tze::ProcessingReport& report) {
         }
         if (!route.artifact_path.empty()) {
             std::cout << "route-artifact: " << route.artifact_path << "\n";
+        }
+    }
+    if (report.recursive_diff_report.has_value()) {
+        const tze::RecursiveDiffReport& recursive = *report.recursive_diff_report;
+        if (!recursive.route_learning_status.empty() &&
+            recursive.route_learning_status != "route_learning_not_needed") {
+            std::cout << "Recursive Route Learning: " << recursive.route_learning_status << "\n";
+        }
+        std::cout << "Current State: " << recursive.current_state << "\n";
+        std::cout << "Likely Goal: " << recursive.likely_goal << "\n";
+        std::cout << "What the Logs/Reasoning Show: " << recursive.logs_and_reasoning << "\n";
+        std::cout << "Successful Path Pattern: " << recursive.successful_path_pattern << "\n";
+        std::cout << "Difference Found: " << recursive.difference_found << "\n";
+        std::cout << "Best Estimate Answer: " << recursive.best_estimate_answer << "\n";
+        std::cout << "Why This Matters: " << recursive.why_this_matters << "\n";
+        std::cout << "Next Action: " << recursive.next_action << "\n";
+        std::cout << "source-run: " << recursive.source_run_id << "\n";
+        std::cout << "diff-category: " << recursive.diff_category << "\n";
+        std::cout << "confidence: " << recursive.confidence << "\n";
+        if (!recursive.next_action.empty()) {
+            std::cout << "next-recursive: " << recursive.next_action << "\n";
         }
     }
     if (report.legacy_source.has_value()) {
@@ -880,6 +924,32 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
             std::cout << "Assist safety warnings:\n";
             for (const std::string& warning : answer.safety_warnings) {
                 std::cout << " - " << warning << "\n";
+            }
+        }
+    }
+    if (report.recursive_diff_report.has_value()) {
+        const tze::RecursiveDiffReport& recursive = *report.recursive_diff_report;
+        std::cout << "Recursive Why/Diff status: " << recursive.status << "\n";
+        if (!recursive.route_learning_status.empty()) {
+            std::cout << "Recursive Route Learning status: " << recursive.route_learning_status << "\n";
+        }
+        std::cout << "Recursive source run: " << recursive.source_run_id << "\n";
+        std::cout << "Recursive confidence: " << recursive.confidence << "\n";
+        std::cout << "Current State\n" << recursive.current_state << "\n";
+        std::cout << "Likely Goal\n" << recursive.likely_goal << "\n";
+        std::cout << "What the Logs/Reasoning Show\n" << recursive.logs_and_reasoning << "\n";
+        std::cout << "Successful Path Pattern\n" << recursive.successful_path_pattern << "\n";
+        std::cout << "Difference Found\n" << recursive.difference_found << "\n";
+        std::cout << "Best Estimate Answer\n" << recursive.best_estimate_answer << "\n";
+        std::cout << "Why This Matters\n" << recursive.why_this_matters << "\n";
+        std::cout << "Next Action\n" << recursive.next_action << "\n";
+        if (!recursive.slots.empty()) {
+            std::cout << "Reasoning slots:\n";
+            for (const tze::ReasoningSlotRecord& slot : recursive.slots) {
+                std::cout << " - " << slot.slot_id << " " << slot.label << " confidence=" << slot.confidence << "\n";
+                for (const std::string& fact : slot.facts) {
+                    std::cout << "   - " << fact << "\n";
+                }
             }
         }
     }
@@ -2274,6 +2344,290 @@ int run_provider(const std::vector<std::string>& args) {
     return report.answer_status == "provider_ready" || report.answer_status == "provider_inactive" ? 0 : 1;
 }
 
+std::string env_value(std::string_view key) {
+    if (const char* value = std::getenv(std::string(key).c_str()); value != nullptr) {
+        return value;
+    }
+    return {};
+}
+
+std::string dot_env_value(std::string_view key) {
+    std::ifstream input(std::filesystem::current_path() / ".env");
+    if (!input) {
+        return {};
+    }
+    const std::string wanted(key);
+    for (std::string line; std::getline(input, line);) {
+        line = trim(line);
+        if (line.empty() || line.front() == '#') {
+            continue;
+        }
+        const std::size_t separator = line.find('=');
+        if (separator == std::string::npos) {
+            continue;
+        }
+        if (trim(line.substr(0, separator)) == wanted) {
+            return trim(line.substr(separator + 1));
+        }
+    }
+    return {};
+}
+
+std::string config_value(std::string_view primary_key, std::string_view secondary_key = {}) {
+    std::string value = env_value(primary_key);
+    if (!value.empty()) {
+        return value;
+    }
+    value = dot_env_value(primary_key);
+    if (!value.empty()) {
+        return value;
+    }
+    if (!secondary_key.empty()) {
+        value = env_value(secondary_key);
+        if (!value.empty()) {
+            return value;
+        }
+        return dot_env_value(secondary_key);
+    }
+    return {};
+}
+
+std::string mask_secret(std::string_view value) {
+    if (value.empty()) {
+        return "(missing)";
+    }
+    if (value.size() <= 8) {
+        return "****";
+    }
+    return std::string(value.substr(0, 4)) + "..." + std::string(value.substr(value.size() - 4));
+}
+
+std::filesystem::path expand_user_path_main(std::string value) {
+    if (value == "~") {
+        return env_value("HOME").empty() ? std::filesystem::path(value) : std::filesystem::path(env_value("HOME"));
+    }
+    if (value.rfind("~/", 0) == 0 && !env_value("HOME").empty()) {
+        return std::filesystem::path(env_value("HOME")) / value.substr(2);
+    }
+    return std::filesystem::path(value);
+}
+
+std::string prompt_value(std::string_view label, std::string fallback = {}) {
+    std::cout << label;
+    if (!fallback.empty()) {
+        std::cout << " [" << fallback << "]";
+    }
+    std::cout << ": ";
+    std::string value;
+    std::getline(std::cin, value);
+    value = trim(value);
+    return value.empty() ? fallback : value;
+}
+
+std::filesystem::path resolve_invoked_binary_path(std::string_view argv0) {
+    const std::string invoked(argv0);
+    std::error_code error;
+    const auto canonical_if_present = [&](const std::filesystem::path& candidate) {
+        if (std::filesystem::exists(candidate, error)) {
+            return std::filesystem::weakly_canonical(candidate, error);
+        }
+        return std::filesystem::path{};
+    };
+    if (invoked.find('/') != std::string::npos) {
+        std::filesystem::path resolved = canonical_if_present(std::filesystem::absolute(invoked));
+        if (!resolved.empty()) {
+            return resolved;
+        }
+    } else {
+        std::istringstream paths(env_value("PATH"));
+        for (std::string dir; std::getline(paths, dir, ':');) {
+            if (dir.empty()) {
+                continue;
+            }
+            std::filesystem::path resolved = canonical_if_present(std::filesystem::path(dir) / invoked);
+            if (!resolved.empty()) {
+                return resolved;
+            }
+        }
+    }
+    return std::filesystem::absolute("build/omnix");
+}
+
+int run_api(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    const std::string command = positional.empty() ? "status" : positional[0];
+
+    if (command == "status" || command == "doctor") {
+        const std::string provider = config_value("OMNIX_REASONING_PROVIDER");
+        const std::string openai_key = config_value("OMNIX_OPENAI_API_KEY", "OPENAI_API_KEY");
+        const std::string openai_model = config_value("OMNIX_OPENAI_MODEL", "OPENAI_MODEL");
+        const std::string ollama_model = config_value("OMNIX_OLLAMA_MODEL");
+        const std::string ollama_base_url = config_value("OMNIX_OLLAMA_BASE_URL");
+        if (options.output_mode == OutputMode::Compact) {
+            std::cout << "api_status: provider=" << (provider.empty() ? "(unset)" : provider)
+                      << " openai_key=" << mask_secret(openai_key)
+                      << " openai_model=" << (openai_model.empty() ? "(missing)" : openai_model)
+                      << " ollama_model=" << (ollama_model.empty() ? "(missing)" : ollama_model)
+                      << " ollama_base_url=" << (ollama_base_url.empty() ? "(missing)" : ollama_base_url) << "\n";
+        } else {
+            std::cout << "API status:\n";
+            std::cout << " - Provider: " << (provider.empty() ? "(unset)" : provider) << "\n";
+            std::cout << " - OpenAI key: " << mask_secret(openai_key) << "\n";
+            std::cout << " - OpenAI model: " << (openai_model.empty() ? "(missing)" : openai_model) << "\n";
+            std::cout << " - Ollama model: " << (ollama_model.empty() ? "(missing)" : ollama_model) << "\n";
+            std::cout << " - Ollama base URL: " << (ollama_base_url.empty() ? "(missing)" : ollama_base_url) << "\n";
+            std::cout << " - Next: `omnix api configure openai` or `omnix api configure ollama`.\n";
+            if (provider == "ollama") {
+                std::cout << " - Ollama server: run `ollama serve`, then `ollama run "
+                          << (ollama_model.empty() ? "<model>" : ollama_model) << "`.\n";
+            }
+        }
+        return 0;
+    }
+
+    if (command == "template") {
+        if (positional.size() < 2) {
+            throw std::runtime_error("api template requires openai, ollama, or huggingface.");
+        }
+        const std::string provider = positional[1];
+        if (provider == "openai") {
+            std::cout << "curl https://api.openai.com/v1/responses -H 'Authorization: Bearer $OPENAI_API_KEY' -H 'Content-Type: application/json' -d '{\"model\":\"${OPENAI_MODEL:-gpt-4.1-mini}\",\"input\":\"Say ready.\"}'\n";
+        } else if (provider == "ollama") {
+            std::cout << "curl http://127.0.0.1:11434/api/generate -d '{\"model\":\"${OMNIX_OLLAMA_MODEL:-deepnimsec-omni:latest}\",\"prompt\":\"Say ready.\",\"stream\":false}'\n";
+        } else if (provider == "huggingface") {
+            std::cout << "curl https://api-inference.huggingface.co/models/$HF_MODEL -H 'Authorization: Bearer $HUGGINGFACE_API_TOKEN' -H 'Content-Type: application/json' -d '{\"inputs\":\"Say ready.\"}'\n";
+        } else {
+            throw std::runtime_error("api template supports openai, ollama, or huggingface.");
+        }
+        return 0;
+    }
+
+    if (command == "configure") {
+        if (positional.size() < 2) {
+            throw std::runtime_error("api configure requires openai or ollama.");
+        }
+        const std::string provider = positional[1];
+        const std::filesystem::path env_path = std::filesystem::current_path() / ".env";
+        std::string contents;
+        if (provider == "openai") {
+            const std::string model = prompt_value("OpenAI model", "gpt-4.1-mini");
+            const std::string key = prompt_value("OpenAI API key");
+            if (key.empty()) {
+                throw std::runtime_error("OpenAI API key cannot be empty.");
+            }
+            contents = "OMNIX_REASONING_PROVIDER=openai\nOPENAI_MODEL=" + model + "\nOPENAI_API_KEY=" + key + "\n";
+            std::ofstream out(env_path);
+            out << contents;
+        } else if (provider == "ollama") {
+            const std::string model = prompt_value("Ollama model", "deepnimsec-omni:latest");
+            const std::string base_url = prompt_value("Ollama base URL", "http://127.0.0.1:11434");
+            contents = "OMNIX_REASONING_PROVIDER=ollama\nOMNIX_OLLAMA_MODEL=" + model + "\nOMNIX_OLLAMA_BASE_URL=" + base_url + "\n";
+            std::ofstream out(env_path);
+            out << contents;
+        } else {
+            throw std::runtime_error("api configure supports openai or ollama.");
+        }
+#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+        chmod(env_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+        std::cout << "api_configured: wrote " << env_path << "\n";
+        std::cout << "secret_status: stored locally; value masked in OmniX output.\n";
+        return 0;
+    }
+
+    throw std::runtime_error("api supports status, doctor, configure, and template.");
+}
+
+int run_why(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    const std::string run_ref = positional.empty() ? "latest" : positional.front();
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.raw_prompt = "why " + run_ref;
+    profile.tze_run_reference = run_ref;
+    profile.resolved_intent = tze::RequestIntent::RecursiveWhyDiff;
+    profile.source_map_path.clear();
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, options.output_mode, false);
+    return report.answer_status == "recursive_why_diff_complete" ? 0 : 1;
+}
+
+int run_link(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.empty() || positional.front() == "doctor") {
+        std::cout << "link_ready: OmniX can install user-local links and namespace shims.\n";
+        std::cout << "next: omnix link install --with-tze --prefix ~/.local/bin\n";
+        return 0;
+    }
+    const std::string mode = positional.front();
+    std::filesystem::path prefix = expand_user_path_main("~/.local/bin");
+    bool with_tze = false;
+    bool with_gg = false;
+    bool force = false;
+    for (std::size_t index = 1; index < positional.size(); ++index) {
+        if (positional[index] == "--prefix") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("link --prefix requires a directory.");
+            }
+            prefix = expand_user_path_main(positional[++index]);
+        } else if (positional[index] == "--with-tze") {
+            with_tze = true;
+        } else if (positional[index] == "--with-gg") {
+            with_gg = true;
+        } else if (positional[index] == "--force") {
+            force = true;
+        }
+    }
+    const std::filesystem::path omnix_bin = resolve_invoked_binary_path(args.empty() ? std::string_view("build/omnix") : std::string_view(args.front()));
+    if (mode == "install") {
+        const auto run_symlink = [&](std::vector<std::string> tool_args) {
+            tze::RequestProfile profile = make_base_profile(options);
+            profile.resolved_intent = tze::RequestIntent::ToolAction;
+            profile.tool_mode = tze::ToolCommandMode::Run;
+            profile.requested_tool_name = "symlink";
+            profile.tool_arguments = std::move(tool_args);
+            profile.raw_prompt = "link install";
+            profile.source_map_path.clear();
+            tze::ProcessingEngine engine;
+            const tze::ProcessingReport report = engine.process(profile);
+            print_processing_report(report, options.output_mode, false);
+            return report.tool_invocation_report.has_value() && report.tool_invocation_report->exit_code == 0;
+        };
+        std::vector<std::string> create = {"create", omnix_bin.string(), (prefix / "omnix").string()};
+        if (force) {
+            create.push_back("--force");
+        }
+        bool ok = run_symlink(create);
+        if (with_tze) {
+            std::vector<std::string> shim = {"shim", "tze", "tze", "--prefix", prefix.string(), "--bin", omnix_bin.string()};
+            if (force) {
+                shim.push_back("--force");
+            }
+            ok = run_symlink(shim) && ok;
+        }
+        if (with_gg) {
+            std::vector<std::string> shim = {"shim", "gg", "gg", "--prefix", prefix.string(), "--bin", omnix_bin.string()};
+            if (force) {
+                shim.push_back("--force");
+            }
+            ok = run_symlink(shim) && ok;
+        }
+        return ok ? 0 : 1;
+    }
+    if (mode == "remove") {
+        std::error_code ec;
+        std::filesystem::remove(prefix / "omnix", ec);
+        std::filesystem::remove(prefix / "tze", ec);
+        std::filesystem::remove(prefix / "gg", ec);
+        std::cout << "link_removed: removed OmniX user-local links from " << prefix << "\n";
+        return 0;
+    }
+    throw std::runtime_error("link supports install, remove, and doctor.");
+}
+
 int run_tview(const std::vector<std::string>& args) {
     const TViewCliInvocation invocation = parse_tview_invocation(args);
     tze::RequestProfile profile = make_base_profile(invocation.options);
@@ -2695,6 +3049,94 @@ int run_explain(const std::vector<std::string>& args) {
     return report.definition_answer.has_value() && report.definition_answer->found ? 0 : 1;
 }
 
+int reset_runtime_context(const CommonCliOptions& options) {
+    tze::MemoryStore memory_store;
+    tze::MemorySnapshot memory = memory_store.load(options.memory_root_path);
+    const std::size_t definitions_count = memory.definitions.size();
+    const std::size_t history_count = memory.history.size();
+    const std::size_t language_count = memory.language_contexts.size();
+    const std::size_t uac_count = memory.uac_states.size();
+    const std::size_t assist_count =
+        memory.assist_outcomes.size() + memory.assist_corrections.size() + memory.assist_learning.size();
+
+    memory.definitions.clear();
+    memory.history.clear();
+    memory.language_contexts.clear();
+    memory.uac_states.clear();
+    memory.assist_outcomes.clear();
+    memory.assist_corrections.clear();
+    memory.assist_learning.clear();
+    memory_store.persist_snapshot(memory);
+
+    if (options.output_mode == OutputMode::Compact) {
+        std::cout << "context_reset: cleared volatile learned/runtime caches without deleting glossary, cases, TZE ledger, recipes, tools, or persona.\n";
+    } else {
+        std::cout << "Context reset complete:\n";
+        std::cout << " - definitions cleared: " << definitions_count << "\n";
+        std::cout << " - history entries cleared: " << history_count << "\n";
+        std::cout << " - language contexts cleared: " << language_count << "\n";
+        std::cout << " - uAC states cleared: " << uac_count << "\n";
+        std::cout << " - assist cache entries cleared: " << assist_count << "\n";
+        std::cout << " - retained: local glossary, TZE runs, cases, recipes, native tools, security audits, persona.\n";
+        std::cout << "Next: rerun `omnix ask \"what is apple\"` to rebuild context from source truth.\n";
+    }
+    return 0;
+}
+
+int run_context(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.empty() || positional.front() != "reset") {
+        throw std::runtime_error("context currently supports `context reset`.");
+    }
+    return reset_runtime_context(options);
+}
+
+int run_next(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    const std::string reference = positional.empty() ? "latest" : positional.front();
+    tze::MemoryStore memory_store;
+    const tze::MemorySnapshot memory = memory_store.load(options.memory_root_path);
+    const std::string run_id = memory_store.resolve_tze_run_id(memory, reference);
+    if (run_id.empty()) {
+        if (options.output_mode == OutputMode::Compact) {
+            std::cout << "next_missing: No TZE run was available for `" << reference << "`.\n";
+        } else {
+            std::cout << "No TZE run was available for `" << reference << "`.\n";
+        }
+        return 1;
+    }
+    const tze::TzeRunRecord* run = memory_store.find_tze_run(memory, run_id);
+    if (run == nullptr) {
+        throw std::runtime_error("next could not resolve the requested TZE run.");
+    }
+    const std::string next_action = !run->next_action.empty()
+        ? run->next_action
+        : "Run `omnix why " + run_id + "` to derive the next safe action from the stored run.";
+    if (options.output_mode == OutputMode::Compact) {
+        std::cout << "next_action: " << next_action << "\n";
+        std::cout << "source-run: " << run_id << "\n";
+        std::cout << "status: " << (run->status.empty() ? "unknown" : run->status) << "\n";
+        if (!run->prompt.empty()) {
+            std::cout << "prompt: " << run->prompt << "\n";
+        }
+        return 0;
+    }
+
+    std::cout << "Next action for `" << run_id << "`:\n";
+    std::cout << " - Action: " << next_action << "\n";
+    std::cout << " - Status: " << (run->status.empty() ? "unknown" : run->status) << "\n";
+    if (!run->intent.empty()) {
+        std::cout << " - Intent: " << run->intent << "\n";
+    }
+    if (!run->prompt.empty()) {
+        std::cout << " - Prompt: " << run->prompt << "\n";
+    }
+    std::cout << " - Rationale: `next` reads the compact TZE ledger and avoids replaying the full chain.\n";
+    return 0;
+}
+
 int run_review_command(const std::vector<std::string>& args, bool patch_mode) {
     std::vector<std::string> positional;
     const CommonCliOptions options = parse_common_options(args, 2, &positional);
@@ -2721,6 +3163,21 @@ int run_review_command(const std::vector<std::string>& args, bool patch_mode) {
 int run_memory(const std::vector<std::string>& args) {
     std::vector<std::string> positional;
     const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (!positional.empty() && positional.front() == "reset-context") {
+        return reset_runtime_context(options);
+    }
+    if (!positional.empty() && positional.front() == "prune-expired") {
+        tze::MemoryStore memory_store;
+        tze::MemorySnapshot memory = memory_store.load(options.memory_root_path);
+        const std::string summary = memory_store.prune_expired(memory);
+        memory_store.persist_snapshot(memory);
+        if (options.output_mode == OutputMode::Compact) {
+            std::cout << "memory_pruned_expired: " << summary << "\n";
+        } else {
+            std::cout << summary << "\n";
+        }
+        return 0;
+    }
 
     tze::RequestProfile profile = make_base_profile(options);
     if (!positional.empty() && positional.front() == "prune") {
@@ -2928,14 +3385,24 @@ struct ShellState {
     std::optional<tze::ProcessingReport> last_report;
 };
 
+void reset_shell_context(ShellState& state) {
+    state.current_case_id.clear();
+    state.current_incident_id.clear();
+    state.current_run_id.clear();
+    state.last_report.reset();
+}
+
 void print_shell_help() {
     std::cout << "OmniX shell commands:\n";
     std::cout << " - /help\n";
     std::cout << " - /status\n";
     std::cout << " - /provider\n";
+    std::cout << " - /api [status|openai|ollama|template huggingface]\n";
     std::cout << " - /assist on|off\n";
     std::cout << " - /verbose on|off\n";
     std::cout << " - /why\n";
+    std::cout << " - /next\n";
+    std::cout << " - /reset [memory]\n";
     std::cout << " - /case <id>\n";
     std::cout << " - /incident <id>\n";
     std::cout << " - /replay [run-id|latest]\n";
@@ -3264,6 +3731,7 @@ int run_shell(const std::vector<std::string>& args) {
         if (line.empty()) {
             continue;
         }
+        const std::string original_line = line;
 
         const tze::MemorySnapshot shell_memory = memory_store.load(state.options.memory_root_path);
         std::optional<tze::ShellLexiconEntry> lexicon_entry;
@@ -3277,7 +3745,27 @@ int run_shell(const std::vector<std::string>& args) {
             std::cout << "Compact shell tool results enabled.\n";
             continue;
         }
-        if (line == "next" || line == "fix this") {
+        if (line == "next" && lowercase(original_line) == "next?" && state.assist_enabled && state.last_report.has_value()) {
+            print_shell_followup(state, line);
+            print_shell_assist_followup(state, line, memory_store, shell_memory);
+            continue;
+        }
+        if (line == "next" || line == "next?") {
+            std::vector<std::string> next_args = {"omnix", "next"};
+            if (state.options.output_mode == OutputMode::Compact) {
+                next_args.push_back("--compact");
+            } else if (state.options.output_mode == OutputMode::Verbose) {
+                next_args.push_back("--verbose");
+            }
+            if (!state.options.memory_root_path.empty()) {
+                next_args.push_back("--memory-root");
+                next_args.push_back(state.options.memory_root_path);
+            }
+            next_args.push_back(state.current_run_id.empty() ? "latest" : state.current_run_id);
+            run_next(next_args);
+            continue;
+        }
+        if (line == "fix this") {
             print_shell_followup(state, line);
             print_shell_assist_followup(state, line, memory_store, shell_memory);
             continue;
@@ -3296,6 +3784,26 @@ int run_shell(const std::vector<std::string>& args) {
             }
             if (command == "/status") {
                 print_shell_status(state);
+                continue;
+            }
+            if (command == "/reset") {
+                if (tokens.size() >= 2 && tokens[1] == "memory") {
+                    std::vector<std::string> memory_args = {"omnix", "memory"};
+                    if (state.options.output_mode == OutputMode::Compact) {
+                        memory_args.push_back("--compact");
+                    } else if (state.options.output_mode == OutputMode::Verbose) {
+                        memory_args.push_back("--verbose");
+                    }
+                    if (!state.options.memory_root_path.empty()) {
+                        memory_args.push_back("--memory-root");
+                        memory_args.push_back(state.options.memory_root_path);
+                    }
+                    memory_args.push_back("reset-context");
+                    run_memory(memory_args);
+                }
+                reset_shell_context(state);
+                std::cout << "Shell context reset. Persistent learned/runtime cache "
+                          << (tokens.size() >= 2 && tokens[1] == "memory" ? "was also reset.\n" : "was not changed.\n");
                 continue;
             }
             if (command == "/assist") {
@@ -3327,12 +3835,24 @@ int run_shell(const std::vector<std::string>& args) {
                 }
                 continue;
             }
-            if (command == "/why") {
-                if (!state.last_report.has_value()) {
-                    std::cout << "No prior command has been executed in this shell.\n";
-                } else {
-                    print_processing_report(*state.last_report, OutputMode::Verbose, true);
+            if (command == "/api") {
+                std::vector<std::string> api_args = {"omnix", "api"};
+                if (state.options.output_mode == OutputMode::Compact) {
+                    api_args.push_back("--compact");
+                } else if (state.options.output_mode == OutputMode::Verbose) {
+                    api_args.push_back("--verbose");
                 }
+                if (tokens.size() == 1) {
+                    api_args.push_back("status");
+                } else if (tokens[1] == "openai" || tokens[1] == "ollama") {
+                    api_args.push_back("configure");
+                    api_args.push_back(tokens[1]);
+                } else {
+                    for (std::size_t index = 1; index < tokens.size(); ++index) {
+                        api_args.push_back(tokens[index]);
+                    }
+                }
+                run_api(api_args);
                 continue;
             }
             if (command == "/case") {
@@ -3361,7 +3881,23 @@ int run_shell(const std::vector<std::string>& args) {
                 }
                 continue;
             }
-            if (command == "/provider") {
+            if (command == "/why") {
+                line = "why " + (state.current_run_id.empty() ? std::string("latest") : state.current_run_id);
+            } else if (command == "/next") {
+                std::vector<std::string> next_args = {"omnix", "next"};
+                if (state.options.output_mode == OutputMode::Compact) {
+                    next_args.push_back("--compact");
+                } else if (state.options.output_mode == OutputMode::Verbose) {
+                    next_args.push_back("--verbose");
+                }
+                if (!state.options.memory_root_path.empty()) {
+                    next_args.push_back("--memory-root");
+                    next_args.push_back(state.options.memory_root_path);
+                }
+                next_args.push_back(tokens.size() >= 2 ? tokens[1] : (state.current_run_id.empty() ? std::string("latest") : state.current_run_id));
+                run_next(next_args);
+                continue;
+            } else if (command == "/provider") {
                 line = "provider probe";
             } else if (command == "/replay") {
                 line = "tze replay " + (tokens.size() >= 2 ? tokens[1] : std::string("latest"));
@@ -3643,6 +4179,26 @@ int main(int argc, char** argv) {
 
         if (command == "provider") {
             return run_provider(args);
+        }
+
+        if (command == "api") {
+            return run_api(args);
+        }
+
+        if (command == "why") {
+            return run_why(args);
+        }
+
+        if (command == "next") {
+            return run_next(args);
+        }
+
+        if (command == "context") {
+            return run_context(args);
+        }
+
+        if (command == "link") {
+            return run_link(args);
         }
 
         if (command == "tview") {

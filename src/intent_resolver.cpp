@@ -355,6 +355,17 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
         return resolution;
     }
 
+    if (lowered == "why" || starts_with(lowered, "why ") ||
+        lowered == "why does this matter" || starts_with(lowered, "recursive why")) {
+        resolution.intent = RequestIntent::RecursiveWhyDiff;
+        resolution.primary_target = lowered == "why" ? "latest" : strip_prefix(resolution.normalized_prompt, "why");
+        if (resolution.primary_target.empty() || lowercase(resolution.primary_target) == "does this matter") {
+            resolution.primary_target = "latest";
+        }
+        resolution.confidence = 0.98;
+        return resolution;
+    }
+
     if (starts_with(lowered, "ingest ")) {
         resolution.intent = RequestIntent::IngestData;
         resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 7));

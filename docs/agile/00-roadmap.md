@@ -39,6 +39,7 @@
 13. [Native C++ Neural Signal Router](103-native-neural-signal-router.md)
 14. [Proactive Infrastructure Thresholds](104-proactive-infrastructure-thresholds.md)
 15. [Ghostline `gg` Integration](105-ghostline-gg-integration.md)
+16. [Recursive Why/Diff and API/Link UX](106-recursive-why-diff-and-api-link-ux.md)
 
 ## V2 Completion Criteria
 - Runtime stage execution is derived from source-backed TZE graph data instead of a primarily hardcoded stage pipeline.

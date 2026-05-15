@@ -10,6 +10,9 @@
 omnix ask <prompt> [--assist]
 omnix shell [--assist]
 omnix provider probe
+omnix api status|doctor|configure <openai|ollama>|template <openai|ollama|huggingface>
+omnix why [latest|run-id]
+omnix link install|remove|doctor [--with-tze] [--with-gg]
 omnix tool <name> -- <args...>
 omnix build <project-or-path> [--assist]
 omnix recipe author <source-path> [--assist]
@@ -41,6 +44,12 @@ OmniX is deterministic-first. Ollama or OpenAI may help with bounded planning, b
 - `review <path-or-module>`
 - `patch-proposal <path-or-module>`
 - `provider probe`
+- `api status`
+- `api doctor`
+- `api configure <openai|ollama>`
+- `api template <openai|ollama|huggingface>`
+- `why <run-id|latest>`
+- `link install|remove|doctor`
 - `persona mode <premise|cynic|professional|neutral>`
 - `tview port <port>`
 - `tview pcap <file> --port <port> --out <file>.jsonl`
@@ -76,6 +85,10 @@ may shape identity and tone readouts, but never change command authority, routin
 - Build flows: `doctor`, `preflight`, `build`, `recipe author`
 - Tool flows: `tool list`, `tool locate`, `tool doctor`, `tool <name> -- <args...>`
 - TZE replay flows: `tze latest`, `tze replay`, `tze chain`, `tze diff`, `tze report`, `tze explain-change`
+- Recursive explanation flow: `why latest` or shell `/why`
+- Next-action flow: `next latest`, shell `next`, or shell `/next`
+- Context reset flow: `context reset`, `memory reset-context`, or `memory prune-expired`
+- API/link UX flows: `api status`, `api configure`, `link install`
 - Definition flows: `define <symbol-or-term>`, `explain <command-or-symbol>`
 
 ## Shell Idioms
@@ -88,15 +101,26 @@ The interactive shell accepts plain OmniX language and a few convenience aliases
 - `Run NMAP with a local /24 scan`
 - `/assist on`
 - `/provider`
+- `/api`
+- `/api openai`
+- `/api ollama`
 - `/why`
+- `/next`
+- `/reset`
+- `/reset memory`
 
 `ask ...` in shell is normalized into the same request path as `omnix ask`.
+
+`/reset` clears only the current shell run/case observer state. `/reset memory` also clears volatile learned/runtime caches.
 
 ## Guarded Assist
 
 - `omnix shell --assist` enables guarded assist inside the shell.
 - `omnix ask <prompt> --assist` enables guarded assist for one request.
 - `provider probe` verifies whether `ollama`, `openai`, or `null` is active and ready.
+- `api status` checks environment and repo-local `.env` without printing secrets.
+- `api configure openai` writes repo-local `.env` with restrictive permissions where supported.
+- `api template huggingface` prints a placeholder curl command only; HuggingFace is not a runtime provider yet.
 - For `deepnimsec-omni:latest`, a stale custom model should be repaired with `./scripts/omnix_deepnimsec.sh --refresh-model`.
 - `./scripts/omnix_openai.sh` loads repo-local `./.env` for explicit OpenAI assist runs without printing secrets.
 - OpenAI freeform answers are a final `ask --assist` fallback after local memory, definitions, command routing, and guarded tool planning miss.
@@ -131,6 +155,8 @@ term|domain|definition
 sun|science|The Sun is the star at the center of the Solar System.
 ```
 
+If a temporary learned association starts overriding the expected source truth, use `omnix context reset` or `omnix memory reset-context`. These commands clear cached definitions, compact history, language/uAC state, and assist learning without deleting the source glossary, TZE ledger, cases, recipes, tools, or persona. Use `omnix memory prune-expired` to remove expired temporary runtime entries without a full reset.
+
 ## Environment
 
 - `OMNIX_REASONING_PROVIDER=ollama`
@@ -148,6 +174,12 @@ sun|science|The Sun is the star at the center of the Solar System.
 ./build/omnix provider probe
 ./scripts/omnix_deepnimsec.sh --refresh-model
 ./scripts/omnix_openai.sh provider probe --compact
+./build/omnix api status --compact
+./build/omnix api template huggingface
+./build/omnix why latest --compact
+./build/omnix next latest --compact
+./build/omnix memory prune-expired --compact
+./build/omnix link install --with-tze --prefix ~/.local/bin
 ./scripts/omnix_openai.sh shell --assist
 ./scripts/omnix_openai.sh "Define Turning Scale"
 ./scripts/omnix_openai.sh omnix tview port 5000

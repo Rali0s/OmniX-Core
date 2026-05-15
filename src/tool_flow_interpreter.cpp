@@ -429,7 +429,7 @@ NativeToolRecord record_from_resolution(const ToolResolution& resolution) {
 }
 
 std::vector<std::string> analyst_builtin_tools() {
-    return {"inspect-log", "inspect-build", "inspect-host", "report-case", "text-pipeline", "mlp-lens", "thresholds", "gg"};
+    return {"inspect-log", "inspect-build", "inspect-host", "report-case", "text-pipeline", "mlp-lens", "thresholds", "symlink", "gg"};
 }
 
 bool is_analyst_builtin_tool(std::string_view logical_name) {
@@ -556,6 +556,19 @@ ToolDoctorReport builtin_doctor(std::string_view logical_name,
         };
         report.recommended_next_command =
             "Use `omnix gg audit res/ghostline/ghostline_audit_fixture.jsonl --out /tmp/gg-tview.jsonl` or `omnix gg run <listen-port> <upstream-host> <upstream-port> ...`.";
+        return report;
+    }
+
+    if (logical_name == "symlink") {
+        report.summary = "Filesystem symlink and namespace-shim creation is built into OmniX for local operator convenience.";
+        report.capability_notes = {
+            "Creates filesystem symlinks with `create <target> <link-path>` using C++ filesystem APIs.",
+            "Writes small POSIX shell namespace shims with `shim <name> <namespace>` for commands such as `tze -> omnix tze`.",
+            "Refuses to replace existing paths unless `--force` is explicit.",
+            "Does not execute generated shell scripts during creation.",
+        };
+        report.recommended_next_command =
+            "Use `omnix tool symlink -- create ./build/omnix ~/.local/bin/omnix` or `omnix tool symlink -- shim tze tze --prefix ~/.local/bin --bin ./build/omnix`.";
         return report;
     }
 
@@ -3391,6 +3404,267 @@ bool write_text_file(const std::string& path, const std::string& contents, std::
     return true;
 }
 
+std::filesystem::path expand_operator_path(std::string_view raw_path) {
+    std::string text(raw_path);
+    if (text == "~") {
+        if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+            return std::filesystem::path(home);
+        }
+    }
+    if (text.rfind("~/", 0) == 0) {
+        if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+            return std::filesystem::path(home) / text.substr(2);
+        }
+    }
+    return std::filesystem::path(text);
+}
+
+bool remove_existing_link_target(const std::filesystem::path& path, std::string* error) {
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec) && !std::filesystem::is_symlink(std::filesystem::symlink_status(path, ec))) {
+        return true;
+    }
+    std::filesystem::remove(path, ec);
+    if (ec) {
+        if (error != nullptr) {
+            *error = "Unable to remove existing path `" + path.string() + "`.";
+        }
+        return false;
+    }
+    return true;
+}
+
+bool safe_shim_token(std::string_view token) {
+    if (token.empty()) {
+        return false;
+    }
+    for (char c : token) {
+        const unsigned char byte = static_cast<unsigned char>(c);
+        if (!(std::isalnum(byte) || c == '-' || c == '_' || c == '.')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+BuiltinToolResult invoke_symlink_tool(const std::vector<std::string>& arguments) {
+    BuiltinToolResult result;
+    result.invocation.logical_name = "symlink";
+    result.invocation.selected_provider = "omnix-runtime";
+    result.invocation.executable_path = "omnix-runtime";
+    result.invocation.cache_origin = "builtin_analyst_module";
+    result.invocation.command_line = "omnix::symlink " + join_arguments(arguments);
+
+    if (arguments.empty() || arguments[0] == "doctor") {
+        result.invocation.status = "ok";
+        result.invocation.summary = "OmniX can create local symlinks and POSIX namespace shims without arbitrary shell execution.";
+        result.invocation.output_excerpt = {
+            "{\"event_type\":\"omnix.symlink.doctor.v1\",\"status\":\"builtin_ready\","
+            "\"commands\":[\"create <target> <link-path>\",\"shim <name> <namespace> --prefix <dir> --bin <omnix-bin>\"],"
+            "\"safety\":\"existing paths require --force; generated shims are written but not executed\"}",
+        };
+        result.next_action = "Use `omnix tool symlink -- create ./build/omnix ~/.local/bin/omnix` or `omnix tool symlink -- shim tze tze --prefix ~/.local/bin`.";
+        return result;
+    }
+
+    const std::string mode = arguments[0];
+    if (mode == "create") {
+        if (arguments.size() < 3) {
+            result.invocation.status = "invalid_arguments";
+            result.invocation.summary = "`symlink create` requires `<target> <link-path>`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        bool force = false;
+        bool allow_missing = false;
+        for (std::size_t index = 3; index < arguments.size(); ++index) {
+            if (arguments[index] == "--force") {
+                force = true;
+            } else if (arguments[index] == "--allow-missing") {
+                allow_missing = true;
+            } else {
+                result.invocation.status = "invalid_arguments";
+                result.invocation.summary = "Unknown `symlink create` option `" + arguments[index] + "`.";
+                result.invocation.exit_code = 1;
+                return result;
+            }
+        }
+
+        const std::filesystem::path target = expand_operator_path(arguments[1]);
+        const std::filesystem::path link_path = expand_operator_path(arguments[2]);
+        std::error_code ec;
+        if (!allow_missing && !std::filesystem::exists(target, ec)) {
+            result.invocation.status = "target_missing";
+            result.invocation.summary = "Symlink target does not exist: `" + target.string() + "`.";
+            result.invocation.exit_code = 1;
+            result.next_action = "Build or create the target first, or rerun with `--allow-missing` for intentional future targets.";
+            return result;
+        }
+
+        if ((std::filesystem::exists(link_path, ec) || std::filesystem::is_symlink(std::filesystem::symlink_status(link_path, ec))) && !force) {
+            result.invocation.status = "path_exists";
+            result.invocation.summary = "Refusing to replace existing path `" + link_path.string() + "` without `--force`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        if (link_path.has_parent_path()) {
+            std::filesystem::create_directories(link_path.parent_path(), ec);
+            if (ec) {
+                result.invocation.status = "link_failed";
+                result.invocation.summary = "Unable to create parent directory `" + link_path.parent_path().string() + "`.";
+                result.invocation.exit_code = 1;
+                return result;
+            }
+        }
+
+        std::string remove_error;
+        if (force && !remove_existing_link_target(link_path, &remove_error)) {
+            result.invocation.status = "link_failed";
+            result.invocation.summary = remove_error;
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        std::filesystem::create_symlink(target, link_path, ec);
+        if (ec) {
+            result.invocation.status = "link_failed";
+            result.invocation.summary = "Unable to create symlink `" + link_path.string() + "` -> `" + target.string() + "`: " + ec.message();
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        result.invocation.status = "ok";
+        result.invocation.summary = "Created filesystem symlink.";
+        result.invocation.output_excerpt = {
+            "{\"event_type\":\"omnix.symlink.created.v1\",\"linkPath\":\"" + escape_json(link_path.string()) +
+            "\",\"targetPath\":\"" + escape_json(target.string()) + "\",\"force\":" + std::string(force ? "true" : "false") + "}",
+        };
+        result.next_action = "Use the linked command directly if its parent directory is on PATH.";
+        return result;
+    }
+
+    if (mode == "shim") {
+        if (arguments.size() < 3) {
+            result.invocation.status = "invalid_arguments";
+            result.invocation.summary = "`symlink shim` requires `<name> <namespace>`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        const std::string name = arguments[1];
+        const std::string namespace_name = arguments[2];
+        if (!safe_shim_token(name) || !safe_shim_token(namespace_name)) {
+            result.invocation.status = "invalid_arguments";
+            result.invocation.summary = "Shim name and namespace may only contain letters, numbers, dot, dash, and underscore.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+        std::filesystem::path prefix = expand_operator_path("~/.local/bin");
+        std::filesystem::path omnix_bin = expand_operator_path("./build/omnix");
+        bool force = false;
+        for (std::size_t index = 3; index < arguments.size(); ++index) {
+            const std::string& arg = arguments[index];
+            if (arg == "--prefix") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`symlink shim --prefix` requires a directory.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                prefix = expand_operator_path(arguments[++index]);
+            } else if (arg == "--bin") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`symlink shim --bin` requires an OmniX binary path.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                omnix_bin = expand_operator_path(arguments[++index]);
+            } else if (arg == "--force") {
+                force = true;
+            } else {
+                result.invocation.status = "invalid_arguments";
+                result.invocation.summary = "Unknown `symlink shim` option `" + arg + "`.";
+                result.invocation.exit_code = 1;
+                return result;
+            }
+        }
+
+        std::error_code ec;
+        if (!std::filesystem::exists(omnix_bin, ec)) {
+            result.invocation.status = "target_missing";
+            result.invocation.summary = "OmniX binary for shim does not exist: `" + omnix_bin.string() + "`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        std::filesystem::create_directories(prefix, ec);
+        if (ec) {
+            result.invocation.status = "shim_failed";
+            result.invocation.summary = "Unable to create shim directory `" + prefix.string() + "`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        const std::filesystem::path shim_path = prefix / name;
+        if ((std::filesystem::exists(shim_path, ec) || std::filesystem::is_symlink(std::filesystem::symlink_status(shim_path, ec))) && !force) {
+            result.invocation.status = "path_exists";
+            result.invocation.summary = "Refusing to replace existing shim `" + shim_path.string() + "` without `--force`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        std::string remove_error;
+        if (force && !remove_existing_link_target(shim_path, &remove_error)) {
+            result.invocation.status = "shim_failed";
+            result.invocation.summary = remove_error;
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        const std::string shim =
+            "#!/usr/bin/env sh\n"
+            "# OmniX-managed shim. Recreate with `omnix tool symlink -- shim`.\n"
+            "exec " + shell_quote(omnix_bin.string()) + " " + namespace_name + " \"$@\"\n";
+        std::string write_error;
+        if (!write_text_file(shim_path.string(), shim, &write_error)) {
+            result.invocation.status = "shim_failed";
+            result.invocation.summary = write_error;
+            result.invocation.exit_code = 1;
+            return result;
+        }
+        std::filesystem::permissions(shim_path,
+                                     std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec |
+                                         std::filesystem::perms::others_exec,
+                                     std::filesystem::perm_options::add,
+                                     ec);
+        if (ec) {
+            result.invocation.status = "shim_failed";
+            result.invocation.summary = "Wrote shim but could not mark it executable: `" + shim_path.string() + "`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        result.invocation.status = "ok";
+        result.invocation.summary = "Created POSIX namespace shim.";
+        result.invocation.output_excerpt = {
+            "{\"event_type\":\"omnix.symlink.shim.v1\",\"shimPath\":\"" + escape_json(shim_path.string()) +
+            "\",\"omnixBin\":\"" + escape_json(omnix_bin.string()) +
+            "\",\"namespace\":\"" + escape_json(namespace_name) + "\"}",
+        };
+        result.next_action = "Run `" + name + " ...` directly if `" + prefix.string() + "` is on PATH.";
+        return result;
+    }
+
+    result.invocation.status = "invalid_arguments";
+    result.invocation.summary = "`symlink` supports `doctor`, `create`, and `shim`.";
+    result.invocation.exit_code = 1;
+    result.next_action = "Use `omnix tool doctor symlink` for examples.";
+    return result;
+}
+
 std::string resolve_systemctl_path() {
     if (const char* override = std::getenv("OMNIX_THRESHOLDS_SYSTEMCTL");
         override != nullptr && *override != '\0') {
@@ -3999,6 +4273,9 @@ BuiltinToolResult invoke_builtin_tool(std::string_view logical_name,
     }
     if (logical_name == "thresholds") {
         return invoke_thresholds(arguments, verbose_output);
+    }
+    if (logical_name == "symlink") {
+        return invoke_symlink_tool(arguments);
     }
     if (logical_name == "gg") {
         return invoke_gg(arguments);

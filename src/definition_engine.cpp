@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <optional>
 #include <sstream>
@@ -62,6 +65,25 @@ std::string lowercase(std::string_view value) {
         lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     }
     return lowered;
+}
+
+std::string now_timestamp_local() {
+    using clock = std::chrono::system_clock;
+    const std::time_t raw = clock::to_time_t(clock::now());
+    std::tm local{};
+#if defined(__APPLE__) || defined(__unix__)
+    localtime_r(&raw, &local);
+#else
+    local = *std::localtime(&raw);
+#endif
+    std::ostringstream out;
+    out << std::put_time(&local, "%Y-%m-%dT%H:%M:%S");
+    return out.str();
+}
+
+bool is_expired(const StoredDefinition& entry) {
+    return entry.scope == "temporary" && !entry.expires_at.empty() &&
+        entry.expires_at <= now_timestamp_local();
 }
 
 std::string escape_shell(std::string_view value) {
@@ -585,17 +607,20 @@ std::optional<LocalDefinitionSource> select_best_local_source(const std::vector<
     if (!normalized_domain.empty()) {
         return std::nullopt;
     }
-    if (allow_single_domain_default && scoped_matches.size() == 1) {
-        return scoped_matches.front();
-    }
-    if (ambiguity_domains != nullptr && scoped_matches.size() > 1) {
-        std::vector<std::string> domains;
-        for (const LocalDefinitionSource& entry : scoped_matches) {
-            if (!entry.domain_hint.empty() &&
-                std::find(domains.begin(), domains.end(), entry.domain_hint) == domains.end()) {
-                domains.push_back(entry.domain_hint);
-            }
+    std::vector<std::string> domains;
+    for (const LocalDefinitionSource& entry : scoped_matches) {
+        if (!entry.domain_hint.empty() &&
+            std::find(domains.begin(), domains.end(), entry.domain_hint) == domains.end()) {
+            domains.push_back(entry.domain_hint);
         }
+    }
+    if (allow_single_domain_default && domains.size() == 1) {
+        return *std::max_element(scoped_matches.begin(), scoped_matches.end(), [](const LocalDefinitionSource& lhs,
+                                                                                  const LocalDefinitionSource& rhs) {
+            return lhs.confidence < rhs.confidence;
+        });
+    }
+    if (ambiguity_domains != nullptr && domains.size() > 1) {
         std::ostringstream out;
         for (std::size_t index = 0; index < domains.size(); ++index) {
             if (index != 0) {
@@ -684,6 +709,9 @@ std::optional<RankedDefinitionCandidate> retrieve_local_definition_candidate(std
     const auto query_features = build_sparse_feature_map(normalized_query);
 
     for (const StoredDefinition& entry : memory.definitions) {
+        if (is_expired(entry)) {
+            continue;
+        }
         RankedDefinitionCandidate candidate;
         candidate.source.source_type = entry.source_type.empty() ? "memory" : entry.source_type;
         candidate.source.source_label = entry.source.empty() ? "memory" : entry.source;
@@ -809,6 +837,9 @@ DefinitionAnswer DefinitionEngine::lookup(std::string_view query,
         std::vector<LocalDefinitionSource> memory_artifact_sources;
         std::vector<LocalDefinitionSource> reference_cache_sources;
         for (const StoredDefinition& stored : memory.definitions) {
+            if (is_expired(stored)) {
+                continue;
+            }
             const std::string stored_normalized =
                 !stored.normalized_concept.empty() ? stored.normalized_concept : normalize_concept(stored.term);
             if (stored_normalized != answer.normalized_concept) {
@@ -906,6 +937,9 @@ DefinitionAnswer DefinitionEngine::lookup(std::string_view query,
     }
 
     for (const StoredDefinition& entry : memory.definitions) {
+        if (is_expired(entry)) {
+            continue;
+        }
         if (entry.term == answer.query) {
             answer.found = true;
             answer.summary = entry.summary;

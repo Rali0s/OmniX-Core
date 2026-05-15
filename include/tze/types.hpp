@@ -28,6 +28,7 @@ enum class RequestIntent {
     CaseTimeline,
     ReplayTzeRun,
     ChainTzeRun,
+    RecursiveWhyDiff,
     DiffTzeRuns,
     ExplainTzeChange,
     ReportTzeRun,
@@ -685,6 +686,44 @@ struct MemoryHistoryEntry {
     std::string project;
     std::string status;
     std::string summary;
+    std::string scope;
+    std::string created_at;
+    std::string expires_at;
+};
+
+struct ReasoningSlotRecord {
+    std::string slot_id;
+    std::string label;
+    std::vector<std::string> facts;
+    std::vector<std::string> evidence_refs;
+    double confidence = 0.0;
+};
+
+struct RecursivePathRecord {
+    std::string path_type;
+    std::vector<std::string> ordered_steps;
+    std::vector<std::string> assumptions;
+    std::vector<std::string> evidence_refs;
+    double score = 0.0;
+};
+
+struct RecursiveDiffReport {
+    std::string status;
+    std::string route_learning_status;
+    std::string source_run_id;
+    std::string current_state;
+    std::string likely_goal;
+    std::string logs_and_reasoning;
+    std::string successful_path_pattern;
+    std::string difference_found;
+    std::string best_estimate_answer;
+    std::string why_this_matters;
+    std::string next_action;
+    std::string diff_category;
+    double confidence = 0.0;
+    std::vector<ReasoningSlotRecord> slots;
+    RecursivePathRecord success_path;
+    RecursivePathRecord failure_path;
 };
 
 struct TzeRunRecord {
@@ -729,6 +768,7 @@ struct TzeRunRecord {
     std::optional<DefinitionAnswer> definition_answer;
     std::optional<NeuralMathReport> neural_math_report;
     std::optional<NeuralRouteReport> neural_route_report;
+    std::optional<RecursiveDiffReport> recursive_diff_report;
     std::vector<TzeStageRecord> stages;
 };
 
@@ -743,6 +783,9 @@ struct StoredDefinition {
     std::string source_type;
     std::string authority_tier;
     double confidence = 0.0;
+    std::string scope;
+    std::string created_at;
+    std::string expires_at;
 };
 
 struct BuildRecipe {
@@ -1272,6 +1315,7 @@ struct ProcessingReport {
     std::optional<DefenseDiagnosticReport> defense_diagnostic_report;
     std::optional<NeuralMathReport> neural_math_report;
     std::optional<NeuralRouteReport> neural_route_report;
+    std::optional<RecursiveDiffReport> recursive_diff_report;
     std::optional<SourceInspection> source_inspection;
     std::optional<BuildExecution> build_execution;
     std::optional<ReviewArtifact> review_artifact;

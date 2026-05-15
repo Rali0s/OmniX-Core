@@ -187,6 +187,8 @@ std::string command_label_for(RequestIntent intent, std::string_view decoded_ins
             return "TZEReplay";
         case RequestIntent::ChainTzeRun:
             return "TZEChain";
+        case RequestIntent::RecursiveWhyDiff:
+            return "RecursiveWhyDiff";
         case RequestIntent::DiffTzeRuns:
             return "TZEDiff";
         case RequestIntent::ExplainTzeChange:
@@ -359,6 +361,8 @@ std::string instruction_family_hint_for(RequestIntent intent) {
             return "neural-math";
         case RequestIntent::NeuralRoute:
             return "neural-route";
+        case RequestIntent::RecursiveWhyDiff:
+            return "recursive-why-diff";
         case RequestIntent::SetPersonaMode:
             return "persona";
         case RequestIntent::GeneralDefinitionQuery:
@@ -487,6 +491,16 @@ std::string run_timestamp() {
     std::ostringstream out;
     out << std::put_time(&local, "%Y-%m-%dT%H:%M:%S");
     return out.str();
+}
+
+bool is_expired(const StoredDefinition& entry) {
+    return entry.scope == "temporary" && !entry.expires_at.empty() &&
+        entry.expires_at <= run_timestamp();
+}
+
+bool is_expired(const MemoryHistoryEntry& entry) {
+    return entry.scope == "temporary" && !entry.expires_at.empty() &&
+        entry.expires_at <= run_timestamp();
 }
 
 std::string make_tze_run_id(const MemorySnapshot& memory,
@@ -676,6 +690,7 @@ std::string dispatch_module_for(RequestIntent intent) {
             return "AnalystFlowInterpreter";
         case RequestIntent::ReplayTzeRun:
         case RequestIntent::ChainTzeRun:
+        case RequestIntent::RecursiveWhyDiff:
         case RequestIntent::DiffTzeRuns:
         case RequestIntent::ExplainTzeChange:
         case RequestIntent::ReportTzeRun:
@@ -1958,6 +1973,559 @@ bool is_security_guidance_only_prompt(std::string_view prompt) {
         (lowered.find("without running tools") != std::string::npos && lowered.find("secure") != std::string::npos);
 }
 
+std::string first_nonempty_or(std::initializer_list<std::string> values, std::string fallback) {
+    for (const std::string& value : values) {
+        if (!trim_local(value).empty()) {
+            return value;
+        }
+    }
+    return fallback;
+}
+
+std::string summarize_stage_statuses(const TzeRunRecord& run) {
+    if (run.stages.empty()) {
+        return "No persisted TZE stages were available for this run.";
+    }
+    std::ostringstream out;
+    const std::size_t limit = std::min<std::size_t>(run.stages.size(), 5);
+    for (std::size_t index = 0; index < limit; ++index) {
+        if (index != 0) {
+            out << " -> ";
+        }
+        out << run.stages[index].stage_id << "[" << run.stages[index].status << "]";
+    }
+    if (run.stages.size() > limit) {
+        out << " -> ...";
+    }
+    return out.str();
+}
+
+struct RecursiveMemoryHit {
+    std::string source;
+    std::string concept_text;
+    std::string domain;
+    std::string summary;
+    std::string evidence_ref;
+    double score = 0.0;
+};
+
+std::string normalize_recursive_concept(std::string_view value) {
+    std::string normalized;
+    bool last_space = false;
+    for (char c : value) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc)) {
+            normalized.push_back(static_cast<char>(std::tolower(uc)));
+            last_space = false;
+        } else if (std::isspace(uc) || c == '-' || c == '_') {
+            if (!normalized.empty() && !last_space) {
+                normalized.push_back(' ');
+                last_space = true;
+            }
+        }
+    }
+    while (!normalized.empty() && normalized.back() == ' ') {
+        normalized.pop_back();
+    }
+    return normalized;
+}
+
+std::string recursive_domain_hint_from_text(std::string_view text) {
+    const std::string lowered = lowercase_local(text);
+    if (lowered.find("technology") != std::string::npos ||
+        lowered.find(" tech") != std::string::npos ||
+        lowered.find("computing") != std::string::npos ||
+        lowered.find("computer") != std::string::npos ||
+        lowered.find("software") != std::string::npos) {
+        return "technology";
+    }
+    if (lowered.find("science") != std::string::npos || lowered.find("physics") != std::string::npos) {
+        return "science";
+    }
+    if (lowered.find("security") != std::string::npos) {
+        return "security";
+    }
+    if (lowered.find("biography") != std::string::npos || lowered.rfind("who is ", 0) == 0) {
+        return "Biography";
+    }
+    return {};
+}
+
+std::string strip_recursive_domain_phrase(std::string value) {
+    std::string lowered = lowercase_local(value);
+    static const std::vector<std::string> markers = {
+        " in terms of technology", " in technology", " in tech", " when discussing technology",
+        " in terms of science", " in science", " in physics", " when discussing science",
+        " in terms of security", " in security",
+        " in terms of biography", " in biography",
+    };
+    for (const std::string& marker : markers) {
+        const std::size_t pos = lowered.find(marker);
+        if (pos != std::string::npos) {
+            value = value.substr(0, pos);
+            break;
+        }
+    }
+    return trim_local(value);
+}
+
+std::filesystem::path recursive_glossary_path(const TzeRunRecord& run) {
+    std::filesystem::path start = run.source_map_path.empty()
+        ? std::filesystem::current_path()
+        : std::filesystem::path(run.source_map_path).parent_path();
+    for (std::filesystem::path cursor = start; !cursor.empty(); cursor = cursor.parent_path()) {
+        const std::filesystem::path candidate = cursor / "res" / "local_glossary.tsv";
+        std::error_code error;
+        if (std::filesystem::exists(candidate, error)) {
+            return candidate;
+        }
+        if (cursor == cursor.root_path()) {
+            break;
+        }
+    }
+    return {};
+}
+
+void add_recursive_memory_hit(std::vector<RecursiveMemoryHit>& hits, RecursiveMemoryHit hit) {
+    if (hit.summary.empty()) {
+        return;
+    }
+    const std::string key = normalize_recursive_concept(hit.concept_text) + "|" + lowercase_local(hit.domain) + "|" + hit.summary;
+    for (const RecursiveMemoryHit& existing : hits) {
+        const std::string existing_key =
+            normalize_recursive_concept(existing.concept_text) + "|" + lowercase_local(existing.domain) + "|" + existing.summary;
+        if (existing_key == key) {
+            return;
+        }
+    }
+    hits.push_back(std::move(hit));
+}
+
+std::vector<RecursiveMemoryHit> recursive_memory_search(const TzeRunRecord& run, const MemorySnapshot& memory) {
+    std::vector<RecursiveMemoryHit> hits;
+    std::vector<std::string> queries;
+    if (run.definition_answer.has_value()) {
+        queries.push_back(run.definition_answer->query);
+        queries.push_back(run.definition_answer->normalized_concept);
+    }
+    queries.push_back(run.target);
+    queries.push_back(run.prompt);
+    for (std::string& query : queries) {
+        query = strip_recursive_domain_phrase(query);
+    }
+
+    std::string wanted_domain = run.definition_answer.has_value() ? run.definition_answer->domain_hint : std::string{};
+    if (wanted_domain.empty()) {
+        wanted_domain = recursive_domain_hint_from_text(run.prompt + " " + run.target);
+    }
+
+    auto query_matches = [&](std::string_view candidate_concept, std::string_view candidate_domain) {
+        const std::string normalized_candidate = normalize_recursive_concept(candidate_concept);
+        if (normalized_candidate.empty()) {
+            return false;
+        }
+        const bool domain_ok =
+            wanted_domain.empty() || candidate_domain.empty() ||
+            lowercase_local(candidate_domain) == lowercase_local(wanted_domain);
+        if (!domain_ok) {
+            return false;
+        }
+        for (const std::string& query : queries) {
+            const std::string normalized_query = normalize_recursive_concept(query);
+            if (normalized_query.empty()) {
+                continue;
+            }
+            if (normalized_candidate == normalized_query ||
+                normalized_query.find(normalized_candidate) != std::string::npos ||
+                normalized_candidate.find(normalized_query) != std::string::npos) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (const StoredDefinition& definition : memory.definitions) {
+        if (is_expired(definition)) {
+            continue;
+        }
+        const std::string concept_text = definition.normalized_concept.empty() ? definition.term : definition.normalized_concept;
+        if (query_matches(concept_text, definition.domain_hint)) {
+            add_recursive_memory_hit(hits, {
+                definition.source_type.empty() ? "learned_definition_cache" : definition.source_type,
+                definition.term.empty() ? concept_text : definition.term,
+                definition.domain_hint,
+                definition.summary,
+                "memory.definitions",
+                definition.confidence > 0.0 ? definition.confidence : 0.76,
+            });
+        }
+    }
+
+    for (const TzeRunRecord& prior : memory.tze_runs) {
+        if (!prior.definition_answer.has_value() || !prior.definition_answer->found) {
+            continue;
+        }
+        const DefinitionAnswer& answer = *prior.definition_answer;
+        if (query_matches(answer.normalized_concept.empty() ? answer.query : answer.normalized_concept,
+                          answer.domain_hint)) {
+            add_recursive_memory_hit(hits, {
+                "prior_tze_definition",
+                answer.query,
+                answer.domain_hint,
+                answer.summary,
+                prior.id,
+                answer.confidence > 0.0 ? answer.confidence : 0.74,
+            });
+        }
+    }
+
+    const std::filesystem::path glossary = recursive_glossary_path(run);
+    if (!glossary.empty()) {
+        std::ifstream input(glossary);
+        for (std::string line; std::getline(input, line);) {
+            if (line.empty() || line.rfind("#", 0) == 0) {
+                continue;
+            }
+            std::vector<std::string> fields;
+            std::string field;
+            std::istringstream row(line);
+            while (std::getline(row, field, '|')) {
+                fields.push_back(trim_local(field));
+            }
+            if (fields.size() < 3 || lowercase_local(fields[0]) == "term") {
+                continue;
+            }
+            if (query_matches(fields[0], fields[1])) {
+                add_recursive_memory_hit(hits, {
+                    "local_glossary",
+                    fields[0],
+                    fields[1],
+                    fields[2],
+                    glossary.string(),
+                    fields[1].empty() ? 0.76 : 0.84,
+                });
+            }
+        }
+    }
+
+    for (const MemoryHistoryEntry& entry : memory.history) {
+        if (is_expired(entry)) {
+            continue;
+        }
+        if (entry.summary.empty()) {
+            continue;
+        }
+        const std::string haystack = lowercase_local(entry.prompt + " " + entry.summary);
+        for (const std::string& query : queries) {
+            const std::string normalized_query = normalize_recursive_concept(query);
+            if (!normalized_query.empty() && haystack.find(normalized_query) != std::string::npos) {
+                add_recursive_memory_hit(hits, {
+                    "memory_history",
+                    query,
+                    wanted_domain,
+                    entry.summary,
+                    entry.timestamp,
+                    0.62,
+                });
+                break;
+            }
+        }
+    }
+
+    std::sort(hits.begin(), hits.end(), [](const RecursiveMemoryHit& lhs, const RecursiveMemoryHit& rhs) {
+        return lhs.score > rhs.score;
+    });
+    if (hits.size() > 5) {
+        hits.resize(5);
+    }
+    return hits;
+}
+
+bool apply_recursive_route_learning(ProcessingReport& report,
+                                    const MemorySnapshot& memory,
+                                    std::string_view source_map_path) {
+    if (!report.definition_answer.has_value() || report.definition_answer->found) {
+        return false;
+    }
+    if (report.definition_answer->selected_source_type == "clarification_required" &&
+        report.definition_answer->domain_hint.empty() &&
+        normalize_recursive_concept(report.definition_answer->query).find(' ') == std::string::npos) {
+        return false;
+    }
+    if (report.answer_status != "unknown_query" && report.answer_status != "clarify_needed") {
+        return false;
+    }
+
+    TzeRunRecord probe;
+    probe.id = report.tze_run_id.empty() ? "current" : report.tze_run_id;
+    probe.intent = report.resolved_intent;
+    probe.prompt = report.raw_prompt;
+    probe.target = report.definition_answer->query;
+    probe.status = report.answer_status;
+    probe.source_map_path = std::string(source_map_path);
+    probe.next_action = report.next_action;
+    probe.definition_answer = report.definition_answer;
+    const std::vector<RecursiveMemoryHit> hits = recursive_memory_search(probe, memory);
+    if (hits.empty() || hits.front().score < 0.80) {
+        return false;
+    }
+
+    const RecursiveMemoryHit& top = hits.front();
+    DefinitionAnswer answer = *report.definition_answer;
+    answer.found = true;
+    answer.summary = top.summary;
+    answer.query = top.concept_text.empty() ? answer.query : top.concept_text;
+    answer.normalized_concept = normalize_recursive_concept(answer.query);
+    answer.domain_hint = top.domain;
+    answer.selected_source_type = "recursive_route_learning";
+    answer.selected_source_label = top.source + ":" + top.evidence_ref;
+    answer.selected_authority_tier =
+        top.source == "local_glossary" || top.source == "prior_tze_definition"
+            ? "operator_override"
+            : "memory_artifact";
+    answer.confidence = std::max(0.80, top.score);
+    answer.comparison_rationale =
+        "Recursive Route Learning used local operating memory caches before final unresolved output.";
+    answer.sources = {top.source};
+
+    report.definition_answer = answer;
+    report.answer_status = "defined";
+    report.answer_explanation = answer.summary;
+    report.next_action = "Ask used Recursive Route Learning. Use `omnix why latest` to backtrace the route provenance.";
+    report.tze_stages.push_back({
+        "x.Recursive.RouteLearning",
+        "Search operating memory caches before returning unresolved definition output",
+        "SessionCoordinator",
+        "recursive_route_learning_used",
+        "Resolved `" + answer.query + "` from " + top.source + " with score " + std::to_string(top.score) + ".",
+        {probe.prompt, answer.domain_hint},
+        {answer.summary},
+    });
+    report.storage_writes.push_back("x.Store(recursive.route_learning -> " + answer.query + ")");
+    return true;
+}
+
+std::string recursive_success_pattern_for(const TzeRunRecord& run) {
+    if (run.intent == "tool_action") {
+        return "Resolve the requested tool, validate it as built-in/native, execute the exact bounded command, capture output, then retain only the final artifact.";
+    }
+    if (run.intent == "packet_capture") {
+        return "Select interface/filter, open capture with permissions, observe packets, summarize flows, cap payload previews, then persist the packet artifact.";
+    }
+    if (run.intent == "probe_provider") {
+        return "Load provider configuration, validate required keys or local model, probe availability, then return guarded assist readiness without exposing secrets.";
+    }
+    if (run.intent == "build_project" || run.intent == "doctor_project" || run.intent == "author_build_recipe") {
+        return "Inspect source/toolchain, choose or author a recipe, preflight dependencies, run the build spine, validate artifacts, then store the compact result.";
+    }
+    if (run.intent == "neural_route") {
+        return "Load local evidence JSONL, extract numeric features, score labels with fixed weights, explain top contributors, then persist only compact route metadata.";
+    }
+    if (run.intent == "diff_tze_runs" || run.intent == "explain_tze_change" || run.intent == "replay_tze_run") {
+        return "Resolve run references, replay or compare persisted TZE stages, preserve provenance, then recommend the next inspection step.";
+    }
+    return "Decode intent, prepare cache, rank local evidence, execute the deterministic module, postprocess the final artifact, then store compact provenance.";
+}
+
+std::string recursive_diff_category_for(const TzeRunRecord& run) {
+    const std::string lowered_status = lowercase_local(run.status);
+    if (lowered_status.find("missing") != std::string::npos) {
+        return "missing context";
+    }
+    if (lowered_status.find("unknown") != std::string::npos) {
+        return "false goal";
+    }
+    if (lowered_status.find("blocked") != std::string::npos || lowered_status.find("failed") != std::string::npos) {
+        return "skipped dependency";
+    }
+    if (lowered_status.find("invalid") != std::string::npos) {
+        return "bad assumption";
+    }
+    if (lowered_status.find("attention") != std::string::npos) {
+        return "broken threshold";
+    }
+    return "no blocking diff";
+}
+
+RecursiveDiffReport build_recursive_diff_report_for_run(const TzeRunRecord& run,
+                                                        const MemorySnapshot& memory,
+                                                        std::string_view observer_context) {
+    RecursiveDiffReport report;
+    report.status = "recursive_why_diff_complete";
+    report.route_learning_status = "route_learning_not_needed";
+    report.source_run_id = run.id;
+    report.diff_category = recursive_diff_category_for(run);
+    report.confidence = run.status.empty() ? 0.45 : (report.diff_category == "no blocking diff" ? 0.82 : 0.68);
+    const std::vector<RecursiveMemoryHit> memory_hits = recursive_memory_search(run, memory);
+    const bool route_was_used = std::any_of(run.stages.begin(), run.stages.end(), [](const TzeStageRecord& stage) {
+        return stage.stage_id == "x.Recursive.RouteLearning" &&
+            stage.status == "recursive_route_learning_used";
+    });
+    const bool has_learned_route =
+        !memory_hits.empty() &&
+        (lowercase_local(run.status).find("unknown") != std::string::npos ||
+         lowercase_local(run.status).find("clarify") != std::string::npos);
+    if (route_was_used) {
+        report.diff_category = "route learned";
+        report.route_learning_status = "recursive_route_learning_used";
+        report.confidence = std::max(report.confidence, 0.88);
+    } else if (has_learned_route) {
+        report.diff_category = "missing step";
+        report.route_learning_status = "recursive_route_learning_used";
+        report.confidence = std::max(report.confidence, 0.86);
+    } else if (!memory_hits.empty()) {
+        report.route_learning_status = "recursive_route_learning_observed";
+    }
+
+    report.current_state = "Run `" + run.id + "` ended with status `" +
+        (run.status.empty() ? "unknown" : run.status) + "` for prompt `" +
+        (run.prompt.empty() ? "(empty)" : run.prompt) + "`.";
+    report.likely_goal = first_nonempty_or(
+        {run.next_action,
+         run.target.empty() ? std::string{} : "Complete or explain `" + run.target + "`.",
+         run.intent.empty() ? std::string{} : "Satisfy intent `" + run.intent + "`."},
+        "Identify the next safe step from the available local evidence.");
+    report.logs_and_reasoning = summarize_stage_statuses(run);
+    if (!run.produced_artifact.empty()) {
+        report.logs_and_reasoning += " | artifact: " + run.produced_artifact;
+    }
+    if (!memory_hits.empty()) {
+        report.logs_and_reasoning += " | route-learning: memory-search: ";
+        for (std::size_t index = 0; index < memory_hits.size(); ++index) {
+            if (index != 0) {
+                report.logs_and_reasoning += "; ";
+            }
+            report.logs_and_reasoning += memory_hits[index].source + ":" + memory_hits[index].concept_text;
+            if (!memory_hits[index].domain.empty()) {
+                report.logs_and_reasoning += "[" + memory_hits[index].domain + "]";
+            }
+        }
+    }
+    report.successful_path_pattern = recursive_success_pattern_for(run);
+    if (route_was_used && !memory_hits.empty()) {
+        const RecursiveMemoryHit& top = memory_hits.front();
+        report.successful_path_pattern =
+            "Recursive Route Learning ran inside normal ask: normalize the concept, extract the domain hint, search operating memory caches, then answer with local provenance before returning unresolved output.";
+        report.difference_found =
+            "No blocking diff remains: the ask path already used Recursive Route Learning and selected `" + top.concept_text + "`";
+        if (!top.domain.empty()) {
+            report.difference_found += " in domain `" + top.domain + "`";
+        }
+        report.difference_found += " from " + top.source + ".";
+        report.best_estimate_answer = "Ask used the learned route: `" + top.concept_text + "`";
+        if (!top.domain.empty()) {
+            report.best_estimate_answer += " / " + top.domain;
+        }
+        report.best_estimate_answer += " => " + top.summary;
+        report.next_action = "The route is now active in ask. Use `omnix context reset` if this association should be temporary only.";
+    } else if (has_learned_route) {
+        const RecursiveMemoryHit& top = memory_hits.front();
+        report.successful_path_pattern =
+            "Recursive Route Learning searches operating memory caches before final output: normalize the concept, extract domain hint `" +
+            (top.domain.empty() ? std::string("(none)") : top.domain) +
+            "`, compare memory definitions, prior TZE definition runs, history summaries, and local glossary entries, then choose the strongest operator-authored hit.";
+        report.difference_found =
+            "Recursive Route Learning found the route the observed path missed. Memory search found `" + top.concept_text + "`";
+        if (!top.domain.empty()) {
+            report.difference_found += " in domain `" + top.domain + "`";
+        }
+        report.difference_found += " from " + top.source + ", but the failing run treated the prompt as unresolved.";
+        report.best_estimate_answer = "Use the learned route: `" + top.concept_text + "`";
+        if (!top.domain.empty()) {
+            report.best_estimate_answer += " / " + top.domain;
+        }
+        report.best_estimate_answer += " => " + top.summary;
+        report.next_action = "Back-add this Recursive Route Learning candidate by patching definition normalization or operator teaching, then rerun the original ask.";
+    } else if (report.diff_category == "no blocking diff") {
+        report.difference_found = "The observed path already reached a successful or explainable state. The main remaining gap is deciding whether to continue, compare, or archive.";
+        report.best_estimate_answer = "The run is currently explainable; use the next action to continue the chain or compare it with another run.";
+        report.next_action = first_nonempty_or({run.next_action, "Run `omnix tze replay " + run.id + "` for full provenance."},
+                                               "Run `omnix tze runs` to choose a run for deeper comparison.");
+    } else {
+        report.difference_found = "The observed path diverged from the success pattern at `" + report.diff_category +
+            "`: compare status `" + run.status + "` against the expected next action.";
+        report.best_estimate_answer = "The best next answer is to repair the `" + report.diff_category + "` before rerunning the target command.";
+        report.next_action = first_nonempty_or({run.next_action, "Run `omnix tze replay " + run.id + "` for full provenance."},
+                                               "Run `omnix tze runs` to choose a run for deeper comparison.");
+    }
+    report.why_this_matters =
+        "Recursive Why/Diff treats success as an order-of-operations problem: like Tower of Hanoi T(n)=2T(n-1)+1, each safe move depends on the prior dependency being in the right state.";
+
+    report.slots = {
+        {"SLOT_1", "Initial Problem State", {
+             "prompt=" + (run.prompt.empty() ? std::string("(empty)") : run.prompt),
+             "intent=" + (run.intent.empty() ? std::string("unknown") : run.intent),
+             "target=" + (run.target.empty() ? std::string("(none)") : run.target),
+         }, {run.id}, 0.80},
+        {"SLOT_2", "Intermediate Reasoning / Logs", {
+             "stage_count=" + std::to_string(run.stages.size()),
+             "stage_path=" + summarize_stage_statuses(run),
+             "status=" + (run.status.empty() ? std::string("unknown") : run.status),
+         }, {run.id + "#stages"}, 0.76},
+        {"SLOT_3", "Unknown Goal / Target Answer", {
+             report.likely_goal,
+             "diff_category=" + report.diff_category,
+         }, {run.id + "#next_action"}, 0.66},
+        {"SLOT_4", "Present-Time Observer", {
+             std::string(observer_context.empty() ? "observer=omnix why" : observer_context),
+             "memory_runs=" + std::to_string(memory.tze_runs.size()),
+         }, {"present"}, 0.72},
+    };
+    if (!memory_hits.empty()) {
+        std::vector<std::string> facts;
+        std::vector<std::string> refs;
+        for (const RecursiveMemoryHit& hit : memory_hits) {
+            std::string fact = hit.source + " matched " + hit.concept_text;
+            if (!hit.domain.empty()) {
+                fact += " domain=" + hit.domain;
+            }
+            fact += " score=" + std::to_string(hit.score);
+            facts.push_back(std::move(fact));
+            refs.push_back(hit.evidence_ref);
+        }
+        report.slots.push_back({"SLOT_R", "Recursive Route Learning / Operating Memory Cache Search", facts, refs, 0.88});
+    }
+
+    report.success_path.path_type = "success";
+    report.success_path.ordered_steps = {
+        "Prepare and decode the request.",
+        "Rank local evidence and prior memory.",
+        "Run Recursive Route Learning across operating memory caches for exact, domain, and prior successful route matches.",
+        report.successful_path_pattern,
+        "Postprocess and persist compact provenance.",
+    };
+    report.success_path.assumptions = {"A valid deterministic sequence exists.", "The target run has enough stored provenance to compare."};
+    report.success_path.evidence_refs = {run.id, "res/RecursionANDTroubleshooting"};
+    report.success_path.score = report.confidence;
+
+    report.failure_path.path_type = "failure";
+    report.failure_path.ordered_steps = {
+        "Observed status `" + (run.status.empty() ? std::string("unknown") : run.status) + "`.",
+        "Observed stage trace: " + summarize_stage_statuses(run),
+        "Classified diff as `" + report.diff_category + "`.",
+    };
+    if (has_learned_route) {
+        report.failure_path.ordered_steps.push_back("Recursive Route Learning candidate existed but was not used before final unresolved output.");
+    }
+    report.failure_path.assumptions = {"Persisted run data is the source of truth.", "No provider reasoning was required for v1."};
+    report.failure_path.evidence_refs = {run.id};
+    report.failure_path.score = 1.0 - (report.confidence / 2.0);
+    return report;
+}
+
+std::string render_recursive_diff_answer(const RecursiveDiffReport& report) {
+    std::ostringstream out;
+    out << "Current State\n" << report.current_state << "\n\n"
+        << "Likely Goal\n" << report.likely_goal << "\n\n"
+        << "What the Logs/Reasoning Show\n" << report.logs_and_reasoning << "\n\n"
+        << "Successful Path Pattern\n" << report.successful_path_pattern << "\n\n"
+        << "Difference Found\n" << report.difference_found << "\n\n"
+        << "Best Estimate Answer\n" << report.best_estimate_answer << "\n\n"
+        << "Why This Matters\n" << report.why_this_matters << "\n\n"
+        << "Next Action\n" << report.next_action;
+    return out.str();
+}
+
 }  // namespace
 
 SessionCoordinator::SessionCoordinator()
@@ -2412,6 +2980,47 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         report.answer_status = report.answer_explanation.rfind("No case matched", 0) == 0 ? "case_timeline_missing" : "case_timeline";
         report.next_action = "Use `omnix case " + case_ref + "` for the current case snapshot or `omnix decide " + case_ref + "` to refresh next actions.";
         report.storage_writes.push_back("x.Store(case.timeline -> " + case_ref + ")");
+    } else if (resolution.intent == RequestIntent::RecursiveWhyDiff) {
+        const std::string run_ref = !routed_profile.tze_run_reference.empty()
+            ? routed_profile.tze_run_reference
+            : (resolution.primary_target.empty() ? std::string("latest") : resolution.primary_target);
+        const TzeRunRecord* target_run = memory_.find_tze_run(memory, run_ref);
+        if (target_run == nullptr) {
+            report.answer_status = "recursive_why_missing";
+            report.answer_explanation = "No TZE run matched `" + run_ref + "` for Recursive Why/Diff.";
+            report.next_action = "Run `omnix tze runs` to choose a persisted run, then rerun `omnix why <run-id>`.";
+        } else {
+            report.recursive_diff_report =
+                build_recursive_diff_report_for_run(*target_run, memory, "observer=omnix why");
+            report.answer_status = report.recursive_diff_report->status;
+            report.answer_explanation = render_recursive_diff_answer(*report.recursive_diff_report);
+            report.next_action = report.recursive_diff_report->next_action;
+            report.storage_writes.push_back("x.Store(tze.recursive-why -> " + target_run->id + ")");
+            if (report.recursive_diff_report->route_learning_status == "recursive_route_learning_used") {
+                report.storage_writes.push_back("x.Store(tze.recursive-route-learning -> " + target_run->id + ")");
+            }
+            report.tze_stages.push_back({
+                "x.Recursive.WhyDiff",
+                "Compare observed failure path against deterministic success path",
+                "RecursiveWhyDiffEngine",
+                report.answer_status,
+                "Recursive Why/Diff compared run `" + target_run->id + "` and classified `" +
+                    report.recursive_diff_report->diff_category + "`.",
+                {target_run->id, target_run->status},
+                {report.recursive_diff_report->diff_category, report.recursive_diff_report->best_estimate_answer},
+            });
+            if (report.recursive_diff_report->route_learning_status != "route_learning_not_needed") {
+                report.tze_stages.push_back({
+                    "x.Recursive.RouteLearning",
+                    "Mine operating memory caches for a learned route candidate",
+                    "RecursiveRouteLearningEngine",
+                    report.recursive_diff_report->route_learning_status,
+                    "Recursive Route Learning searched definitions, prior TZE runs, history, and glossary evidence.",
+                    {target_run->id, report.recursive_diff_report->logs_and_reasoning},
+                    {report.recursive_diff_report->best_estimate_answer},
+                });
+            }
+        }
     } else if (resolution.intent == RequestIntent::DoctorProject) {
         RequestProfile doctor_profile = routed_profile;
         doctor_profile.project_reference = !routed_profile.project_reference.empty()
@@ -3026,6 +3635,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
                resolution.intent == RequestIntent::ExplainCommand) {
         const std::string target = resolution.primary_target.empty() ? routed_profile.raw_prompt : resolution.primary_target;
         definition_flow_.run(routed_profile, target, memory, report, definitions_, memory_);
+        apply_recursive_route_learning(report, memory, routed_profile.source_map_path);
         if (routed_profile.assist_requested &&
             report.definition_answer.has_value() &&
             !report.definition_answer->found &&
@@ -3364,6 +3974,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     run_record.next_step_assist_plan = report.next_step_assist_plan;
     run_record.case_summary_assist_plan = report.case_summary_assist_plan;
     run_record.freeform_assist_answer = report.freeform_assist_answer;
+    run_record.recursive_diff_report = report.recursive_diff_report;
     run_record.next_action = report.next_action;
     run_record.produced_artifact = report.produced_artifact;
     if (std::find(report.memory_writes.begin(),

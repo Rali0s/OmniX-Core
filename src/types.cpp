@@ -40,6 +40,8 @@ std::string_view to_string(RequestIntent intent) {
             return "replay_tze_run";
         case RequestIntent::ChainTzeRun:
             return "chain_tze_run";
+        case RequestIntent::RecursiveWhyDiff:
+            return "recursive_why_diff";
         case RequestIntent::DiffTzeRuns:
             return "diff_tze_runs";
         case RequestIntent::ExplainTzeChange:

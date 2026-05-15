@@ -10,6 +10,15 @@ omnix \- local-first analyst console, TZE runtime, and guarded assist shell
 .br
 .B omnix provider probe
 .br
+.B omnix api
+status|doctor|configure <openai|ollama>|template <openai|ollama|huggingface>
+.br
+.B omnix why
+[latest|run-id]
+.br
+.B omnix link
+install|remove|doctor [--with-tze] [--with-gg]
+.br
 .B omnix tool
 <name> -- <args...>
 .br
@@ -70,6 +79,18 @@ patch-proposal <path-or-module>
 .IP \(bu 2
 provider probe
 .IP \(bu 2
+api status
+.IP \(bu 2
+api doctor
+.IP \(bu 2
+api configure <openai|ollama>
+.IP \(bu 2
+api template <openai|ollama|huggingface>
+.IP \(bu 2
+why <run-id|latest>
+.IP \(bu 2
+link install|remove|doctor
+.IP \(bu 2
 persona mode <premise|cynic|professional|neutral>
 .IP \(bu 2
 tview port <port>
@@ -125,6 +146,14 @@ Tool flows: tool list, tool locate, tool doctor, tool <name> -- <args...>
 .IP \(bu 2
 TZE replay flows: tze latest, tze replay, tze chain, tze diff, tze report, tze explain-change
 .IP \(bu 2
+Recursive explanation flow: why latest or shell /why
+.IP \(bu 2
+Next-action flow: next latest, shell next, or shell /next
+.IP \(bu 2
+Context reset flow: context reset, memory reset-context, or memory prune-expired
+.IP \(bu 2
+API/link UX flows: api status, api configure, link install
+.IP \(bu 2
 Definition flows: define <symbol-or-term>, explain <command-or-symbol>
 .SH SHELL IDIOMS
 .IP \(bu 2
@@ -140,9 +169,23 @@ Run NMAP with a local /24 scan
 .IP \(bu 2
 /provider
 .IP \(bu 2
+/api
+.IP \(bu 2
+/api openai
+.IP \(bu 2
+/api ollama
+.IP \(bu 2
 /why
+.IP \(bu 2
+/next
+.IP \(bu 2
+/reset
+.IP \(bu 2
+/reset memory
 .PP
 ask ... in shell is normalized into the same request path as omnix ask.
+.PP
+/reset clears only the current shell run/case observer state. /reset memory also clears volatile learned/runtime caches.
 .SH GUARDED ASSIST
 .IP \(bu 2
 omnix shell --assist enables guarded assist inside the shell
@@ -150,6 +193,12 @@ omnix shell --assist enables guarded assist inside the shell
 omnix ask <prompt> --assist enables guarded assist for one request
 .IP \(bu 2
 provider probe verifies whether ollama, openai, or null is active and ready
+.IP \(bu 2
+api status checks environment and repo-local .env without printing secrets
+.IP \(bu 2
+api configure openai writes repo-local .env with restrictive permissions where supported
+.IP \(bu 2
+api template huggingface prints a placeholder curl command only; HuggingFace is not a runtime provider yet
 .IP \(bu 2
 For deepnimsec-omni:latest, repair a stale custom model with ./scripts/omnix_deepnimsec.sh --refresh-model
 .IP \(bu 2
@@ -186,6 +235,8 @@ res/local_glossary.tsv is the hand-authored operator teaching dictionary. Exact 
 term|domain|definition
 .br
 sun|science|The Sun is the star at the center of the Solar System.
+.PP
+If a temporary learned association starts overriding the expected source truth, use omnix context reset or omnix memory reset-context. These commands clear cached definitions, compact history, language/uAC state, and assist learning without deleting the source glossary, TZE ledger, cases, recipes, tools, or persona. Use omnix memory prune-expired to remove expired temporary runtime entries without a full reset.
 .SH ENVIRONMENT
 .IP \(bu 2
 OMNIX_REASONING_PROVIDER=ollama
@@ -208,6 +259,12 @@ OMNIX_WEBSTER_FIXTURE_FILE=/path/to/webster.html
 ./build/omnix provider probe
 ./scripts/omnix_deepnimsec.sh --refresh-model
 ./scripts/omnix_openai.sh provider probe --compact
+./build/omnix api status --compact
+./build/omnix api template huggingface
+./build/omnix why latest --compact
+./build/omnix next latest --compact
+./build/omnix memory prune-expired --compact
+./build/omnix link install --with-tze --prefix ~/.local/bin
 ./scripts/omnix_openai.sh shell --assist
 ./scripts/omnix_openai.sh "Define Turning Scale"
 ./scripts/omnix_openai.sh omnix tview port 5000
