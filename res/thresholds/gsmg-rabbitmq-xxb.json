@@ -1,0 +1,142 @@
+{
+  "id": "gsmg-rabbitmq-xxb",
+  "workflow": "generic-signal-model-ground.rabbitmq.queue-triage",
+  "evaluationTimestamp": "2026-01-14T02:36:00-05:00",
+  "assets": [
+    {
+      "id": "XYZ_CLASSC1_CUST8",
+      "kind": "host",
+      "name": "XYZ_CLASSC1_CUST8",
+      "role": "sensor queue node",
+      "tier": "ClassC.SensorQueueNode",
+      "owner": "Engineer Infra",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    },
+    {
+      "id": "XXB",
+      "kind": "queue",
+      "name": "Queue XXB",
+      "role": "RabbitMQ application queue",
+      "owner": "Payments Platform Team",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    },
+    {
+      "id": "abc-worker.service",
+      "kind": "service",
+      "name": "ABC worker",
+      "role": "Queue XXB consumer",
+      "owner": "Payments Platform Team",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    }
+  ],
+  "signals": [
+    {
+      "id": "queue.depth",
+      "asset": "XXB",
+      "value": 642,
+      "previousValue": 388,
+      "unit": "messages"
+    },
+    {
+      "id": "consumer.count",
+      "asset": "XXB",
+      "value": 0,
+      "previousValue": 2,
+      "unit": "consumers",
+      "trend": "falling"
+    },
+    {
+      "id": "memory.usage",
+      "asset": "XYZ_CLASSC1_CUST8",
+      "value": 91,
+      "unit": "percent"
+    },
+    {
+      "id": "rabbitmq.node.health",
+      "asset": "XYZ_CLASSC1_CUST8",
+      "value": "healthy",
+      "status": "healthy"
+    },
+    {
+      "id": "message.persistence",
+      "asset": "XXB",
+      "value": "persistent",
+      "status": "persistent"
+    },
+    {
+      "id": "restart.loss.estimate",
+      "asset": "abc-worker.service",
+      "value": 3,
+      "unit": "packets"
+    },
+    {
+      "id": "log.signature",
+      "asset": "abc-worker.service",
+      "value": "EYZ-47281",
+      "status": "matched"
+    }
+  ],
+  "policies": [
+    {
+      "id": "memory.heap-pressure.queue-consumer-stop",
+      "description": "Memory pressure plus rising queue depth, zero consumers, and heap signature points to app worker exhaustion.",
+      "if": [
+        { "signal": "memory.usage", "operator": ">=", "value": 85 },
+        { "signal": "queue.depth", "trend": "rising" },
+        { "signal": "consumer.count", "operator": "==", "value": 0 },
+        { "signal": "log.signature", "status": "matched" }
+      ],
+      "then": {
+        "likelyCause": "app_worker_memory_exhaustion",
+        "severity": "critical",
+        "decision": "recommend_runbook",
+        "recommendation": "Restart abc-worker.service, then validate consumer reconnect and queue drain.",
+        "runbookId": "restart-abc-worker",
+        "escalationRequired": false,
+        "rationale": "RAM, queue depth trend, consumer count, and signature EYZ-47281 meet the generic app-worker exhaustion boundary."
+      }
+    },
+    {
+      "id": "safe-worker-restart-boundary",
+      "description": "Restart is permitted only when broker health, persistence, consumer loss, and packet-loss risk are acceptable.",
+      "if": [
+        { "signal": "rabbitmq.node.health", "status": "healthy" },
+        { "signal": "message.persistence", "status": "persistent" },
+        { "signal": "consumer.count", "operator": "==", "value": 0 },
+        { "signal": "restart.loss.estimate", "operator": "<=", "value": 3 }
+      ],
+      "then": {
+        "likelyCause": "runbook_allowed_low_loss_restart",
+        "severity": "abnormal",
+        "decision": "recommend_runbook",
+        "recommendation": "Run the restart only after operator review; collect before/after consumer count and queue depth.",
+        "runbookId": "restart-abc-worker",
+        "escalationRequired": false,
+        "rationale": "The action boundary is satisfied without assuming the RabbitMQ node is the cause."
+      }
+    }
+  ],
+  "runbooks": [
+    {
+      "id": "restart-abc-worker",
+      "type": "systemd_restart_service",
+      "target": "abc-worker.service",
+      "displayCommand": "sudo systemctl restart abc-worker.service",
+      "validationChecks": [
+        "systemctl status abc-worker.service returns active",
+        "consumer.count returns to 2",
+        "queue.depth begins falling",
+        "oldest_message_age decreases",
+        "log.signature EYZ-47281 does not recur"
+      ]
+    }
+  ],
+  "doctrineNotes": [
+    "GSMg mirrors the surgical RabbitMQ scenario without hardcoding queueDepth, consumerCount, or rabbitmqNodeHealthy into C++.",
+    "This remains black-box triage: signals, logs, metrics, ownership, and policy boundaries only.",
+    "The surgical RabbitMQ evaluator remains intact for known runbook execution; GSMg is policy evaluation only in this slice."
+  ]
+}

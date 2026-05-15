@@ -1,4 +1,5 @@
 #include "tze/intent_resolver.hpp"
+#include "tze/shell_lexicon.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -87,6 +88,29 @@ std::optional<std::string> detect_runnable_tool(std::string_view lowered) {
     return std::nullopt;
 }
 
+std::optional<int> extract_port_number(std::string_view lowered) {
+    const std::size_t port_at = lowered.find("port");
+    if (port_at == std::string::npos) {
+        return std::nullopt;
+    }
+    std::size_t cursor = port_at + 4;
+    while (cursor < lowered.size() && !std::isdigit(static_cast<unsigned char>(lowered[cursor]))) {
+        ++cursor;
+    }
+    std::string digits;
+    while (cursor < lowered.size() && std::isdigit(static_cast<unsigned char>(lowered[cursor]))) {
+        digits.push_back(lowered[cursor++]);
+    }
+    if (digits.empty()) {
+        return std::nullopt;
+    }
+    const int port = std::stoi(digits);
+    if (port <= 0 || port > 65535) {
+        return std::nullopt;
+    }
+    return port;
+}
+
 bool is_system_security_request(std::string_view lowered) {
     return lowered.find("secure my system") != std::string::npos ||
         lowered.find("secure system") != std::string::npos ||
@@ -96,17 +120,238 @@ bool is_system_security_request(std::string_view lowered) {
         lowered.find("system posture") != std::string::npos;
 }
 
+bool is_greeting_request(std::string_view lowered) {
+    return lowered == "hello" || lowered == "hi" || lowered == "hey" ||
+        lowered == "hello omnix" || lowered == "hi omnix" || lowered == "hey omnix";
+}
+
+bool is_identity_request(std::string_view lowered) {
+    return lowered == "who are you" || lowered == "what are you" ||
+        lowered == "what is omnix" || lowered == "who is omnix" ||
+        lowered == "tell me about yourself";
+}
+
+bool is_context_summary_request(std::string_view lowered) {
+    return lowered == "what matters" || lowered == "what matters here" ||
+        lowered == "what should i care about" || lowered == "tell me what matters";
+}
+
+std::string strip_article_prefix(std::string value) {
+    if (starts_with(value, "your ")) {
+        return trim(value.substr(5));
+    }
+    if (starts_with(value, "my ")) {
+        return trim(value.substr(3));
+    }
+    if (starts_with(value, "the ")) {
+        return trim(value.substr(4));
+    }
+    if (starts_with(value, "a ")) {
+        return trim(value.substr(2));
+    }
+    if (starts_with(value, "an ")) {
+        return trim(value.substr(3));
+    }
+    return value;
+}
+
+std::string strip_lookup_context_suffix(std::string value) {
+    const std::string lowered = lowercase(value);
+    static const std::vector<std::string> markers = {
+        " inside ",
+        " located at ",
+        " as per ",
+        " according to ",
+        " from local file",
+        " in local file",
+        " in your root directory",
+        " in the root directory",
+        " inside your root directory",
+        " inside the root directory",
+    };
+    for (const std::string& marker : markers) {
+        const std::size_t marker_pos = lowered.find(marker);
+        if (marker_pos != std::string::npos) {
+            return trim(value.substr(0, marker_pos));
+        }
+    }
+    return trim(value);
+}
+
+std::string extract_domain_hint(std::string_view lowered) {
+    if (contains_word(lowered, "science") || contains_word(lowered, "physics")) {
+        return "science";
+    }
+    if (contains_word(lowered, "computing") || contains_word(lowered, "computer") ||
+        contains_word(lowered, "programming") || contains_word(lowered, "technology") ||
+        contains_word(lowered, "tech") || contains_word(lowered, "software")) {
+        return "technology";
+    }
+    if (contains_word(lowered, "security")) {
+        return "security";
+    }
+    if (contains_word(lowered, "math") || contains_word(lowered, "mathematics")) {
+        return "math";
+    }
+    return {};
+}
+
+std::string strip_domain_qualifier(std::string value) {
+    const std::string lowered = lowercase(value);
+    static const std::vector<std::string> markers = {
+        " in terms of science",
+        " in therms of science",
+        " in terms of physics",
+        " in therms of physics",
+        " in terms of technology",
+        " in therms of technology",
+        " in terms of tech",
+        " in therms of tech",
+        " in terms of computing",
+        " in therms of computing",
+        " in terms of computer",
+        " in therms of computer",
+        " in terms of programming",
+        " in therms of programming",
+        " in terms of software",
+        " in therms of software",
+        " in terms of security",
+        " in therms of security",
+        " in terms of math",
+        " in therms of math",
+        " in terms of mathematics",
+        " in therms of mathematics",
+        " when discussing science",
+        " when discussing physics",
+        " when discussing technology",
+        " when discussing tech",
+        " when discussing computing",
+        " when discussing computer",
+        " when discussing programming",
+        " when discussing software",
+        " when discussing security",
+        " when discussing math",
+        " when discussing mathematics",
+        " when referring to science",
+        " when referring to physics",
+        " when referring to technology",
+        " when referring to tech",
+        " when referring to computing",
+        " when referring to computer",
+        " when referring to programming",
+        " when referring to software",
+        " when referring to security",
+        " when referring to math",
+        " when referring to mathematics",
+        " when reffering to science",
+        " when reffering to physics",
+        " when reffering to technology",
+        " when reffering to tech",
+        " when reffering to computing",
+        " when reffering to computer",
+        " when reffering to programming",
+        " when reffering to software",
+        " when reffering to security",
+        " when reffering to math",
+        " when reffering to mathematics",
+    };
+    for (const std::string& marker : markers) {
+        const std::size_t marker_pos = lowered.find(marker);
+        if (marker_pos != std::string::npos) {
+            return trim(value.substr(0, marker_pos));
+        }
+    }
+    return trim(value);
+}
+
+bool is_runtime_symbol_like(std::string_view lowered_target) {
+    return starts_with(lowered_target, "x.") || starts_with(lowered_target, "x::") ||
+        lowered_target.find("xprocessingcache") != std::string::npos ||
+        lowered_target.find("genx") != std::string::npos ||
+        lowered_target.find("xxomni") != std::string::npos ||
+        lowered_target.find("uac") != std::string::npos;
+}
+
+bool looks_like_plain_concept(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+    bool saw_alpha = false;
+    for (char c : value) {
+        if (std::isalpha(static_cast<unsigned char>(c))) {
+            saw_alpha = true;
+            continue;
+        }
+        if (std::isdigit(static_cast<unsigned char>(c)) || c == ' ' || c == '-' || c == '_') {
+            continue;
+        }
+        return false;
+    }
+    return saw_alpha;
+}
+
+std::optional<std::string> extract_local_concept_retrieval_target(std::string_view normalized_prompt,
+                                                                  std::string_view lowered_prompt) {
+    static const std::vector<std::string> prefixes = {
+        "output your ",
+        "output the ",
+        "show your ",
+        "show me your ",
+        "tell me your ",
+        "tell me about your ",
+        "locate your ",
+    };
+    for (const std::string& prefix : prefixes) {
+        if (!starts_with(lowered_prompt, prefix)) {
+            continue;
+        }
+        std::string target = trim(std::string(normalized_prompt.substr(prefix.size())));
+        target = strip_lookup_context_suffix(target);
+        target = strip_domain_qualifier(target);
+        target = strip_article_prefix(trim(target));
+        const std::string lowered_target = lowercase(target);
+        if (!target.empty() && looks_like_plain_concept(lowered_target) &&
+            !is_runtime_symbol_like(lowered_target)) {
+            return target;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 IntentResolution IntentResolver::resolve(std::string_view prompt) const {
     IntentResolution resolution;
     resolution.normalized_prompt = trim(prompt);
     const std::string lowered = lowercase(resolution.normalized_prompt);
+    const MemorySnapshot empty_memory{};
+    ShellLexicon lexicon;
+    const std::optional<ShellLexiconEntry> normalized = lexicon.normalize(resolution.normalized_prompt, empty_memory, false);
 
     if (lowered.empty()) {
         resolution.intent = RequestIntent::Unknown;
         resolution.confidence = 0.0;
         resolution.suggestions = {"ingest ./log.txt", "analyze case-123", "Build NMAP", "memory history"};
+        return resolution;
+    }
+
+    if (is_greeting_request(lowered) || is_identity_request(lowered) ||
+        (normalized.has_value() &&
+         (normalized->category == "greeting" || normalized->category == "omni_identity" ||
+          normalized->category == "operator_identity"))) {
+        resolution.intent = RequestIntent::Conversation;
+        resolution.primary_target = normalized.has_value() ? normalized->canonical : resolution.normalized_prompt;
+        resolution.confidence = 0.99;
+        return resolution;
+    }
+
+    if (is_context_summary_request(lowered) ||
+        (normalized.has_value() && normalized->category == "context_summary_request")) {
+        resolution.intent = RequestIntent::Conversation;
+        resolution.primary_target = "what matters";
+        resolution.comparison_rationale =
+            "Behavioral comparison selected a contextual-summary route over concept definition or command routing.";
+        resolution.confidence = 0.98;
         return resolution;
     }
 
@@ -162,6 +407,71 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
         resolution.intent = RequestIntent::DecideAction;
         resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 7));
         resolution.confidence = 0.98;
+        return resolution;
+    }
+
+    if (starts_with(lowered, "persona mode ") ||
+        lowered == "premise mode" ||
+        lowered == "cynic mode" ||
+        lowered == "professional mode" ||
+        lowered == "neutral mode") {
+        resolution.intent = RequestIntent::SetPersonaMode;
+        resolution.primary_target = starts_with(lowered, "persona mode ")
+            ? strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 13))
+            : trim(resolution.normalized_prompt.substr(0, lowered.find(' ')));
+        resolution.confidence = 0.98;
+        return resolution;
+    }
+
+    if (starts_with(lowered, "defend diag ") ||
+        lowered.find("show cpu hog") != std::string::npos ||
+        lowered.find("cpu diag") != std::string::npos ||
+        lowered.find("memory diag") != std::string::npos ||
+        lowered.find("show memory") != std::string::npos ||
+        lowered.find("inspect pid") != std::string::npos ||
+        lowered.find("pid ") != std::string::npos ||
+        lowered.find("view logs") != std::string::npos ||
+        lowered.find("log view") != std::string::npos ||
+        lowered.find("close port") != std::string::npos ||
+        lowered.find("how do i close") != std::string::npos) {
+        resolution.intent = RequestIntent::DefenseDiagnostic;
+        resolution.primary_target = resolution.normalized_prompt;
+        if (lowered.find("cpu") != std::string::npos) {
+            resolution.memory_view = "cpu";
+        } else if (lowered.find("memory") != std::string::npos) {
+            resolution.memory_view = "memory";
+        } else if (lowered.find("pid") != std::string::npos) {
+            resolution.memory_view = "pid";
+        } else if (lowered.find("log") != std::string::npos) {
+            resolution.memory_view = "logs";
+        } else if (lowered.find("port") != std::string::npos) {
+            resolution.memory_view = "port";
+        } else {
+            resolution.memory_view = "summary";
+        }
+        resolution.confidence = 0.88;
+        return resolution;
+    }
+
+    if (starts_with(lowered, "tview ") || starts_with(lowered, "tcp view ") ||
+        starts_with(lowered, "packet view ") ||
+        ((lowered.find("investigate") != std::string::npos ||
+          lowered.find("inspect") != std::string::npos ||
+          lowered.find("view") != std::string::npos ||
+          lowered.find("capture") != std::string::npos) &&
+         lowered.find("port") != std::string::npos)) {
+        resolution.intent = RequestIntent::PacketCapture;
+        if (const std::optional<int> port = extract_port_number(lowered); port.has_value()) {
+            resolution.primary_target = std::to_string(*port);
+            resolution.memory_view = "live";
+        } else if (lowered.find("doctor") != std::string::npos) {
+            resolution.primary_target = "doctor";
+            resolution.memory_view = "doctor";
+        } else {
+            resolution.primary_target = resolution.normalized_prompt;
+            resolution.memory_view = "live";
+        }
+        resolution.confidence = 0.9;
         return resolution;
     }
 
@@ -348,6 +658,13 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
         return resolution;
     }
 
+    if (starts_with(lowered, "recipe author ")) {
+        resolution.intent = RequestIntent::AuthorBuildRecipe;
+        resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 14));
+        resolution.confidence = 0.99;
+        return resolution;
+    }
+
     if (starts_with(lowered, "doctor ")) {
         resolution.intent = RequestIntent::DoctorProject;
         resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 7));
@@ -359,6 +676,18 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
         resolution.intent = RequestIntent::ToolAction;
         resolution.primary_target = "inspect-host";
         resolution.confidence = 0.88;
+        return resolution;
+    }
+
+    if (const std::optional<std::string> concept_target =
+            extract_local_concept_retrieval_target(resolution.normalized_prompt, lowered);
+        concept_target.has_value()) {
+        resolution.intent = RequestIntent::GeneralDefinitionQuery;
+        resolution.primary_target = *concept_target;
+        resolution.definition_domain_hint = extract_domain_hint(lowered);
+        resolution.comparison_rationale =
+            "Behavioral comparison selected a local concept retrieval route from an operator-facing retrieval verb.";
+        resolution.confidence = 0.9;
         return resolution;
     }
 
@@ -376,16 +705,60 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
     }
 
     if (starts_with(lowered, "define ")) {
-        resolution.intent = RequestIntent::DefineSymbol;
         resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 7));
-        resolution.confidence = 0.98;
+        std::string lowered_target = lowercase(resolution.primary_target);
+        if (starts_with(lowered_target, "who is ")) {
+            resolution.primary_target = trim(resolution.primary_target.substr(7));
+        } else if (starts_with(lowered_target, "what is ")) {
+            resolution.primary_target = trim(resolution.primary_target.substr(8));
+        }
+        resolution.primary_target = strip_domain_qualifier(resolution.primary_target);
+        resolution.primary_target = strip_article_prefix(trim(resolution.primary_target));
+        lowered_target = lowercase(resolution.primary_target);
+        if (!resolution.primary_target.empty() &&
+            !is_runtime_symbol_like(lowered_target) &&
+            looks_like_plain_concept(lowered_target)) {
+            resolution.intent = RequestIntent::GeneralDefinitionQuery;
+            resolution.definition_domain_hint = extract_domain_hint(lowered);
+            resolution.comparison_rationale =
+                "Behavioral comparison selected a concept-definition route from the explicit `define <concept>` phrase.";
+            resolution.confidence = 0.94;
+        } else {
+            resolution.intent = RequestIntent::DefineSymbol;
+            resolution.confidence = 0.98;
+        }
         return resolution;
     }
 
     if (starts_with(lowered, "what is ")) {
-        resolution.intent = RequestIntent::DefineSymbol;
         resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 8));
-        resolution.confidence = 0.95;
+        resolution.definition_domain_hint = extract_domain_hint(lowered);
+        resolution.primary_target = strip_domain_qualifier(resolution.primary_target);
+        resolution.primary_target = strip_article_prefix(trim(resolution.primary_target));
+        const std::string lowered_target = lowercase(resolution.primary_target);
+        if (is_runtime_symbol_like(lowered_target)) {
+            resolution.intent = RequestIntent::DefineSymbol;
+            resolution.confidence = 0.97;
+        } else {
+            resolution.intent = RequestIntent::GeneralDefinitionQuery;
+            resolution.comparison_rationale = resolution.definition_domain_hint.empty()
+                ? "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase."
+                : "Behavioral comparison selected a concept-definition route because the prompt uses `what is <concept>` with a domain hint.";
+            resolution.confidence = resolution.definition_domain_hint.empty() ? 0.95 : 0.99;
+        }
+        return resolution;
+    }
+
+    if (starts_with(lowered, "who is ")) {
+        resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 7));
+        resolution.definition_domain_hint = extract_domain_hint(lowered);
+        resolution.primary_target = strip_domain_qualifier(resolution.primary_target);
+        resolution.primary_target = strip_article_prefix(trim(resolution.primary_target));
+        resolution.intent = RequestIntent::GeneralDefinitionQuery;
+        resolution.comparison_rationale = resolution.definition_domain_hint.empty()
+            ? "Behavioral comparison selected a concept-definition route from the explicit `who is <person-or-entity>` phrase."
+            : "Behavioral comparison selected a concept-definition route because the prompt uses `who is <person-or-entity>` with a domain hint.";
+        resolution.confidence = resolution.definition_domain_hint.empty() ? 0.95 : 0.99;
         return resolution;
     }
 
@@ -393,6 +766,20 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
         resolution.intent = RequestIntent::ExplainCommand;
         resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 8));
         resolution.confidence = 0.92;
+        return resolution;
+    }
+
+    if (starts_with(lowered, "review ")) {
+        resolution.intent = RequestIntent::ReviewModule;
+        resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 7));
+        resolution.confidence = 0.96;
+        return resolution;
+    }
+
+    if (starts_with(lowered, "patch-proposal ")) {
+        resolution.intent = RequestIntent::PatchProposal;
+        resolution.primary_target = strip_prefix(resolution.normalized_prompt, resolution.normalized_prompt.substr(0, 15));
+        resolution.confidence = 0.96;
         return resolution;
     }
 
@@ -424,10 +811,23 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
     }
 
     if (lowered.find("what does ") != std::string::npos || lowered.find("meaning of ") != std::string::npos) {
-        resolution.intent = RequestIntent::DefineSymbol;
+        resolution.intent = RequestIntent::GeneralDefinitionQuery;
         const std::size_t anchor = lowered.find("what does ") != std::string::npos ? lowered.find("what does ") + 10 : lowered.find("meaning of ") + 11;
-        resolution.primary_target = trim(resolution.normalized_prompt.substr(anchor));
-        resolution.confidence = 0.85;
+        resolution.primary_target = strip_article_prefix(trim(resolution.normalized_prompt.substr(anchor)));
+        resolution.definition_domain_hint = extract_domain_hint(lowered);
+        resolution.comparison_rationale =
+            "Behavioral comparison selected a concept-definition route from an explicit meaning/definition phrase.";
+        resolution.confidence = 0.9;
+        return resolution;
+    }
+
+    if (looks_like_plain_concept(lowered) && !is_runtime_symbol_like(lowered) && lowered.find(' ') == std::string::npos) {
+        resolution.intent = RequestIntent::GeneralDefinitionQuery;
+        resolution.primary_target = resolution.normalized_prompt;
+        resolution.comparison_rationale =
+            "Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.";
+        resolution.confidence = 0.56;
+        resolution.suggestions = {"What is " + resolution.normalized_prompt + "?", "What matters here?"};
         return resolution;
     }
 
@@ -443,6 +843,21 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
             resolution.confidence = 0.84;
             return resolution;
         }
+    }
+
+    if (lowered.find("create a build recipe for ") != std::string::npos ||
+        lowered.find("author a build recipe for ") != std::string::npos ||
+        lowered.find("create build recipe for ") != std::string::npos) {
+        const std::size_t anchor =
+            lowered.find("create a build recipe for ") != std::string::npos
+                ? lowered.find("create a build recipe for ") + 26
+                : (lowered.find("author a build recipe for ") != std::string::npos
+                    ? lowered.find("author a build recipe for ") + 26
+                    : lowered.find("create build recipe for ") + 24);
+        resolution.intent = RequestIntent::AuthorBuildRecipe;
+        resolution.primary_target = trim(resolution.normalized_prompt.substr(anchor));
+        resolution.confidence = 0.94;
+        return resolution;
     }
 
     if (lowered.find("build") != std::string::npos) {

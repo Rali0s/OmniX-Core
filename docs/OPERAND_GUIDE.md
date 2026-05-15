@@ -22,11 +22,15 @@ The catalogue below focuses on the operations that drive the early
 can extend the table with additional domains (language detection, Omni network
 controls, etc.).
 
+Current operator-facing names are tracked in
+[Legacy X++ Translation Map](agile/99-legacy-xpp-translation-map.md). This
+guide keeps the original operands visible as source-history aliases.
+
 ## Core cache & storage operands
 
 | Operand | Observed usage | Proposed responsibility |
 | --- | --- | --- |
-| `xProcessingCache(target)` | Bootstraps scratch storage before the engine inspects a request such as `"Build CMake"`. | Entry point that prepares cache state and orchestrates subsequent storage calls. Lives in a cache coordination module. |
+| `xProcessingCache(target)` | Legacy alias for `Cache.PrepareWorkspace`; bootstraps scratch storage before the engine inspects a request such as `"Build CMake"`. | Entry point that prepares cache state and orchestrates subsequent storage calls. Lives in a cache coordination module. |
 | `xize(estimatedSize)` | Immediately follows `xProcessingCache` to size working storage based on the amount of context that will be cached. | Utility that estimates byte requirements for a cache cell. Should move into a `tze::storage::Sizing` helper. |
 | `xCell_Create(spec)` | Creates either a temporary cell (`xMap_Temp`) or a persistent cell depending on whether the run is a "first run". | Storage allocator responsible for provisioning directories or memory mapped regions. |
 | `xProcessingDefine(useStorage)` | Declares how the cache can be consumed after it is created. Often followed by definitions such as `seek_Unbound`. | Configuration API that toggles cache behaviour (retention policy, locking strategy, destruction semantics). |
@@ -38,10 +42,10 @@ controls, etc.).
 | --- | --- | --- |
 | `x.Define.Low(aZ::n)` | Reads an indexed instruction (e.g., `aZ::1 == Build`). | Decoder that maps symbolic slots (`aZ::1`) to high-level commands. |
 | `x3m::"Build"` | Appears to invoke an external search/knowledge mechanism for the string literal. | Knowledge fetcher (searching Google/Wikipedia) that resolves definitions for the operand. |
-| `x.DisplayPriorityProcessingGate()` (`x.DPPG`) | Presents ranked reference material (Wikipedia, Oxford, Webster) and records administrator preferences. | User-facing priority engine that queries, presents, and stores preference orderings. |
-| `x.DisplayFeedBackLoop()` (`x.DFBL`) | Reviews prior responses to similar questions to improve recall efficiency. | Feedback/learning module that associates cache keys with historical answers. |
+| `x.DisplayPriorityProcessingGate()` (`x.DPPG`) | Legacy alias for `Knowledge.EvidenceRanking`; presents ranked reference material and records administrator preferences. | User-facing priority engine that queries, presents, and stores preference orderings. |
+| `x.DisplayFeedBackLoop()` (`x.DFBL`) | Legacy alias for `Memory.FeedbackReview`; reviews prior responses to similar questions to improve recall efficiency. | Feedback/learning module that associates cache keys with historical answers. |
 | `x.Return(value)` | Returns computed sizing or lookup results back to the cache coordinator. | Generic return wrapper that packages values for storage; ultimately can become `return` statements or strongly typed results. |
-| `x.Store(data -> destination)` | Persists results into `xMap_Temp` or `xMap_Perm`. | Storage API for writing structured records. |
+| `x.Store(data -> destination)` | Legacy alias for `Memory.StoreArtifact`; persists results into `Storage.Temporary` or `Storage.Permanent`. | Storage API for writing structured records. |
 
 ## Security & governance operands
 
@@ -50,7 +54,7 @@ controls, etc.).
 | `x.Comms(target)` | Requests administrator intervention (e.g., `PrioritizeNow`). | Communications façade for raising human approvals or alerts. |
 | `x.Security` | Validates the caller ("Are You Admin?"). | Authentication guard that integrates with OS or custom identity providers. |
 | `xX_Kill.All()` | Emergency kill switch that wipes volatile state on failed authentication. | Security response routine that revokes access and cleans temporary buffers. |
-| `x.C_P.1()`, `x.C_P.2()`, `x.C_P.3()` | Sequential phases of an administrative workflow, culminating in feedback loop analysis. | Pipeline stages that compose the review process; each phase will map to a concrete function in an admin module. |
+| `x.C_P.1()`, `x.C_P.2()`, `x.C_P.3()` | Legacy sequential phases of an administrative workflow, culminating in feedback loop analysis. | HumanReadable runtime stages such as `SourceIntake`, `EvidenceRanking`, `RecipeDraft`, and `ValidateRepairStore`. |
 | `x.superAdmin()` / `x.lockOut()` | Transition to high-security mode when anomalies appear in attribution ranking. | Escalation path that triggers lockdown scripts and secure communication steps. |
 
 ## Data map namespaces

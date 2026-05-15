@@ -1,0 +1,13 @@
+{
+  "id": "restart-abc-worker",
+  "type": "systemd_restart_service",
+  "serviceName": "abc-worker.service",
+  "displayCommand": "sudo systemctl restart abc-worker.service",
+  "validationChecks": [
+    "systemctl status abc-worker.service returns active",
+    "RabbitMQ consumer count returns to 2",
+    "Queue XXB depth begins draining",
+    "Oldest message age decreases",
+    "No new EYZ-47281 heap error appears"
+  ]
+}

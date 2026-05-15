@@ -1,4 +1,6 @@
 #include "tze/processing_engine.hpp"
+#include "tze/reasoning_provider.hpp"
+#include "tze/shell_lexicon.hpp"
 #include "xpp/emitter.hpp"
 #include "xpp/index.hpp"
 #include "xpp/parser.hpp"
@@ -51,6 +53,58 @@ struct CommonCliOptions {
     OutputMode output_mode = OutputMode::Auto;
 };
 
+std::string replace_all_copy(std::string value, std::string_view needle, std::string_view replacement) {
+    std::size_t offset = 0;
+    while ((offset = value.find(needle, offset)) != std::string::npos) {
+        value.replace(offset, needle.size(), replacement);
+        offset += replacement.size();
+    }
+    return value;
+}
+
+std::string human_readable_stage_id(std::string_view stage_id) {
+    if (stage_id == "xProcessingCache") {
+        return "Cache.PrepareWorkspace";
+    }
+    if (stage_id == "x.Define.Low") {
+        return "Intent.DecodeInstruction";
+    }
+    if (stage_id == "x.DisplayPriorityProcessingGate") {
+        return "Knowledge.EvidenceRanking";
+    }
+    if (stage_id == "x.DisplayFeedBackLoop") {
+        return "Memory.FeedbackReview";
+    }
+    if (stage_id == "x.Store") {
+        return "Memory.StoreArtifact";
+    }
+    return std::string(stage_id);
+}
+
+std::string render_stage_label(const tze::TzeStageRecord& stage) {
+    const std::string readable = human_readable_stage_id(stage.stage_id);
+    if (readable == stage.stage_id) {
+        return stage.stage_id;
+    }
+    return readable + " (legacy=" + stage.stage_id + ")";
+}
+
+std::string translate_storage_names(std::string text) {
+    text = replace_all_copy(std::move(text), "xMap_Temp", "Storage.Temporary");
+    text = replace_all_copy(std::move(text), "xMap_Perm", "Storage.Permanent");
+    text = replace_all_copy(std::move(text), "xMap_Core", "Storage.Core");
+    return text;
+}
+
+std::string human_readable_storage_text(std::string_view value) {
+    const std::string raw(value);
+    if (raw.rfind("x.Store(", 0) == 0 && !raw.empty() && raw.back() == ')') {
+        const std::string inner = raw.substr(8, raw.size() - 9);
+        return "Memory.StoreArtifact(" + translate_storage_names(inner) + ") (legacy=" + raw + ")";
+    }
+    return translate_storage_names(raw);
+}
+
 std::filesystem::path find_project_root(std::filesystem::path start) {
     if (start.empty()) {
         start = std::filesystem::current_path();
@@ -91,6 +145,10 @@ std::filesystem::path default_source_file() {
     throw std::runtime_error("Unable to locate res/tze.txt from the current working directory.");
 }
 
+std::filesystem::path default_legacy_source_file() {
+    return "/Volumes/CoE/Tzu.cpp";
+}
+
 std::filesystem::path default_emit_dir(const std::filesystem::path& source_file) {
     const std::filesystem::path project_root = find_project_root(source_file);
     if (!project_root.empty()) {
@@ -106,25 +164,36 @@ void print_usage() {
     std::cout << "  omnix ingest <path|command> [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
     std::cout << "  omnix analyze <case|source> [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
     std::cout << "  omnix decide <case|source> [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
+    std::cout << "  omnix defend diag <cpu|memory|logs|pid|port> [target] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix decide feedback <case-id> <decision-id> <helpful|not-helpful> [--note text] [--memory-root dir]\n";
     std::cout << "  omnix decide outcome <case-id> <decision-id> <success|failed|partial> [--note text] [--memory-root dir]\n";
-    std::cout << "  omnix case <id|source> [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
+    std::cout << "  omnix case <id|source> [--assist] [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
     std::cout << "  omnix case list [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
     std::cout << "  omnix case search <term> [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
     std::cout << "  omnix case timeline <id|source> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix case export <id|source> [--out file] [--memory-root dir]\n";
     std::cout << "  omnix case import <bundle.json> [--memory-root dir]\n";
     std::cout << "  omnix incident list [--compact|--verbose] [--memory-root dir]\n";
-    std::cout << "  omnix incident <id> [--compact|--verbose] [--memory-root dir]\n";
-    std::cout << "  omnix incident report <id> [--compact|--verbose] [--out file] [--memory-root dir]\n";
+    std::cout << "  omnix incident <id> [--assist] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix incident report <id> [--assist] [--compact|--verbose] [--out file] [--memory-root dir]\n";
     std::cout << "  omnix define <symbol-or-term> [file] [--compact|--verbose] [--memory-root dir] [--lang-confirm auto|yes|no]\n";
     std::cout << "  omnix explain <command-or-symbol> [file] [--compact|--verbose] [--memory-root dir] [--lang-confirm auto|yes|no]\n";
+    std::cout << "  omnix review <path-or-module> [--assist] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix patch-proposal <path-or-module> [--assist] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix build <project-or-path> [--assist] [--compact|--verbose] [--source-map file] [--memory-root dir] [--build-dir dir] [--target name] [--build-type type] [--install-prefix dir] [--recipe id] [--ref git-ref] [--clean] [--build-only] [--no-install] [--offline] [--local-only]\n";
+    std::cout << "  omnix recipe author <source-path> [--assist] [--compact|--verbose] [--source-map file] [--memory-root dir] [--build-dir dir] [--target name] [--build-type type] [--install-prefix dir] [--clean] [--build-only] [--no-install]\n";
     std::cout << "  omnix preflight <project-or-path> [--assist] [--compact|--verbose] [--memory-root dir] [--target name] [--install-prefix dir] [--recipe id] [--ref git-ref] [--offline] [--local-only]\n";
     std::cout << "  omnix doctor <project-or-path> [--compact|--verbose] [--memory-root dir] [--recipe id] [--offline] [--local-only]\n";
     std::cout << "  omnix provider probe [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix persona mode <premise|cynic|professional|neutral> [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix gg doctor|search|run|audit|actions [args...] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix nn math perceptron --dataset or|and|xor [--epochs n] [--learning-rate r] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix nn route tview <file.jsonl> [--out routes.jsonl] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix tview port <port> [--interface name] [--count n] [--seconds n] [--payload-bytes n] [--out file.jsonl] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix tview pcap <file> [--port n] [--payload-bytes n] [--out file.jsonl] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix tview doctor [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix shell [--source-map file] [--memory-root dir] [--assist] [--compact|--verbose]\n";
-    std::cout << "  omnix memory [history|prefs|definitions|language|security|uac|cases|runs|tze] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix memory [history|prefs|definitions|language|security|uac|cases|runs|tze|legacy|persona|operator|assist] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix memory prune [--keep n] [--important-only] [--memory-root dir]\n";
     std::cout << "  omnix tze runs [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tze latest [--compact|--verbose] [--memory-root dir]\n";
@@ -144,11 +213,148 @@ void print_usage() {
     std::cout << "  omnix tool locate <name> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tool doctor <name> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tool <name> -- <args...> [--compact|--verbose] [--memory-root dir]\n";
-    std::cout << "    Built-in analyst modules: inspect-log, inspect-build, inspect-host, report-case, text-pipeline\n";
+    std::cout << "    Built-in analyst modules: inspect-log, inspect-build, inspect-host, report-case, text-pipeline, mlp-lens, thresholds, gg\n";
+    std::cout << "  omnix legacy coverage [file]\n";
+    std::cout << "  omnix legacy report [file]\n";
     std::cout << "  omnix map <file>\n";
     std::cout << "  omnix search <symbol> [file]\n";
     std::cout << "  omnix emit-cpp <file> [output-dir]\n";
     std::cout << "  omnix build-cmake [source-dir] [--target name] [--clean] [--build-dir dir] [--build-type type]\n";
+}
+
+std::string legacy_status_for(const xpp::SymbolMapping& mapping) {
+    if (mapping.raw_symbol == "xProcessingCache" ||
+        mapping.raw_symbol == "x.Define.Low" ||
+        mapping.raw_symbol == "x.DisplayPriorityProcessingGate" ||
+        mapping.raw_symbol == "x.DisplayFeedBackLoop" ||
+        mapping.raw_symbol == "x.Store") {
+        return "implemented";
+    }
+    if (mapping.raw_symbol.find("xXOmni") != std::string::npos ||
+        mapping.mapped_cpp_target.find("LanguageEngine::") != std::string::npos ||
+        mapping.mapped_cpp_target.find("PreprocessorRuntime::") != std::string::npos ||
+        mapping.mapped_cpp_target.find("SecurityManager::") != std::string::npos ||
+        mapping.mapped_cpp_target.find("OmniBridge::") != std::string::npos) {
+        if (mapping.inferred_meaning.find("blocked") != std::string::npos) {
+            return "research-only";
+        }
+        return "partial";
+    }
+    if (mapping.mapped_cpp_target.empty() || mapping.family == xpp::SemanticFamily::Unknown) {
+        return "missing";
+    }
+    return "partial";
+}
+
+std::vector<tze::LegacySymbolCoverage> legacy_coverages_for(const xpp::MappingUnit& unit) {
+    const xpp::SymbolIndex index = xpp::build_symbol_index(unit);
+    std::vector<tze::LegacySymbolCoverage> coverages;
+    coverages.reserve(index.mappings.size());
+    for (const xpp::SymbolMapping& mapping : index.mappings) {
+        tze::LegacySymbolCoverage coverage;
+        coverage.symbol = mapping.raw_symbol;
+        coverage.semantic_family = xpp::to_string(mapping.family);
+        coverage.recovery_status = legacy_status_for(mapping);
+        coverage.mapped_cpp_target = mapping.mapped_cpp_target;
+        coverage.notes.push_back(mapping.inferred_meaning);
+        if (!mapping.occurrences.empty()) {
+            const xpp::SymbolOccurrence& first = mapping.occurrences.front();
+            coverage.section_title = first.section_title;
+            coverage.source_origin = first.section_title + ":" + std::to_string(first.line);
+            coverage.occurrence_count = mapping.occurrences.size();
+        }
+        coverages.push_back(std::move(coverage));
+    }
+    std::stable_sort(coverages.begin(), coverages.end(), [](const tze::LegacySymbolCoverage& lhs,
+                                                            const tze::LegacySymbolCoverage& rhs) {
+        if (lhs.recovery_status != rhs.recovery_status) {
+            return lhs.recovery_status < rhs.recovery_status;
+        }
+        return lhs.symbol < rhs.symbol;
+    });
+    return coverages;
+}
+
+tze::LegacyRecoveryStatus summarize_legacy_recovery(const std::filesystem::path& source_file,
+                                                    const std::vector<tze::LegacySymbolCoverage>& coverages) {
+    tze::LegacyRecoveryStatus status;
+    status.source_label = source_file.filename().string();
+    for (const tze::LegacySymbolCoverage& coverage : coverages) {
+        if (coverage.recovery_status == "implemented") {
+            ++status.implemented_count;
+        } else if (coverage.recovery_status == "partial") {
+            ++status.partial_count;
+        } else if (coverage.recovery_status == "research-only") {
+            ++status.research_only_count;
+        } else {
+            ++status.missing_count;
+        }
+    }
+    status.summary_lines = {
+        "Structured merge status for " + status.source_label + ": " +
+        std::to_string(status.implemented_count) + " implemented, " +
+        std::to_string(status.partial_count) + " partial, " +
+        std::to_string(status.missing_count) + " missing/research.",
+        "Core Spine Reconciliation",
+        "Deep Language and Decompression Recovery",
+        "xXOmni Bridge Recovery",
+        "Full uAC Recovery Model",
+        "Legacy Research Security Track",
+        "Conformance and Archaeology Reports",
+    };
+    return status;
+}
+
+void run_legacy_coverage(const std::filesystem::path& source_file) {
+    const std::string source = xpp::read_text_file(source_file);
+    const xpp::MappingUnit unit = xpp::parse_xpp(source, source_file.string());
+    const std::vector<tze::LegacySymbolCoverage> coverages = legacy_coverages_for(unit);
+    const tze::LegacyRecoveryStatus summary = summarize_legacy_recovery(source_file, coverages);
+
+    std::cout << "Legacy source: " << source_file << "\n";
+    if (!summary.summary_lines.empty()) {
+        std::cout << summary.summary_lines.front() << "\n";
+    }
+    for (std::size_t i = 1; i < summary.summary_lines.size(); ++i) {
+        const std::string& track = summary.summary_lines[i];
+        std::cout << " - track: " << track << "\n";
+    }
+    const std::size_t preview = std::min<std::size_t>(coverages.size(), 24);
+    for (std::size_t i = 0; i < preview; ++i) {
+        const auto& coverage = coverages[i];
+        std::cout << " - " << coverage.symbol << " [" << coverage.recovery_status << "]";
+        if (!coverage.mapped_cpp_target.empty()) {
+            std::cout << " -> " << coverage.mapped_cpp_target;
+        }
+        if (!coverage.source_origin.empty()) {
+            std::cout << " @ " << coverage.source_origin;
+        }
+        std::cout << "\n";
+    }
+}
+
+void run_legacy_report(const std::filesystem::path& source_file) {
+    const std::string source = xpp::read_text_file(source_file);
+    const xpp::MappingUnit unit = xpp::parse_xpp(source, source_file.string());
+    const std::vector<tze::LegacySymbolCoverage> coverages = legacy_coverages_for(unit);
+    const tze::LegacyRecoveryStatus summary = summarize_legacy_recovery(source_file, coverages);
+
+    std::cout << "Legacy archaeology report\n";
+    std::cout << "Source: " << source_file << "\n";
+    if (!summary.summary_lines.empty()) {
+        std::cout << summary.summary_lines.front() << "\n";
+    }
+    std::cout << "Tracks:\n";
+    for (std::size_t i = 1; i < summary.summary_lines.size(); ++i) {
+        const std::string& track = summary.summary_lines[i];
+        std::cout << " - " << track << "\n";
+    }
+    std::cout << "Key recovered branches:\n";
+    std::cout << " - build spine: implemented/merged\n";
+    std::cout << " - language/decompression ladder: partial\n";
+    std::cout << " - xXOmni bridge/correlation: partial\n";
+    std::cout << " - uAC recovery semantics: partial\n";
+    std::cout << " - risky security semantics: research-only\n";
 }
 
 void run_map(const std::filesystem::path& source_file) {
@@ -261,6 +467,15 @@ std::string compact_summary(const tze::ProcessingReport& report) {
     if (report.tool_resolution.has_value() && !report.tool_resolution->summary.empty()) {
         return report.tool_resolution->summary;
     }
+    if (report.freeform_assist_answer.has_value() && !report.freeform_assist_answer->answer.empty()) {
+        return report.freeform_assist_answer->answer;
+    }
+    if (report.neural_math_report.has_value() && !report.neural_math_report->summary.empty()) {
+        return report.neural_math_report->summary;
+    }
+    if (report.neural_route_report.has_value() && !report.neural_route_report->summary.empty()) {
+        return report.neural_route_report->summary;
+    }
     if (report.definition_answer.has_value() && !report.definition_answer->summary.empty()) {
         return report.definition_answer->summary;
     }
@@ -278,6 +493,7 @@ bool should_show_next_action_in_compact(const tze::ProcessingReport& report) {
         report.answer_status.find("missing") != std::string::npos ||
         report.answer_status.find("attention") != std::string::npos ||
         report.answer_status == "build_ready" ||
+        report.answer_status == "clarify_needed" ||
         report.answer_status == "doctor_ready" ||
         report.answer_status == "provider_inactive" ||
         report.answer_status == "provider_probe_failed" ||
@@ -298,6 +514,12 @@ bool use_verbose_output(OutputMode mode, bool prefer_verbose) {
 }
 
 void print_processing_report_compact(const tze::ProcessingReport& report) {
+    if (report.tool_invocation_report.has_value() &&
+        report.tool_invocation_report->logical_name == "mlp-lens" &&
+        !report.tool_invocation_report->output_excerpt.empty()) {
+        std::cout << report.tool_invocation_report->output_excerpt.front() << "\n";
+        return;
+    }
     if (!report.answer_status.empty()) {
         std::cout << report.answer_status;
         const std::string summary = compact_summary(report);
@@ -312,6 +534,26 @@ void print_processing_report_compact(const tze::ProcessingReport& report) {
     if (!report.resolved_project.empty()) {
         std::cout << "project: " << report.resolved_project << "\n";
     }
+    if (report.answer_status == "tool_inventory" && !report.answer_explanation.empty()) {
+        std::istringstream lines(report.answer_explanation);
+        std::string line;
+        std::size_t emitted = 0;
+        bool skipped_title = false;
+        while (std::getline(lines, line)) {
+            if (!skipped_title) {
+                skipped_title = true;
+                continue;
+            }
+            if (line.empty()) {
+                continue;
+            }
+            std::cout << line << "\n";
+            if (++emitted >= 18) {
+                std::cout << " - ...\n";
+                break;
+            }
+        }
+    }
     if (report.case_record.has_value()) {
         std::cout << "case: " << report.case_record->id << "\n";
     }
@@ -323,6 +565,15 @@ void print_processing_report_compact(const tze::ProcessingReport& report) {
     }
     if (report.build_assist_plan.has_value() && report.assist_status == "assist_used") {
         std::cout << "assist recipe: " << report.build_assist_plan->selected_recipe_id << "\n";
+    }
+    if (report.recipe_authoring_artifact.has_value()) {
+        std::cout << "authored recipe: " << report.recipe_authoring_artifact->generated_recipe_id << "\n";
+    }
+    if (report.next_step_assist_plan.has_value() && report.assist_status == "assist_used") {
+        std::cout << "assist next: " << report.next_step_assist_plan->suggested_next_step << "\n";
+    }
+    if (report.case_summary_assist_plan.has_value() && report.assist_status == "assist_used") {
+        std::cout << "assist summary: " << report.case_summary_assist_plan->executive_summary << "\n";
     }
     if (report.preflight_report.has_value() && !report.preflight_report->recipe_id.empty()) {
         std::cout << "recipe: " << report.preflight_report->recipe_id << "\n";
@@ -341,6 +592,62 @@ void print_processing_report_compact(const tze::ProcessingReport& report) {
         if (!invocation.output_excerpt.empty()) {
             std::cout << "result: " << invocation.output_excerpt.front() << "\n";
         }
+    }
+    if (report.packet_capture_report.has_value()) {
+        const tze::PacketCaptureReport& capture = *report.packet_capture_report;
+        std::cout << "packets: " << capture.packet_count << "\n";
+        if (!capture.filter.empty()) {
+            std::cout << "filter: " << capture.filter << "\n";
+        }
+        if (!capture.packets.empty()) {
+            const tze::PacketRecord& packet = capture.packets.front();
+            std::cout << "result: " << packet.src_ip << ":" << packet.src_port
+                      << " -> " << packet.dst_ip << ":" << packet.dst_port
+                      << " flags=" << packet.tcp_flags
+                      << " payload=" << packet.payload_length
+                      << " code=" << packet.analysis_code << "\n";
+        }
+    }
+    if (report.defense_diagnostic_report.has_value()) {
+        const tze::DefenseDiagnosticReport& defense = *report.defense_diagnostic_report;
+        if (!defense.evidence_lines.empty()) {
+            std::cout << "result: " << defense.evidence_lines.front() << "\n";
+        }
+        if (!defense.proposed_actions.empty()) {
+            std::cout << "next-defense: " << defense.proposed_actions.front() << "\n";
+        }
+    }
+    if (report.neural_math_report.has_value()) {
+        const tze::NeuralMathReport& neural = *report.neural_math_report;
+        std::cout << "dataset: " << neural.dataset << "\n";
+        std::cout << "accuracy: " << neural.accuracy << "\n";
+        if (!neural.weights.empty()) {
+            std::cout << "weights:";
+            for (double weight : neural.weights) {
+                std::cout << " " << weight;
+            }
+            std::cout << " bias=" << neural.bias << "\n";
+        }
+    }
+    if (report.neural_route_report.has_value()) {
+        const tze::NeuralRouteReport& route = *report.neural_route_report;
+        std::cout << "packets: " << route.packet_count << "\n";
+        std::cout << "flows: " << route.flow_count << "\n";
+        if (!route.predictions.empty()) {
+            const tze::NeuralRoutePrediction& top = route.predictions.front();
+            std::cout << "label: " << top.label << "\n";
+            std::cout << "confidence: " << top.confidence << "\n";
+            if (!top.attributions.empty()) {
+                std::cout << "top-factor: " << top.attributions.front().name
+                          << "=" << top.attributions.front().contribution << "\n";
+            }
+        }
+        if (!route.artifact_path.empty()) {
+            std::cout << "route-artifact: " << route.artifact_path << "\n";
+        }
+    }
+    if (report.legacy_source.has_value()) {
+        std::cout << "legacy: " << report.legacy_source->source_label << "\n";
     }
     if (!report.produced_artifact.empty()) {
         std::cout << "artifact: " << report.produced_artifact << "\n";
@@ -361,7 +668,11 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
         std::cout << "Instruction: " << report.decoded_instruction << "\n";
     }
     if (!report.cache.name.empty()) {
-        std::cout << "Cache: " << report.cache.name << " (" << report.cache.size_bytes << " bytes)\n";
+        std::cout << "Cache: " << human_readable_storage_text(report.cache.name);
+        if (human_readable_storage_text(report.cache.name) != report.cache.name) {
+            std::cout << " (legacy=" << report.cache.name << ")";
+        }
+        std::cout << " (" << report.cache.size_bytes << " bytes)\n";
     }
     if (!report.resolved_project.empty()) {
         std::cout << "Project: " << report.resolved_project << "\n";
@@ -377,6 +688,24 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
     }
     if (!report.reasoning_provider.empty()) {
         std::cout << "Reasoning provider: " << report.reasoning_provider << "\n";
+    }
+    if (!report.source_map_path.empty()) {
+        std::cout << "Source map: " << report.source_map_path << "\n";
+    }
+    if (report.legacy_source.has_value()) {
+        std::cout << "Legacy source: " << report.legacy_source->source_label
+                  << " (" << report.legacy_source->line_count
+                  << " lines, " << report.legacy_source->section_count
+                  << " sections, " << report.legacy_source->symbol_count << " symbols)\n";
+    }
+    if (report.legacy_bridge_report.has_value()) {
+        std::cout << "Legacy bridge: " << report.legacy_bridge_report->status << "\n";
+        std::cout << "Legacy bridge mode: " << report.legacy_bridge_report->bridge_mode << "\n";
+    }
+    if (report.legacy_recovery_status.has_value()) {
+        if (!report.legacy_recovery_status->summary_lines.empty()) {
+            std::cout << "Legacy recovery: " << report.legacy_recovery_status->summary_lines.front() << "\n";
+        }
     }
     if (report.provider_probe_report.has_value()) {
         const tze::ProviderProbeReport& probe = *report.provider_probe_report;
@@ -480,6 +809,168 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
             }
         }
     }
+    if (report.recipe_authoring_plan.has_value()) {
+        const tze::RecipeAuthoringPlan& plan = *report.recipe_authoring_plan;
+        std::cout << "Recipe authoring plan: " << plan.recipe.id << "\n";
+        std::cout << "Recipe build system: " << plan.recipe.build_system << "\n";
+        std::cout << "Recipe confidence: " << plan.confidence << "\n";
+        if (!plan.rationale.empty()) {
+            std::cout << "Recipe rationale: " << plan.rationale << "\n";
+        }
+    }
+    if (report.recipe_authoring_artifact.has_value()) {
+        const tze::RecipeAuthoringArtifact& artifact = *report.recipe_authoring_artifact;
+        std::cout << "Recipe authoring status: " << artifact.status << "\n";
+        std::cout << "Recipe activated: " << (artifact.activated ? "yes" : "no") << "\n";
+        if (!artifact.generated_recipe_id.empty()) {
+            std::cout << "Recipe artifact id: " << artifact.generated_recipe_id << "\n";
+        }
+        if (!artifact.validation_feedback.empty()) {
+            std::cout << "Recipe validation feedback:\n";
+            for (const std::string& line : artifact.validation_feedback) {
+                std::cout << " - " << line << "\n";
+            }
+        }
+    }
+    if (report.next_step_assist_plan.has_value()) {
+        const tze::NextStepAssistPlan& plan = *report.next_step_assist_plan;
+        std::cout << "Assist next-step plan: " << plan.suggested_next_step << "\n";
+        std::cout << "Assist next-step confidence: " << plan.confidence << "\n";
+        if (!plan.safer_alternative.empty()) {
+            std::cout << "Assist safer alternative: " << plan.safer_alternative << "\n";
+        }
+        if (!plan.rationale.empty()) {
+            std::cout << "Assist next-step rationale: " << plan.rationale << "\n";
+        }
+    }
+    if (report.case_summary_assist_plan.has_value()) {
+        const tze::CaseSummaryAssistPlan& plan = *report.case_summary_assist_plan;
+        if (!plan.summary_title.empty()) {
+            std::cout << "Assist summary title: " << plan.summary_title << "\n";
+        }
+        std::cout << "Assist summary confidence: " << plan.confidence << "\n";
+        if (!plan.executive_summary.empty()) {
+            std::cout << "Assist executive summary: " << plan.executive_summary << "\n";
+        }
+        if (!plan.highlights.empty()) {
+            std::cout << "Assist summary highlights:\n";
+            for (const std::string& highlight : plan.highlights) {
+                std::cout << " - " << highlight << "\n";
+            }
+        }
+    }
+    if (report.freeform_assist_answer.has_value()) {
+        const tze::FreeformAssistAnswer& answer = *report.freeform_assist_answer;
+        std::cout << "Assist freeform provider: " << answer.provider_id;
+        if (!answer.model.empty()) {
+            std::cout << " (" << answer.model << ")";
+        }
+        std::cout << "\n";
+        std::cout << "Assist freeform confidence: " << answer.confidence << "\n";
+        if (!answer.rationale.empty()) {
+            std::cout << "Assist freeform rationale: " << answer.rationale << "\n";
+        }
+        if (!answer.suggested_commands.empty()) {
+            std::cout << "Assist suggested commands:\n";
+            for (const std::string& command : answer.suggested_commands) {
+                std::cout << " - " << command << "\n";
+            }
+        }
+        if (!answer.safety_warnings.empty()) {
+            std::cout << "Assist safety warnings:\n";
+            for (const std::string& warning : answer.safety_warnings) {
+                std::cout << " - " << warning << "\n";
+            }
+        }
+    }
+    if (report.neural_math_report.has_value()) {
+        const tze::NeuralMathReport& neural = *report.neural_math_report;
+        std::cout << "Neural math status: " << neural.status << "\n";
+        std::cout << "Neural math model: " << neural.model_type << "\n";
+        std::cout << "Neural math dataset: " << neural.dataset << "\n";
+        std::cout << "Neural math epochs: " << neural.epochs_ran << " / " << neural.epochs_requested << "\n";
+        std::cout << "Neural math learning rate: " << neural.learning_rate << "\n";
+        std::cout << "Neural math accuracy: " << neural.accuracy << "\n";
+        if (!neural.weights.empty()) {
+            std::cout << "Neural math weights:";
+            for (double weight : neural.weights) {
+                std::cout << " " << weight;
+            }
+            std::cout << " bias=" << neural.bias << "\n";
+        }
+        if (!neural.predictions.empty()) {
+            std::cout << "Neural math predictions:\n";
+            for (const tze::NeuralMathSample& sample : neural.predictions) {
+                std::cout << " - [";
+                for (std::size_t index = 0; index < sample.inputs.size(); ++index) {
+                    if (index != 0) {
+                        std::cout << ",";
+                    }
+                    std::cout << sample.inputs[index];
+                }
+                std::cout << "] expected=" << sample.expected << " predicted=" << sample.predicted << "\n";
+            }
+        }
+        if (!neural.math_trace.empty()) {
+            std::cout << "Neural math trace:\n";
+            for (const std::string& line : neural.math_trace) {
+                std::cout << " - " << line << "\n";
+            }
+        }
+        if (!neural.warnings.empty()) {
+            std::cout << "Neural math warnings:\n";
+            for (const std::string& warning : neural.warnings) {
+                std::cout << " - " << warning << "\n";
+            }
+        }
+    }
+    if (report.neural_route_report.has_value()) {
+        const tze::NeuralRouteReport& route = *report.neural_route_report;
+        std::cout << "Neural route status: " << route.status << "\n";
+        std::cout << "Neural route input: " << route.input_path << "\n";
+        std::cout << "Neural route packets: " << route.packet_count << "\n";
+        std::cout << "Neural route flows: " << route.flow_count << "\n";
+        if (!route.features.feature_summary.empty()) {
+            std::cout << "Neural route features: " << route.features.feature_summary.front() << "\n";
+        }
+        if (!route.predictions.empty()) {
+            std::cout << "Neural route predictions:\n";
+            for (const tze::NeuralRoutePrediction& prediction : route.predictions) {
+                std::cout << " - " << prediction.label << " confidence=" << prediction.confidence;
+                if (!prediction.rationale.empty()) {
+                    std::cout << " | " << prediction.rationale;
+                }
+                std::cout << "\n";
+                for (const tze::MathAttribution& attribution : prediction.attributions) {
+                    std::cout << "   math: " << attribution.name
+                              << " raw=" << attribution.raw_value
+                              << " weight=" << attribution.weight
+                              << " contribution=" << attribution.contribution;
+                    if (!attribution.source.empty()) {
+                        std::cout << " source=" << attribution.source;
+                    }
+                    if (!attribution.rationale.empty()) {
+                        std::cout << " | " << attribution.rationale;
+                    }
+                    std::cout << "\n";
+                }
+            }
+        }
+        if (!route.warnings.empty()) {
+            std::cout << "Neural route warnings:\n";
+            for (const std::string& warning : route.warnings) {
+                std::cout << " - " << warning << "\n";
+            }
+        }
+    }
+    if (report.review_artifact.has_value()) {
+        std::cout << "Review target: " << report.review_artifact->target << "\n";
+        std::cout << "Review findings: " << report.review_artifact->findings.size() << "\n";
+    }
+    if (report.patch_proposal_artifact.has_value()) {
+        std::cout << "Patch proposal target: " << report.patch_proposal_artifact->target << "\n";
+        std::cout << "Patch proposal files: " << report.patch_proposal_artifact->target_files.size() << "\n";
+    }
     if (!report.produced_artifact.empty()) {
         std::cout << "Produced artifact: " << report.produced_artifact << "\n";
     }
@@ -489,11 +980,29 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
     if (report.definition_answer.has_value()) {
         const tze::DefinitionAnswer& answer = *report.definition_answer;
         std::cout << "Definition query: " << answer.query << "\n";
+        if (!answer.normalized_concept.empty()) {
+            std::cout << "Normalized concept: " << answer.normalized_concept << "\n";
+        }
+        if (!answer.domain_hint.empty()) {
+            std::cout << "Domain hint: " << answer.domain_hint << "\n";
+        }
         if (!answer.mapped_cpp_target.empty()) {
             std::cout << "Mapped target: " << answer.mapped_cpp_target << "\n";
         }
         if (!answer.semantic_family.empty()) {
             std::cout << "Semantic family: " << answer.semantic_family << "\n";
+        }
+        if (!answer.selected_source_type.empty()) {
+            std::cout << "Definition source: " << answer.selected_source_type << "\n";
+        }
+        if (!answer.selected_source_label.empty()) {
+            std::cout << "Definition source label: " << answer.selected_source_label << "\n";
+        }
+        if (answer.confidence > 0.0) {
+            std::cout << "Definition confidence: " << answer.confidence << "\n";
+        }
+        if (!answer.comparison_rationale.empty()) {
+            std::cout << "Comparison rationale: " << answer.comparison_rationale << "\n";
         }
         if (!answer.sources.empty()) {
             std::cout << "Definition sources:\n";
@@ -530,7 +1039,11 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
         const tze::UacStateRecord& uac = *report.uac_state;
         std::cout << "uAC epoch: " << uac.epoch_marker << "\n";
         std::cout << "uAC machine: " << uac.machine_identifier << "\n";
-        std::cout << "uAC namespace: " << uac.store_namespace << "\n";
+        std::cout << "uAC namespace: " << human_readable_storage_text(uac.store_namespace);
+        if (human_readable_storage_text(uac.store_namespace) != uac.store_namespace) {
+            std::cout << " (legacy=" << uac.store_namespace << ")";
+        }
+        std::cout << "\n";
         if (!uac.recovery_hints.empty()) {
             std::cout << "uAC recovery hints:\n";
             for (const std::string& hint : uac.recovery_hints) {
@@ -624,10 +1137,25 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
         if (!doctor.detected_package_manager.empty()) {
             std::cout << "Detected package manager: " << doctor.detected_package_manager << "\n";
         }
+        if (!doctor.build_system.empty()) {
+            std::cout << "Doctor build system: " << doctor.build_system << "\n";
+        }
         if (!doctor.dependency_checks.empty()) {
             std::cout << "Dependency checks:\n";
             for (const std::string& check : doctor.dependency_checks) {
                 std::cout << " - " << check << "\n";
+            }
+        }
+        if (!doctor.configure_flags.empty()) {
+            std::cout << "Configure/build flags:\n";
+            for (const std::string& flag : doctor.configure_flags) {
+                std::cout << " - " << flag << "\n";
+            }
+        }
+        if (!doctor.build_guidance.empty()) {
+            std::cout << "Build guidance:\n";
+            for (const std::string& line : doctor.build_guidance) {
+                std::cout << " - " << line << "\n";
             }
         }
         if (!doctor.package_guidance.empty()) {
@@ -642,6 +1170,12 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
         if (!doctor.bootstrap_guidance.empty()) {
             std::cout << "Bootstrap guidance:\n";
             for (const std::string& line : doctor.bootstrap_guidance) {
+                std::cout << " - " << line << "\n";
+            }
+        }
+        if (!doctor.next_steps.empty()) {
+            std::cout << "Next steps:\n";
+            for (const std::string& line : doctor.next_steps) {
                 std::cout << " - " << line << "\n";
             }
         }
@@ -717,6 +1251,101 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
             }
         }
     }
+    if (report.packet_capture_report.has_value()) {
+        const tze::PacketCaptureReport& capture = *report.packet_capture_report;
+        std::cout << "OmniXTView: " << capture.status << "\n";
+        std::cout << "OmniXTView summary: " << capture.summary << "\n";
+        if (!capture.interface_name.empty()) {
+            std::cout << "Capture interface: " << capture.interface_name << "\n";
+        }
+        if (!capture.pcap_path.empty()) {
+            std::cout << "Capture file: " << capture.pcap_path << "\n";
+        }
+        if (!capture.filter.empty()) {
+            std::cout << "Capture filter: " << capture.filter << "\n";
+        }
+        if (!capture.export_path.empty()) {
+            std::cout << "Capture JSONL export: " << capture.export_path << "\n";
+        }
+        if (!capture.interfaces.empty()) {
+            std::cout << "Capture interfaces:\n";
+            for (const std::string& iface : capture.interfaces) {
+                std::cout << " - " << iface << "\n";
+            }
+        }
+        if (!capture.privilege_diagnostics.empty()) {
+            std::cout << "Capture privilege diagnostics:\n";
+            for (const std::string& line : capture.privilege_diagnostics) {
+                std::cout << " - " << line << "\n";
+            }
+        }
+        if (!capture.flow_summary.empty()) {
+            std::cout << "Capture flows:\n";
+            for (const std::string& flow : capture.flow_summary) {
+                std::cout << " - " << flow << "\n";
+            }
+        }
+        if (!capture.packets.empty()) {
+            std::cout << "Packets:\n";
+            for (const tze::PacketRecord& packet : capture.packets) {
+                std::cout << " - " << packet.timestamp << " "
+                          << packet.src_ip << ":" << packet.src_port
+                          << " -> " << packet.dst_ip << ":" << packet.dst_port
+                          << " flags=" << packet.tcp_flags
+                          << " payload=" << packet.payload_length
+                          << " class=" << packet.classification
+                          << " code=" << packet.analysis_code << "\n";
+                if (!packet.payload_text_utf8.empty()) {
+                    std::cout << "   text_utf8(" << packet.payload_text_status << "): "
+                              << packet.payload_text_utf8 << "\n";
+                }
+                if (!packet.ascii_preview.empty()) {
+                    std::cout << "   ascii: " << packet.ascii_preview << "\n";
+                }
+                if (!packet.hex_preview.empty()) {
+                    std::cout << "   hex: " << packet.hex_preview << "\n";
+                }
+                for (const std::string& line : packet.plaintext_decode) {
+                    std::cout << "   decode: " << line << "\n";
+                }
+            }
+        }
+        if (!capture.warnings.empty()) {
+            std::cout << "Capture warnings:\n";
+            for (const std::string& warning : capture.warnings) {
+                std::cout << " - " << warning << "\n";
+            }
+        }
+    }
+    if (report.defense_diagnostic_report.has_value()) {
+        const tze::DefenseDiagnosticReport& defense = *report.defense_diagnostic_report;
+        std::cout << "Defense diagnostic: " << defense.status << "\n";
+        std::cout << "Defense summary: " << defense.summary << "\n";
+        if (!defense.mode.empty()) {
+            std::cout << "Defense mode: " << defense.mode << "\n";
+        }
+        if (!defense.target.empty()) {
+            std::cout << "Defense target: " << defense.target << "\n";
+        }
+        if (!defense.evidence_lines.empty()) {
+            std::cout << "Defense evidence:\n";
+            for (const std::string& line : defense.evidence_lines) {
+                std::cout << " - " << line << "\n";
+            }
+        }
+        if (!defense.proposed_actions.empty()) {
+            std::cout << "Defense proposed actions:\n";
+            for (const std::string& action : defense.proposed_actions) {
+                std::cout << " - " << action << "\n";
+            }
+        }
+        if (!defense.warnings.empty()) {
+            std::cout << "Defense warnings:\n";
+            for (const std::string& warning : defense.warnings) {
+                std::cout << " - " << warning << "\n";
+            }
+        }
+    }
     if (report.source_inspection.has_value()) {
         const tze::SourceInspection& inspection = *report.source_inspection;
         std::cout << "Inspection: " << inspection.summary << "\n";
@@ -742,6 +1371,18 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
         }
         if (!build.log_path.empty()) {
             std::cout << "Build log: " << build.log_path << "\n";
+        }
+        if (!build.diagnostic_excerpt.empty()) {
+            std::cout << "Build diagnostics:\n";
+            for (const std::string& line : build.diagnostic_excerpt) {
+                std::cout << " - " << line << "\n";
+            }
+        }
+        if (!build.log_excerpt.empty() && build.status != "built" && build.status != "installed") {
+            std::cout << "Build log excerpt:\n";
+            for (const std::string& line : build.log_excerpt) {
+                std::cout << " - " << line << "\n";
+            }
         }
         if (!build.artifact_hint.empty()) {
             std::cout << "Artifact: " << build.artifact_hint << "\n";
@@ -952,9 +1593,9 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
     if (!report.tze_stages.empty()) {
         std::cout << "TZE stages:\n";
         for (const tze::TzeStageRecord& stage : report.tze_stages) {
-            std::cout << " - " << stage.stage_id << " [" << stage.status << "] " << stage.module;
+            std::cout << " - " << render_stage_label(stage) << " [" << stage.status << "] " << stage.module;
             if (!stage.detail.empty()) {
-                std::cout << " | " << stage.detail;
+                std::cout << " | " << human_readable_storage_text(stage.detail);
             }
             if (!stage.source_section.empty() || stage.source_line != 0) {
                 std::cout << " | source=";
@@ -1194,6 +1835,15 @@ std::string trim(std::string_view value) {
     return std::string(value.substr(start, end - start));
 }
 
+std::string lowercase(std::string_view value) {
+    std::string lowered;
+    lowered.reserve(value.size());
+    for (char c : value) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return lowered;
+}
+
 struct ToolCliInvocation {
     CommonCliOptions options;
     tze::ToolCommandMode mode = tze::ToolCommandMode::None;
@@ -1252,12 +1902,206 @@ ToolCliInvocation parse_tool_invocation(const std::vector<std::string>& args) {
             invocation.options.source_map_path = args[++index];
             continue;
         }
+        if (!passthrough && arg == "--compact") {
+            invocation.options.output_mode = OutputMode::Compact;
+            continue;
+        }
+        if (!passthrough && arg == "--verbose") {
+            invocation.options.output_mode = OutputMode::Verbose;
+            continue;
+        }
         invocation.tool_arguments.push_back(arg);
     }
     return invocation;
 }
 
+struct TViewCliInvocation {
+    CommonCliOptions options;
+    std::string mode;
+    std::string interface_name;
+    std::string pcap_path;
+    std::string output_path;
+    int port = 0;
+    std::size_t packet_count = 10;
+    std::size_t seconds = 5;
+    std::size_t payload_bytes = 96;
+};
+
+struct NeuralMathCliInvocation {
+    CommonCliOptions options;
+    std::string mode;
+    std::string dataset;
+    std::string route_input_path;
+    std::string route_output_path;
+    bool route = false;
+    std::size_t epochs = 32;
+    double learning_rate = 0.2;
+};
+
+NeuralMathCliInvocation parse_neural_math_invocation(const std::vector<std::string>& args) {
+    NeuralMathCliInvocation invocation;
+    if (args.size() >= 5 && args[2] == "route" && args[3] == "tview") {
+        invocation.route = true;
+        invocation.mode = "tview";
+        invocation.route_input_path = args[4];
+        for (std::size_t index = 5; index < args.size(); ++index) {
+            const std::string& arg = args[index];
+            if (arg == "--out") {
+                if (index + 1 >= args.size()) {
+                    throw std::runtime_error("--out requires a value.");
+                }
+                invocation.route_output_path = args[++index];
+                invocation.options.output_path = invocation.route_output_path;
+            } else if (arg == "--memory-root") {
+                if (index + 1 >= args.size()) {
+                    throw std::runtime_error("--memory-root requires a value.");
+                }
+                invocation.options.memory_root_path = args[++index];
+            } else if (arg == "--source-map") {
+                if (index + 1 >= args.size()) {
+                    throw std::runtime_error("--source-map requires a value.");
+                }
+                invocation.options.source_map_path = args[++index];
+            } else if (arg == "--verbose") {
+                invocation.options.output_mode = OutputMode::Verbose;
+            } else if (arg == "--compact") {
+                invocation.options.output_mode = OutputMode::Compact;
+            } else {
+                throw std::runtime_error("Unknown nn route option `" + arg + "`.");
+            }
+        }
+        return invocation;
+    }
+    if (args.size() < 4 || args[2] != "math" || args[3] != "perceptron") {
+        throw std::runtime_error("nn supports `nn math perceptron --dataset or|and|xor` and `nn route tview <file.jsonl>`.");
+    }
+    invocation.mode = "perceptron";
+    for (std::size_t index = 4; index < args.size(); ++index) {
+        const std::string& arg = args[index];
+        if (arg == "--dataset") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--dataset requires a value.");
+            }
+            invocation.dataset = args[++index];
+        } else if (arg == "--epochs") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--epochs requires a value.");
+            }
+            invocation.epochs = static_cast<std::size_t>(std::stoull(args[++index]));
+        } else if (arg == "--learning-rate") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--learning-rate requires a value.");
+            }
+            invocation.learning_rate = std::stod(args[++index]);
+        } else if (arg == "--memory-root") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--memory-root requires a value.");
+            }
+            invocation.options.memory_root_path = args[++index];
+        } else if (arg == "--source-map") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--source-map requires a value.");
+            }
+            invocation.options.source_map_path = args[++index];
+        } else if (arg == "--verbose") {
+            invocation.options.output_mode = OutputMode::Verbose;
+        } else if (arg == "--compact") {
+            invocation.options.output_mode = OutputMode::Compact;
+        } else {
+            throw std::runtime_error("Unknown nn option `" + arg + "`.");
+        }
+    }
+    if (invocation.dataset.empty()) {
+        throw std::runtime_error("nn math perceptron requires --dataset or|and|xor.");
+    }
+    if (invocation.learning_rate <= 0.0) {
+        throw std::runtime_error("--learning-rate must be positive.");
+    }
+    return invocation;
+}
+
+TViewCliInvocation parse_tview_invocation(const std::vector<std::string>& args) {
+    if (args.size() < 3) {
+        throw std::runtime_error("tview requires `port`, `pcap`, or `doctor`.");
+    }
+    TViewCliInvocation invocation;
+    invocation.mode = args[2];
+    std::size_t index = 3;
+    if (invocation.mode == "port") {
+        if (index >= args.size()) {
+            throw std::runtime_error("tview port requires a TCP port.");
+        }
+        invocation.port = std::stoi(args[index++]);
+    } else if (invocation.mode == "pcap") {
+        if (index >= args.size()) {
+            throw std::runtime_error("tview pcap requires a pcap file path.");
+        }
+        invocation.pcap_path = args[index++];
+    } else if (invocation.mode != "doctor") {
+        throw std::runtime_error("tview supports only `port`, `pcap`, and `doctor`.");
+    }
+
+    for (; index < args.size(); ++index) {
+        const std::string& arg = args[index];
+        if (arg == "--interface") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--interface requires a value.");
+            }
+            invocation.interface_name = args[++index];
+        } else if (arg == "--port") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--port requires a value.");
+            }
+            invocation.port = std::stoi(args[++index]);
+        } else if (arg == "--count") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--count requires a value.");
+            }
+            invocation.packet_count = static_cast<std::size_t>(std::stoull(args[++index]));
+        } else if (arg == "--seconds") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--seconds requires a value.");
+            }
+            invocation.seconds = static_cast<std::size_t>(std::stoull(args[++index]));
+        } else if (arg == "--payload-bytes") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--payload-bytes requires a value.");
+            }
+            invocation.payload_bytes = static_cast<std::size_t>(std::stoull(args[++index]));
+        } else if (arg == "--out") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--out requires a value.");
+            }
+            invocation.output_path = args[++index];
+        } else if (arg == "--memory-root") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--memory-root requires a value.");
+            }
+            invocation.options.memory_root_path = args[++index];
+        } else if (arg == "--source-map") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--source-map requires a value.");
+            }
+            invocation.options.source_map_path = args[++index];
+        } else if (arg == "--verbose") {
+            invocation.options.output_mode = OutputMode::Verbose;
+        } else if (arg == "--compact") {
+            invocation.options.output_mode = OutputMode::Compact;
+        } else {
+            throw std::runtime_error("Unknown tview option `" + arg + "`.");
+        }
+    }
+    if ((invocation.mode == "port" && invocation.port <= 0) ||
+        invocation.port < 0 || invocation.port > 65535) {
+        throw std::runtime_error("tview port must be between 1 and 65535.");
+    }
+    return invocation;
+}
+
 bool build_like_success(const tze::ProcessingReport& report) {
+    if (report.answer_status == "recipe_authored" || report.answer_status == "recipe_authoring_repaired") {
+        return true;
+    }
     if (report.answer_status == "native_ready") {
         return true;
     }
@@ -1354,6 +2198,34 @@ int run_preflight(const std::vector<std::string>& args) {
     return build_like_success(report) ? 0 : 1;
 }
 
+int run_recipe_author(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 3, &positional);
+    if (positional.empty()) {
+        throw std::runtime_error("recipe author requires a local source path.");
+    }
+
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.raw_prompt = "recipe author " + positional.front();
+    profile.project_reference = positional.front();
+    profile.build_source_path = positional.front();
+    profile.instruction_slot = "aZ::1";
+    profile.resolved_intent = tze::RequestIntent::AuthorBuildRecipe;
+    if (profile.source_map_path == "res/tze.txt") {
+        const std::filesystem::path candidate = optional_source_file();
+        if (!candidate.empty()) {
+            profile.source_map_path = candidate.string();
+        } else {
+            profile.source_map_path.clear();
+        }
+    }
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, options.output_mode, false);
+    return build_like_success(report) ? 0 : 1;
+}
+
 int run_doctor(const std::vector<std::string>& args) {
     std::vector<std::string> positional;
     const CommonCliOptions options = parse_common_options(args, 2, &positional);
@@ -1400,6 +2272,131 @@ int run_provider(const std::vector<std::string>& args) {
     const tze::ProcessingReport report = engine.process(profile);
     print_processing_report(report, options.output_mode, false);
     return report.answer_status == "provider_ready" || report.answer_status == "provider_inactive" ? 0 : 1;
+}
+
+int run_tview(const std::vector<std::string>& args) {
+    const TViewCliInvocation invocation = parse_tview_invocation(args);
+    tze::RequestProfile profile = make_base_profile(invocation.options);
+    profile.raw_prompt = "tview " + invocation.mode;
+    profile.resolved_intent = tze::RequestIntent::PacketCapture;
+    profile.packet_capture_mode = invocation.mode == "port" ? "live" : invocation.mode;
+    profile.packet_interface = invocation.interface_name;
+    profile.packet_pcap_path = invocation.pcap_path;
+    profile.packet_export_path = invocation.output_path;
+    profile.packet_port = invocation.port;
+    profile.packet_count = invocation.packet_count;
+    profile.packet_seconds = invocation.seconds;
+    profile.packet_payload_bytes = invocation.payload_bytes;
+    if (profile.source_map_path == "res/tze.txt") {
+        const std::filesystem::path candidate = optional_source_file();
+        profile.source_map_path = candidate.empty() ? std::string{} : candidate.string();
+    }
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, invocation.options.output_mode, false);
+    if (!report.packet_capture_report.has_value()) {
+        return 1;
+    }
+    return report.packet_capture_report->status == "capture_complete" ||
+           report.packet_capture_report->status == "capture_empty" ||
+           report.packet_capture_report->status == "capture_ready"
+        ? 0
+        : 1;
+}
+
+int run_persona(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.size() < 2 || positional.front() != "mode") {
+        throw std::runtime_error("persona currently supports `persona mode <premise|cynic|professional|neutral>`.");
+    }
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.raw_prompt = "persona mode " + positional[1];
+    profile.persona_mode = positional[1];
+    profile.resolved_intent = tze::RequestIntent::SetPersonaMode;
+    profile.source_map_path.clear();
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, options.output_mode, false);
+    return report.answer_status == "persona_mode_set" ? 0 : 1;
+}
+
+int run_nn(const std::vector<std::string>& args) {
+    const NeuralMathCliInvocation invocation = parse_neural_math_invocation(args);
+    tze::RequestProfile profile = make_base_profile(invocation.options);
+    if (invocation.route) {
+        profile.raw_prompt = "nn route tview " + invocation.route_input_path;
+        profile.resolved_intent = tze::RequestIntent::NeuralRoute;
+        profile.neural_route_mode = invocation.mode;
+        profile.neural_route_input_path = invocation.route_input_path;
+        profile.neural_route_output_path = invocation.route_output_path;
+    } else {
+        profile.raw_prompt = "nn math perceptron --dataset " + invocation.dataset;
+        profile.resolved_intent = tze::RequestIntent::NeuralMath;
+        profile.neural_math_mode = invocation.mode;
+        profile.neural_dataset = invocation.dataset;
+        profile.neural_epochs = invocation.epochs;
+        profile.neural_learning_rate = invocation.learning_rate;
+    }
+    if (profile.source_map_path == "res/tze.txt") {
+        const std::filesystem::path candidate = optional_source_file();
+        profile.source_map_path = candidate.empty() ? std::string{} : candidate.string();
+    }
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, invocation.options.output_mode, false);
+    if (invocation.route) {
+        return report.neural_route_report.has_value() &&
+               report.neural_route_report->status == "neural_route_complete"
+            ? 0
+            : 1;
+    }
+    return report.neural_math_report.has_value() &&
+           (report.neural_math_report->status == "neural_math_complete" ||
+            report.neural_math_report->status == "not_linearly_separable")
+        ? 0
+        : 1;
+}
+
+int run_defend(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.size() < 2 || positional.front() != "diag") {
+        throw std::runtime_error("defend currently supports `defend diag <cpu|memory|logs|pid|port> [target]`.");
+    }
+    const std::string mode = positional[1];
+    std::vector<std::string> target_parts;
+    for (std::size_t index = 2; index < positional.size(); ++index) {
+        target_parts.push_back(positional[index]);
+    }
+    const std::string target = join_positional_arguments(target_parts);
+
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.raw_prompt = "defend diag " + mode + (target.empty() ? std::string{} : " " + target);
+    profile.resolved_intent = tze::RequestIntent::DefenseDiagnostic;
+    profile.defense_mode = mode;
+    profile.defense_target = target;
+    if (mode == "port" && !target.empty()) {
+        profile.defense_port = std::stoi(target);
+    } else if (mode == "pid" && !target.empty()) {
+        profile.defense_pid = std::stoi(target);
+    }
+    if (profile.source_map_path == "res/tze.txt") {
+        const std::filesystem::path candidate = optional_source_file();
+        profile.source_map_path = candidate.empty() ? std::string{} : candidate.string();
+    }
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, options.output_mode, false);
+    return report.defense_diagnostic_report.has_value() &&
+           (report.defense_diagnostic_report->status == "defense_diagnostic_complete" ||
+            report.defense_diagnostic_report->status == "defense_diagnostic_empty")
+        ? 0
+        : 1;
 }
 
 int run_analyst_command(const std::vector<std::string>& args,
@@ -1652,6 +2649,7 @@ int run_define(const std::vector<std::string>& args) {
     profile.raw_prompt = "define " + positional.front();
     profile.instruction_slot = "aZ::99";
     profile.resolved_intent = tze::RequestIntent::DefineSymbol;
+    profile.definition_concept = positional.front();
     if (positional.size() >= 2 && options.source_map_path.empty()) {
         profile.source_map_path = positional[1];
     } else if (profile.source_map_path == "res/tze.txt") {
@@ -1695,6 +2693,29 @@ int run_explain(const std::vector<std::string>& args) {
     const tze::ProcessingReport report = engine.process(profile);
     print_processing_report(report, options.output_mode, true);
     return report.definition_answer.has_value() && report.definition_answer->found ? 0 : 1;
+}
+
+int run_review_command(const std::vector<std::string>& args, bool patch_mode) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.empty()) {
+        throw std::runtime_error(std::string(patch_mode ? "patch-proposal" : "review") + " requires a path or module target.");
+    }
+
+    const std::string target = join_positional_arguments(positional);
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.raw_prompt = std::string(patch_mode ? "patch-proposal " : "review ") + target;
+    profile.review_target = target;
+    profile.resolved_intent = patch_mode ? tze::RequestIntent::PatchProposal : tze::RequestIntent::ReviewModule;
+    if (profile.source_map_path == "res/tze.txt") {
+        const std::filesystem::path candidate = optional_source_file();
+        profile.source_map_path = candidate.empty() ? std::string{} : candidate.string();
+    }
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, options.output_mode, true);
+    return (patch_mode ? report.answer_status == "patch_proposal_ready" : report.answer_status == "review_ready") ? 0 : 1;
 }
 
 int run_memory(const std::vector<std::string>& args) {
@@ -1900,6 +2921,7 @@ int run_tze(const std::vector<std::string>& args) {
 struct ShellState {
     CommonCliOptions options;
     bool assist_enabled = false;
+    bool full_tool_output = true;
     std::string current_case_id;
     std::string current_incident_id;
     std::string current_run_id;
@@ -1920,6 +2942,7 @@ void print_shell_help() {
     std::cout << " - /report [run-id|latest]\n";
     std::cout << " - /diff <left-run-id> <right-run-id>\n";
     std::cout << " - /quit\n";
+    std::cout << "Persona shortcuts: premise mode, cynic mode, professional mode, neutral mode.\n";
     std::cout << "Plain input is routed through the normal OmniX intent resolver.\n";
 }
 
@@ -1980,6 +3003,57 @@ std::string expand_shell_input(std::string line, const ShellState& state) {
     return line;
 }
 
+std::string normalized_shell_input(std::string line,
+                                   ShellState& state,
+                                   const tze::MemorySnapshot& memory,
+                                   std::optional<tze::ShellLexiconEntry>* matched_entry = nullptr) {
+    line = expand_shell_input(std::move(line), state);
+    const std::string original_line = line;
+    tze::ShellLexicon lexicon;
+    const std::optional<tze::ShellLexiconEntry> entry = lexicon.normalize(line, memory, true);
+    if (!entry.has_value()) {
+        if (matched_entry != nullptr) {
+            matched_entry->reset();
+        }
+        return line;
+    }
+    if (matched_entry != nullptr) {
+        *matched_entry = entry;
+    }
+    if (entry->category == "verbosity_full") {
+        state.full_tool_output = true;
+        return "__shell_pref_full__";
+    }
+    if (entry->category == "verbosity_compact") {
+        state.full_tool_output = false;
+        return "__shell_pref_compact__";
+    }
+    if (entry->category == "general_definition_query") {
+        const std::string lowered = lowercase(original_line);
+        if (lowered.rfind("what is ", 0) == 0 ||
+            lowered.rfind("define ", 0) == 0 ||
+            lowered.find("meaning of ") != std::string::npos ||
+            lowered.find("what does ") != std::string::npos) {
+            return original_line;
+        }
+
+        std::string domain_hint;
+        for (const std::string& note : entry->correction_notes) {
+            if (note.rfind("domain_hint=", 0) == 0) {
+                domain_hint = note.substr(std::string("domain_hint=").size());
+                break;
+            }
+        }
+
+        std::string explicit_prompt = "What is " + entry->canonical;
+        if (!domain_hint.empty()) {
+            explicit_prompt += " in terms of " + domain_hint;
+        }
+        return explicit_prompt;
+    }
+    return entry->canonical;
+}
+
 bool shell_requests_last_results(std::string_view line, const ShellState& state) {
     const std::string trimmed = trim(line);
     std::string lowered;
@@ -1990,6 +3064,10 @@ bool shell_requests_last_results(std::string_view line, const ShellState& state)
 
     if (lowered == "results" || lowered == "last results") {
         return true;
+    }
+    if (lowered.find("run ") != std::string::npos || lowered.find("use ") != std::string::npos ||
+        lowered.find("scan") != std::string::npos) {
+        return false;
     }
     if (!state.last_report.has_value()) {
         return false;
@@ -2060,6 +3138,7 @@ void print_shell_status(const ShellState& state) {
                       ? "verbose"
                       : (state.options.output_mode == OutputMode::Compact ? "compact" : "auto"))
               << "\n";
+    std::cout << " - Tool results: " << (state.full_tool_output ? "full" : "compact") << "\n";
     std::cout << " - Memory root: "
               << (state.options.memory_root_path.empty() ? std::string("(default)") : state.options.memory_root_path) << "\n";
     std::cout << " - Source map: "
@@ -2089,6 +3168,87 @@ void update_shell_state(ShellState& state, const tze::ProcessingReport& report, 
     }
 }
 
+void print_shell_followup(const ShellState& state, std::string_view request) {
+    const std::string lowered = trim(request);
+    if (!state.last_report.has_value()) {
+        if (lowered == "fix this") {
+            std::cout << "Nothing to fix yet. Run a command first and I’ll help repair it.\n";
+        } else {
+            std::cout << "No prior command is available yet. Try `help`, `Run NMAP`, or `secure my system`.\n";
+        }
+        return;
+    }
+
+    const tze::ProcessingReport& report = *state.last_report;
+    if (lowered == "fix this") {
+        if (report.answer_status == "unknown_intent") {
+            std::cout << "I didn’t parse the last request cleanly.\n";
+            if (!report.next_action.empty()) {
+                std::cout << "Try this instead: " << report.next_action << "\n";
+            }
+            return;
+        }
+        std::cout << "The last command did not fail in a way that needs repair. ";
+        std::cout << (!report.next_action.empty() ? report.next_action : "Try `Next?` for a follow-up.") << "\n";
+        return;
+    }
+
+    if (!report.next_action.empty()) {
+        std::cout << report.next_action << "\n";
+        return;
+    }
+    std::cout << "Review the last result with `/why` or run another guarded command.\n";
+}
+
+bool shell_validate_next_step_plan(const tze::NextStepAssistPlan& plan) {
+    return !plan.suggested_next_step.empty() && plan.confidence >= 0.0 && plan.confidence <= 1.0;
+}
+
+void print_shell_assist_followup(const ShellState& state,
+                                 std::string_view request,
+                                 tze::MemoryStore& memory_store,
+                                 tze::MemorySnapshot memory) {
+    if (!state.assist_enabled || !state.last_report.has_value()) {
+        return;
+    }
+    std::unique_ptr<tze::ReasoningProvider> provider = tze::make_reasoning_provider_from_env();
+    if (provider == nullptr) {
+        return;
+    }
+    const std::string deterministic_guidance = state.last_report->next_action.empty()
+        ? state.last_report->answer_explanation
+        : state.last_report->next_action;
+    const std::optional<tze::NextStepAssistPlan> proposed =
+        provider->propose_next_step(request, deterministic_guidance);
+    if (!proposed.has_value() || !shell_validate_next_step_plan(*proposed)) {
+        return;
+    }
+    std::cout << "Assist next: " << proposed->suggested_next_step << "\n";
+    if (!proposed->safer_alternative.empty()) {
+        std::cout << "Assist safer alternative: " << proposed->safer_alternative << "\n";
+    }
+    tze::AssistOutcomeRecord outcome;
+    outcome.id = "assist-outcome-shell-" + std::to_string(std::hash<std::string>{}(std::string(request) + deterministic_guidance));
+    outcome.task_type = "shell_followup";
+    outcome.plan_type = "next_step";
+    outcome.provider_id = proposed->provider_id;
+    outcome.model = proposed->model;
+    outcome.status = "assist_used";
+    outcome.target_label = state.current_run_id;
+    outcome.canonical_value = proposed->suggested_next_step;
+    outcome.host_platform =
+#if defined(__APPLE__)
+        "macos";
+#elif defined(__linux__)
+        "linux";
+#else
+        "unknown";
+#endif
+    outcome.persisted_at = "shell-session";
+    memory_store.remember_assist_outcome(memory, outcome);
+    memory_store.persist_snapshot(memory);
+}
+
 int run_shell(const std::vector<std::string>& args) {
     std::vector<std::string> positional;
     ShellState state;
@@ -2096,11 +3256,30 @@ int run_shell(const std::vector<std::string>& args) {
     state.assist_enabled = state.options.assist;
 
     tze::ProcessingEngine engine;
+    tze::MemoryStore memory_store;
     std::cout << "OmniX shell started. Type /help for commands.\n";
 
     for (std::string line; std::cout << shell_prompt(state), std::getline(std::cin, line);) {
         line = trim(line);
         if (line.empty()) {
+            continue;
+        }
+
+        const tze::MemorySnapshot shell_memory = memory_store.load(state.options.memory_root_path);
+        std::optional<tze::ShellLexiconEntry> lexicon_entry;
+        line = normalized_shell_input(line, state, shell_memory, &lexicon_entry);
+
+        if (line == "__shell_pref_full__") {
+            std::cout << "Full shell tool results enabled.\n";
+            continue;
+        }
+        if (line == "__shell_pref_compact__") {
+            std::cout << "Compact shell tool results enabled.\n";
+            continue;
+        }
+        if (line == "next" || line == "fix this") {
+            print_shell_followup(state, line);
+            print_shell_assist_followup(state, line, memory_store, shell_memory);
             continue;
         }
 
@@ -2225,9 +3404,23 @@ int run_shell(const std::vector<std::string>& args) {
                    expanded.rfind("incident report ", 0) != 0) {
             profile.incident_reference = trim(expanded.substr(std::string("incident ").size()));
         }
+        if (lexicon_entry.has_value()) {
+            profile.shell_correction_note = lexicon_entry->correction_notes.empty()
+                ? std::string{}
+                : lexicon_entry->correction_notes.front();
+        }
 
         const tze::ProcessingReport report = engine.process(profile);
         print_processing_report(report, state.options.output_mode, false);
+        if (state.full_tool_output && report.tool_invocation_report.has_value()) {
+            const tze::ToolInvocationReport& invocation = *report.tool_invocation_report;
+            if (invocation.output_excerpt.size() > 1) {
+                std::cout << "output:\n";
+                for (const std::string& output_line : invocation.output_excerpt) {
+                    std::cout << " - " << output_line << "\n";
+                }
+            }
+        }
         update_shell_state(state, report, expanded);
     }
 
@@ -2242,6 +3435,7 @@ int run_tool(const std::vector<std::string>& args) {
     profile.tool_mode = invocation.mode;
     profile.requested_tool_name = invocation.tool_name;
     profile.tool_arguments = invocation.tool_arguments;
+    profile.verbose_output = invocation.options.output_mode == OutputMode::Verbose;
     profile.raw_prompt = invocation.mode == tze::ToolCommandMode::List
         ? "tool list"
         : ("tool " + invocation.tool_name);
@@ -2271,6 +3465,64 @@ int run_tool(const std::vector<std::string>& args) {
             : 1;
     }
     return report.tool_invocation_report.has_value() && report.tool_invocation_report->status == "ok" ? 0 : 1;
+}
+
+int run_gg(const std::vector<std::string>& args) {
+    CommonCliOptions options;
+    std::vector<std::string> gg_arguments;
+    for (std::size_t index = 2; index < args.size(); ++index) {
+        const std::string& arg = args[index];
+        if (arg == "--compact") {
+            options.output_mode = OutputMode::Compact;
+            continue;
+        }
+        if (arg == "--verbose") {
+            options.output_mode = OutputMode::Verbose;
+            continue;
+        }
+        if (arg == "--memory-root") {
+            if (index + 1 >= args.size()) {
+                throw std::runtime_error("--memory-root requires a value.");
+            }
+            options.memory_root_path = args[++index];
+            continue;
+        }
+        gg_arguments.push_back(arg);
+    }
+
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.resolved_intent = tze::RequestIntent::ToolAction;
+    profile.requested_tool_name = "gg";
+    profile.verbose_output = options.output_mode == OutputMode::Verbose;
+    profile.raw_prompt = "gg " + join_positional_arguments(gg_arguments);
+    if (gg_arguments.empty() || gg_arguments.front() == "doctor") {
+        profile.tool_mode = tze::ToolCommandMode::Doctor;
+    } else {
+        profile.tool_mode = tze::ToolCommandMode::Run;
+        profile.tool_arguments = gg_arguments;
+    }
+    if (profile.source_map_path == "res/tze.txt") {
+        const std::filesystem::path candidate = optional_source_file();
+        if (!candidate.empty()) {
+            profile.source_map_path = candidate.string();
+        } else {
+            profile.source_map_path.clear();
+        }
+    }
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, options.output_mode, false);
+    if (profile.tool_mode == tze::ToolCommandMode::Doctor) {
+        return report.tool_doctor_report.has_value() &&
+                   report.tool_doctor_report->status == "builtin_ready"
+            ? 0
+            : 1;
+    }
+    if (report.tool_invocation_report.has_value()) {
+        return report.tool_invocation_report->exit_code == 0 ? 0 : 1;
+    }
+    return 1;
 }
 
 }  // namespace
@@ -2303,6 +3555,24 @@ int main(int argc, char** argv) {
             const std::filesystem::path source_file = argc >= 4 ? std::filesystem::path(args[3]) : default_source_file();
             run_search(args[2], source_file);
             return 0;
+        }
+
+        if (command == "legacy") {
+            if (argc < 3) {
+                throw std::runtime_error("legacy requires a subcommand: coverage or report.");
+            }
+            const std::string legacy_command = args[2];
+            const std::filesystem::path source_file =
+                argc >= 4 ? std::filesystem::path(args[3]) : default_legacy_source_file();
+            if (legacy_command == "coverage") {
+                run_legacy_coverage(source_file);
+                return 0;
+            }
+            if (legacy_command == "report") {
+                run_legacy_report(source_file);
+                return 0;
+            }
+            throw std::runtime_error("unknown legacy subcommand: " + legacy_command);
         }
 
         if (command == "emit-cpp") {
@@ -2347,6 +3617,14 @@ int main(int argc, char** argv) {
             return run_explain(args);
         }
 
+        if (command == "review") {
+            return run_review_command(args, false);
+        }
+
+        if (command == "patch-proposal") {
+            return run_review_command(args, true);
+        }
+
         if (command == "build") {
             return run_build_prompt(args);
         }
@@ -2355,12 +3633,36 @@ int main(int argc, char** argv) {
             return run_preflight(args);
         }
 
+        if (command == "recipe") {
+            return run_recipe_author(args);
+        }
+
         if (command == "doctor") {
             return run_doctor(args);
         }
 
         if (command == "provider") {
             return run_provider(args);
+        }
+
+        if (command == "tview") {
+            return run_tview(args);
+        }
+
+        if (command == "persona") {
+            return run_persona(args);
+        }
+
+        if (command == "gg") {
+            return run_gg(args);
+        }
+
+        if (command == "nn") {
+            return run_nn(args);
+        }
+
+        if (command == "defend") {
+            return run_defend(args);
         }
 
         if (command == "shell") {

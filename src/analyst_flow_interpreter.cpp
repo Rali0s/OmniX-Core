@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <sys/wait.h>
@@ -933,6 +934,64 @@ DecisionMetrics compute_decision_metrics(const std::vector<std::string>& all_sig
     return metrics;
 }
 
+MathAttribution make_decision_attribution(std::string name,
+                                          double raw_value,
+                                          double weight,
+                                          std::string source,
+                                          std::string rationale) {
+    MathAttribution attribution;
+    attribution.name = std::move(name);
+    attribution.raw_value = raw_value;
+    attribution.weight = weight;
+    attribution.contribution = raw_value * weight;
+    attribution.source = std::move(source);
+    attribution.rationale = std::move(rationale);
+    return attribution;
+}
+
+std::vector<MathAttribution> decision_math_attributions(const DecisionCandidate& candidate) {
+    std::vector<MathAttribution> attributions;
+    attributions.push_back(make_decision_attribution(
+        "probability_likelihood",
+        clamp_probability(candidate.probability_likelihood),
+        0.55,
+        "AnalystFlowInterpreter::posterior",
+        "Posterior likelihood is the largest scoring factor for decision ordering."));
+    attributions.push_back(make_decision_attribution(
+        "confidence",
+        clamp_probability(candidate.confidence),
+        0.30,
+        "AnalystFlowInterpreter::confidence",
+        "Confidence combines evidence coverage, validity, and historical signal strength."));
+    attributions.push_back(make_decision_attribution(
+        "evidence_coverage",
+        std::clamp(static_cast<double>(candidate.evidence_coverage) / 100.0, 0.0, 1.0),
+        0.15,
+        "AnalystFlowInterpreter::signals",
+        "Matched evidence signals add weight when the case has concrete observations."));
+    if (!candidate.valid) {
+        attributions.push_back(make_decision_attribution(
+            "validity_penalty",
+            1.0,
+            -0.20,
+            "AnalystFlowInterpreter::validation",
+            "Invalid or conditional decisions receive a bounded penalty."));
+    }
+    attributions.push_back(make_decision_attribution(
+        "validity_score",
+        std::clamp(static_cast<double>(candidate.validity_score) / 100.0, 0.0, 1.0),
+        0.0,
+        "AnalystFlowInterpreter::validation",
+        "Displayed for backtrace; it is already represented through confidence and penalties."));
+    attributions.push_back(make_decision_attribution(
+        "prior_success_score",
+        std::clamp(static_cast<double>(candidate.prior_success_score) / 100.0, 0.0, 1.0),
+        0.0,
+        "MemoryStore::decision_outcomes",
+        "Displayed for backtrace; historical priors are folded into posterior and confidence upstream."));
+    return attributions;
+}
+
 std::vector<NormalizedObject> normalize_observation(const ObservationRecord& observation) {
     const UnixEvidenceParser parser;
     return parser.parse(observation);
@@ -993,6 +1052,7 @@ std::vector<DecisionCandidate> build_decisions(const CaseRecord& case_record,
         if (!candidate.valid) {
             candidate.score = clamp_score(candidate.score - 20);
         }
+        candidate.math_attributions = decision_math_attributions(candidate);
         decisions.push_back(std::move(candidate));
     };
 

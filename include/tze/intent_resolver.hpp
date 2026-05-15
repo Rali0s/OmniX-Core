@@ -13,6 +13,8 @@ struct IntentResolution {
     std::string normalized_prompt;
     std::string primary_target;
     std::string memory_view;
+    std::string definition_domain_hint;
+    std::string comparison_rationale;
     double confidence = 0.0;
     std::vector<std::string> suggestions;
 };

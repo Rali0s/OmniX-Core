@@ -1,0 +1,168 @@
+{
+  "id": "gsmg-outage-window-db-guard",
+  "workflow": "generic-signal-model-ground.controlled-shutdown.data-loss-guard",
+  "evaluationTimestamp": "2026-02-20T22:05:00-05:00",
+  "assets": [
+    {
+      "id": "lb-public-01",
+      "kind": "load_balancer",
+      "name": "Public load balancer",
+      "role": "external ingress",
+      "tier": "ingress",
+      "owner": "Engineer Infra",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    },
+    {
+      "id": "apache-web-01",
+      "kind": "http_host",
+      "name": "Apache HTTPS host",
+      "role": "front door",
+      "tier": "application-edge",
+      "owner": "Engineer Infra",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    },
+    {
+      "id": "abc-api.service",
+      "kind": "service",
+      "name": "ABC API",
+      "role": "application writer",
+      "tier": "application",
+      "owner": "Payments Platform Team",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    },
+    {
+      "id": "payments-db",
+      "kind": "database",
+      "name": "Payments database",
+      "role": "data core",
+      "tier": "data",
+      "owner": "Database Engineering",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    },
+    {
+      "id": "/data/payments",
+      "kind": "mount",
+      "name": "Payments data mount",
+      "role": "fstab detached block storage mount",
+      "tier": "storage",
+      "owner": "Storage Engineering",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL"
+    }
+  ],
+  "signals": [
+    {
+      "id": "maintenance.window.approved",
+      "asset": "lb-public-01",
+      "value": "approved",
+      "status": "approved"
+    },
+    {
+      "id": "sensor.mute.scope",
+      "asset": "lb-public-01",
+      "value": "internal_only",
+      "status": "internal_only"
+    },
+    {
+      "id": "ingress.external_writes.active",
+      "asset": "lb-public-01",
+      "value": 1,
+      "unit": "boolean"
+    },
+    {
+      "id": "connection_pool.open",
+      "asset": "abc-api.service",
+      "value": 42,
+      "previousValue": 44,
+      "unit": "connections"
+    },
+    {
+      "id": "database.active_writers",
+      "asset": "payments-db",
+      "value": 7,
+      "unit": "writers"
+    },
+    {
+      "id": "queue.unacked",
+      "asset": "XXB",
+      "value": 17,
+      "unit": "messages"
+    },
+    {
+      "id": "mount.active_writers",
+      "asset": "/data/payments",
+      "value": 3,
+      "unit": "writers"
+    },
+    {
+      "id": "backup.checkpoint.valid",
+      "asset": "payments-db",
+      "value": "valid",
+      "status": "valid"
+    }
+  ],
+  "policies": [
+    {
+      "id": "data-loss-guard.database-shutdown-blocked",
+      "description": "Database shutdown is blocked while client writes, app connection pools, active DB writers, queue acknowledgements, or mount writers still exist.",
+      "if": [
+        { "signal": "ingress.external_writes.active", "operator": ">", "value": 0 },
+        { "signal": "connection_pool.open", "operator": ">", "value": 0 },
+        { "signal": "database.active_writers", "operator": ">", "value": 0 },
+        { "signal": "queue.unacked", "operator": ">", "value": 0 },
+        { "signal": "mount.active_writers", "operator": ">", "value": 0 }
+      ],
+      "then": {
+        "likelyCause": "unsafe_database_shutdown_path",
+        "severity": "blocker",
+        "decision": "block_unsafe_action",
+        "recommendation": "Do not stop the database. Quiesce ingress, drain app sessions, stop producers, drain queues, close connection pools, then re-evaluate.",
+        "runbookId": "controlled-shutdown-preflight",
+        "escalationRequired": true,
+        "rationale": "Outage-window doctrine says the data core must not be stopped while front door, app writers, queues, or mounts are still active."
+      }
+    },
+    {
+      "id": "sensor-mute-safe-scope",
+      "description": "Scheduled maintenance may mute internal sensors, but client-impact and data-loss indicators remain active.",
+      "if": [
+        { "signal": "maintenance.window.approved", "status": "approved" },
+        { "signal": "sensor.mute.scope", "status": "internal_only" }
+      ],
+      "then": {
+        "likelyCause": "controlled_maintenance_alarm_suppression",
+        "severity": "warning",
+        "decision": "continue_preflight",
+        "recommendation": "Proceed only with controlled internal sensor muting; keep client-impact, corruption, replication, and data-loss alarms active.",
+        "runbookId": "controlled-shutdown-preflight",
+        "escalationRequired": false,
+        "rationale": "Controlled muting prevents alarm storms without silencing reality."
+      }
+    }
+  ],
+  "runbooks": [
+    {
+      "id": "controlled-shutdown-preflight",
+      "type": "recommendation_only",
+      "target": "maintenance-window",
+      "displayCommand": "quiesce ingress -> drain queues -> stop apps -> close pools -> stop DB -> flush/unmount -> detach storage",
+      "validationChecks": [
+        "external writes are zero",
+        "connection pools are closed",
+        "queue unacked count is zero",
+        "database active writers are zero",
+        "mount active writers are zero",
+        "backup checkpoint is valid"
+      ]
+    }
+  ],
+  "doctrineNotes": [
+    "Outage windows are threshold problems in reverse: the system must prove it is safe to intentionally stop each layer.",
+    "Shutdown order is ingress, application, queue/message, data, storage, host; startup is the reverse order.",
+    "Database and storage actions are blocked until writes, pools, queues, and mount activity are quiesced."
+  ]
+}

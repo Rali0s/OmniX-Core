@@ -1,0 +1,33 @@
+# term|domain|definition
+sun||The Sun is the star around which Earth orbits.
+sun|science|The Sun is the star at the center of the Solar System.
+matter||Matter can mean either physical substance or the subject under discussion, depending on context.
+matter|science|In science, matter is anything that has mass and occupies space.
+interesting|philosophy|An idea that is not fully formed yet, a question that prompts for more questions to be investigated.
+interesting||a statement; a question; a request;
+Apple|technology|The brainchild of Steve Jobs and his team.
+apple||1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+Steve Jobs|Biography|Read his damn book.
+Apple|technology|The brainchild of Steve Jobs and his team.
+apple|| 1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+Steve Jobs|Biography|Read his damn book.
+Turning Scale|omnix|A local rubric for judging whether OmniX is retrieving, learning, or reasoning from internal memory.
+Prime Arc|omnix|The active architectural roadmap family for OmniX development.
+premise mode|operator|A working style that prioritizes local truth, persistence, and deterministic verification.
+operator||a person who operates equipment or a machine; often an admin or administrator or engineer or mechanic
+operator|omnix|creator
+preflight blocker|omnix|A condition discovered before execution that would prevent a task from succeeding safely or correctly.
+neuromorphic programming||A future OmniX research track for brain-inspired, event-driven, spike-like local computation; first simulated through deterministic lineage, replay, and learning-loop primitives rather than requiring neuromorphic hardware.
+backtrace||Trace an answer, action, packet observation, or memory artifact backward through source evidence, TZE stages, provider input, and stored provenance.
+backtest||Replay historical runs or evidence against newer rules, classifiers, definitions, Simplex codes, or guardrails to measure regressions and improvements without mutating memory.
+back-add||Safely add validated historical findings back into glossary entries, compact memory artifacts, test fixtures, or rules without re-ingesting full reasoning chains.
+neural network||A computing model made of connected units with weights and biases that learn patterns from examples through training and inference.
+perceptron||A simple single-layer neural network unit that applies weighted inputs, a bias, and an activation rule to make a binary decision.
+tensor||A structured numeric array used to represent scalars, vectors, matrices, and higher-dimensional data in neural-network math.
+activation function||A function that converts a weighted neural input into an output signal, such as a step, sigmoid, ReLU, or softmax response.
+loss function||A measure of how wrong a model prediction is compared with the expected answer; training tries to reduce this error.
+gradient descent||An optimization method that adjusts model weights in small steps to reduce loss.
+backpropagation||The training process that sends error information backward through a neural network so weights can be updated.
+TensorFlow||A machine-learning framework for tensor math, model training, and inference; in OmniX it is a future optional adapter, not a core dependency.
+neural simulation||Running neural-network learning or inference in software without requiring specialized neural hardware; hardware limits shape speed and model size, but do not block small local experiments.
+neural signal router||A future OmniX advisory classifier that routes local evidence such as packet events, logs, definitions, and defense diagnostics into labels like benign control, suspicious port, unknown service, or needs human review.

@@ -334,6 +334,33 @@ std::vector<std::string> tail_lines(const std::filesystem::path& path, std::size
     return std::vector<std::string>(lines.end() - static_cast<std::ptrdiff_t>(max_lines), lines.end());
 }
 
+std::vector<std::string> diagnostic_lines(const std::filesystem::path& path, std::size_t max_lines) {
+    std::ifstream input(path);
+    if (!input) {
+        return {};
+    }
+
+    std::vector<std::string> matches;
+    for (std::string line; std::getline(input, line);) {
+        const std::string lowered = lowercase(line);
+        const bool interesting =
+            lowered.find("cmake error") != std::string::npos ||
+            lowered.find("could not find") != std::string::npos ||
+            lowered.find("not found") != std::string::npos ||
+            lowered.find("no package") != std::string::npos ||
+            lowered.find("fatal error") != std::string::npos ||
+            lowered.find(" error:") != std::string::npos ||
+            lowered.rfind("error:", 0) == 0;
+        if (interesting) {
+            matches.push_back(trim(line));
+        }
+    }
+    if (matches.size() <= max_lines) {
+        return matches;
+    }
+    return std::vector<std::string>(matches.begin(), matches.begin() + static_cast<std::ptrdiff_t>(max_lines));
+}
+
 std::string detect_build_system(const std::filesystem::path& root, std::vector<std::string>* detected_files) {
     if (std::filesystem::exists(root / "CMakeLists.txt")) {
         detected_files->push_back("CMakeLists.txt");
@@ -718,7 +745,7 @@ std::vector<std::string> packages_for_manager(std::string_view manager,
             return {"git", "pkg-config", "libpcap", "openssl", "curl", "wget"};
         }
         if (project == "tshark") {
-            return {"git", "cmake", "flex", "bison", "pkg-config", "glib", "libpcap", "gnutls", "zlib"};
+            return {"git", "cmake", "ninja", "python3", "perl", "flex", "bison", "pkg-config", "glib", "libpcap", "gnutls", "c-ares", "nghttp2", "brotli", "lz4", "zstd"};
         }
         if (project == "fmt" || project == "tinyxml2") {
             return {"git", "cmake"};
@@ -736,7 +763,7 @@ std::vector<std::string> packages_for_manager(std::string_view manager,
             return {"build-essential", "git", "pkg-config", "libpcap-dev", "libssl-dev", "curl", "wget"};
         }
         if (project == "tshark") {
-            return {"build-essential", "git", "cmake", "flex", "bison", "pkg-config", "libpcap-dev", "libglib2.0-dev", "libgnutls28-dev", "zlib1g-dev"};
+            return {"build-essential", "git", "cmake", "ninja-build", "python3", "perl", "flex", "bison", "pkg-config", "libpcap-dev", "libglib2.0-dev", "libgnutls28-dev", "zlib1g-dev", "libc-ares-dev", "libnghttp2-dev", "libbrotli-dev", "liblz4-dev", "libzstd-dev"};
         }
         if (project == "fmt" || project == "tinyxml2") {
             return {"build-essential", "cmake", "git"};
@@ -754,7 +781,7 @@ std::vector<std::string> packages_for_manager(std::string_view manager,
             return {"gcc", "gcc-c++", "make", "git", "pkgconf-pkg-config", "libpcap-devel", "openssl-devel", "curl", "wget"};
         }
         if (project == "tshark") {
-            return {"gcc", "gcc-c++", "make", "git", "cmake", "flex", "bison", "pkgconf-pkg-config", "libpcap-devel", "glib2-devel", "gnutls-devel", "zlib-devel"};
+            return {"gcc", "gcc-c++", "make", "git", "cmake", "ninja-build", "python3", "perl", "flex", "bison", "pkgconf-pkg-config", "libpcap-devel", "glib2-devel", "gnutls-devel", "zlib-devel", "c-ares-devel", "nghttp2-devel", "brotli-devel", "lz4-devel", "zstd-devel"};
         }
         if (project == "fmt" || project == "tinyxml2") {
             return {"gcc", "gcc-c++", "make", "cmake", "git"};
@@ -772,7 +799,7 @@ std::vector<std::string> packages_for_manager(std::string_view manager,
             return {"base-devel", "git", "pkgconf", "libpcap", "openssl", "curl", "wget"};
         }
         if (project == "tshark") {
-            return {"base-devel", "git", "cmake", "flex", "bison", "pkgconf", "libpcap", "glib2", "gnutls", "zlib"};
+            return {"base-devel", "git", "cmake", "ninja", "python", "perl", "flex", "bison", "pkgconf", "libpcap", "glib2", "gnutls", "zlib", "c-ares", "nghttp2", "brotli", "lz4", "zstd"};
         }
         if (project == "fmt" || project == "tinyxml2") {
             return {"base-devel", "cmake", "git"};
@@ -790,7 +817,7 @@ std::vector<std::string> packages_for_manager(std::string_view manager,
             return {"git", "pkgconf", "libpcap", "openssl", "curl", "wget", "gmake", "gcc"};
         }
         if (project == "tshark") {
-            return {"git", "cmake", "flex", "bison", "pkgconf", "libpcap", "glib", "gnutls", "zlib", "gmake", "gcc"};
+            return {"git", "cmake", "ninja", "python3", "perl5", "flex", "bison", "pkgconf", "libpcap", "glib", "gnutls", "zlib", "c-ares", "nghttp2", "brotli", "lz4", "zstd", "gmake", "gcc"};
         }
         if (project == "fmt" || project == "tinyxml2") {
             return {"git", "cmake", "gmake", "gcc"};
@@ -808,7 +835,7 @@ std::vector<std::string> packages_for_manager(std::string_view manager,
             return {"gcc", "gcc-c++", "make", "git", "pkgconf-pkg-config", "libpcap-devel", "openssl-devel", "curl", "wget"};
         }
         if (project == "tshark") {
-            return {"gcc", "gcc-c++", "make", "git", "cmake", "flex", "bison", "pkgconf-pkg-config", "libpcap-devel", "glib2-devel", "gnutls-devel", "zlib-devel"};
+            return {"gcc", "gcc-c++", "make", "git", "cmake", "ninja-build", "python3", "perl", "flex", "bison", "pkgconf-pkg-config", "libpcap-devel", "glib2-devel", "gnutls-devel", "zlib-devel", "c-ares-devel", "nghttp2-devel", "brotli-devel", "lz4-devel", "zstd-devel"};
         }
         if (project == "fmt" || project == "tinyxml2") {
             return {"gcc", "gcc-c++", "make", "cmake", "git"};
@@ -1020,6 +1047,121 @@ std::vector<std::string> dependency_checks_for_alias(const std::optional<Project
     return checks;
 }
 
+std::string availability_line(std::string_view label, bool available) {
+    return std::string(label) + ": " + (available ? "available" : "missing");
+}
+
+bool module_available(const std::vector<ToolchainModuleStatus>& modules, std::string_view id) {
+    const ToolchainModuleStatus* module = find_module(modules, id);
+    return module != nullptr && module->available;
+}
+
+std::vector<std::string> build_system_dependency_checks(std::string_view build_system,
+                                                        const std::vector<ToolchainModuleStatus>& modules,
+                                                        bool needs_git,
+                                                        const std::filesystem::path& source_path) {
+    std::vector<std::string> checks;
+    const bool compiler = module_available(modules, "gcc") || module_available(modules, "gxx");
+    append_unique(checks, availability_line("compiler", compiler));
+
+    if (needs_git) {
+        append_unique(checks, availability_line("git", module_available(modules, "git")));
+    }
+
+    if (build_system == "cmake") {
+        append_unique(checks, availability_line("cmake", module_available(modules, "cmake")));
+        append_unique(checks, availability_line("pkg-config", command_available("pkg-config")));
+    } else if (build_system == "configure") {
+        append_unique(checks, availability_line("make", module_available(modules, "make")));
+        append_unique(checks, availability_line("pkg-config", command_available("pkg-config")));
+        if (!source_path.empty()) {
+            append_unique(checks, std::string("configure script: ") +
+                                      (std::filesystem::exists(source_path / "configure") ? "present" : "missing"));
+        }
+    } else if (build_system == "make") {
+        append_unique(checks, availability_line("make", module_available(modules, "make")));
+    }
+
+    return checks;
+}
+
+std::vector<std::string> recipe_configure_flags(const BuildRecipe* recipe,
+                                                std::string_view build_system,
+                                                const RequestProfile& profile,
+                                                const PreflightReport& preflight) {
+    std::vector<std::string> flags;
+    if (build_system == "cmake") {
+        append_unique(flags, "-DCMAKE_BUILD_TYPE=" +
+                                 (profile.build_type.empty() ? std::string("Release") : profile.build_type) +
+                                 " (OmniX injected)");
+        if (!preflight.install_prefix.empty()) {
+            append_unique(flags, "-DCMAKE_INSTALL_PREFIX=" + preflight.install_prefix + " (OmniX injected)");
+        }
+    } else if (build_system == "configure" && !preflight.install_prefix.empty()) {
+        append_unique(flags, "--prefix=" + preflight.install_prefix + " (OmniX injected)");
+    } else if (build_system == "make" && !profile.build_target.empty()) {
+        append_unique(flags, "target=" + profile.build_target + " (OmniX build target)");
+    }
+
+    if (recipe != nullptr) {
+        for (const std::string& argument : recipe->configure_arguments) {
+            append_unique(flags, argument + " (recipe)");
+        }
+        if (!recipe->default_target.empty()) {
+            append_unique(flags, "target=" + recipe->default_target + " (recipe default)");
+        }
+        if (!recipe->install_target.empty() && recipe->supports_install) {
+            append_unique(flags, "install-target=" + recipe->install_target + " (recipe)");
+        }
+    }
+    return flags;
+}
+
+std::string doctor_subject(const RequestProfile& profile,
+                           std::string_view canonical_name,
+                           const std::filesystem::path& source_path) {
+    if (!source_path.empty()) {
+        return source_path.string();
+    }
+    if (!profile.project_reference.empty()) {
+        return profile.project_reference;
+    }
+    if (!profile.project_alias.empty()) {
+        return profile.project_alias;
+    }
+    return canonical_name.empty() ? std::string("project") : std::string(canonical_name);
+}
+
+std::vector<std::string> build_guidance_for(std::string_view subject,
+                                            std::string_view build_system,
+                                            const PreflightReport& preflight) {
+    std::vector<std::string> guidance;
+    if (build_system == "cmake") {
+        guidance.push_back("CMake projects usually fail during configure when development libraries are missing; run doctor before build to resolve package and flag gaps.");
+    } else if (build_system == "configure") {
+        guidance.push_back("Configure projects usually fail before compilation when headers or pkg-config metadata are missing; resolve doctor checks first.");
+    } else if (build_system == "make") {
+        guidance.push_back("Make projects usually rely on local Makefile defaults; use `--target` when the default target is not the desired artifact.");
+    }
+
+    if (!preflight.dependency_hints.empty()) {
+        guidance.push_back("Recipe dependency hints are advisory but should be treated as first-pass host setup instructions.");
+    }
+    guidance.push_back("Preflight check: omnix preflight " + std::string(subject));
+    guidance.push_back("Build after doctor is clean: omnix build " + std::string(subject) + " --clean");
+    return guidance;
+}
+
+bool checks_report_missing(const std::vector<std::string>& checks) {
+    return std::any_of(checks.begin(), checks.end(), [](const std::string& check) {
+        const std::string lowered = lowercase(check);
+        constexpr std::string_view suffix = "missing";
+        return lowered.find(": missing") != std::string::npos ||
+               (lowered.size() >= suffix.size() &&
+                lowered.compare(lowered.size() - suffix.size(), suffix.size(), suffix) == 0);
+    });
+}
+
 }  // namespace
 
 std::vector<ToolchainModuleStatus> BuildExecutor::probe_modules() const {
@@ -1181,6 +1323,7 @@ DoctorReport BuildExecutor::doctor(const RequestProfile& profile,
     const std::vector<std::string> package_managers = detected_package_managers();
     const std::string platform = current_platform();
     const std::string primary_manager = choose_primary_package_manager(platform, package_managers);
+    const BuildRecipe* recipe = select_recipe(alias, platform, profile.selected_recipe_id);
 
     report.status = preflight_result.ready ? "doctor_ready" : "doctor_attention_needed";
     report.summary = preflight_result.ready
@@ -1188,12 +1331,28 @@ DoctorReport BuildExecutor::doctor(const RequestProfile& profile,
         : "The current machine needs attention before the selected OmniX build recipe is likely to succeed.";
     report.canonical_project_name = preflight_result.canonical_project_name;
     report.recipe_id = preflight_result.recipe_id;
+    report.build_system = preflight_result.build_system;
     report.detected_platform = platform;
     report.detected_package_manager = primary_manager;
     report.available_package_managers = package_managers;
     report.missing_modules = preflight_result.missing_modules;
     report.dependency_hints = preflight_result.dependency_hints;
-    report.dependency_checks = dependency_checks_for_alias(alias, modules);
+    report.dependency_checks = build_system_dependency_checks(preflight_result.build_system,
+                                                             modules,
+                                                             preflight_result.will_acquire,
+                                                             source_path);
+    for (const std::string& check : dependency_checks_for_alias(alias, modules)) {
+        append_unique(report.dependency_checks, check);
+    }
+    if (preflight_result.ready && alias.has_value() && checks_report_missing(report.dependency_checks)) {
+        report.status = "doctor_attention_needed";
+        report.summary =
+            "The generic build spine is available, but project-specific doctor checks still need attention.";
+    }
+    report.configure_flags = recipe_configure_flags(recipe, preflight_result.build_system, profile, preflight_result);
+
+    const std::string subject = doctor_subject(profile, report.canonical_project_name, source_path);
+    report.build_guidance = build_guidance_for(subject, preflight_result.build_system, preflight_result);
 
     const std::string build_system = !preflight_result.build_system.empty()
         ? preflight_result.build_system
@@ -1202,6 +1361,19 @@ DoctorReport BuildExecutor::doctor(const RequestProfile& profile,
         report.package_guidance.push_back(
             make_package_guidance(manager, report.canonical_project_name, build_system, primary_manager));
     }
+
+    const auto primary_guidance =
+        std::find_if(report.package_guidance.begin(),
+                     report.package_guidance.end(),
+                     [](const PackageManagerGuidance& guidance) { return guidance.primary; });
+    if (report.status != "doctor_ready" && primary_guidance != report.package_guidance.end() &&
+        !primary_guidance->commands.empty()) {
+        report.next_steps.push_back("Install or verify dependencies with the primary guidance above.");
+        report.next_steps.push_back("Rerun `omnix doctor " + subject + "` after host setup changes.");
+    } else if (report.status == "doctor_ready") {
+        report.next_steps.push_back("Run `omnix build " + subject + " --clean` when ready to attempt the build.");
+    }
+    report.next_steps.push_back("If a build still fails, inspect the emitted build diagnostics before changing recipe flags.");
 
     if (alias.has_value()) {
         const std::string archive_url = archive_url_for_alias(*alias);
@@ -1375,7 +1547,7 @@ BuildExecution BuildExecutor::build_source(const RequestProfile& profile,
         return execution;
     }
 
-    const std::vector<std::string> missing = missing_modules(build_system, modules, false);
+    std::vector<std::string> missing = missing_modules(build_system, modules, false);
     execution.missing_modules = missing;
     if (!missing.empty()) {
         execution.status = "preflight_failed";
@@ -1525,12 +1697,13 @@ BuildExecution BuildExecutor::build_source(const RequestProfile& profile,
         const CommandResult result = run_shell(build_shell_command(command_cwd, command, env_overrides));
         log_handle << result.output << "\n";
         log_handle.flush();
-        execution.log_excerpt = tail_lines(log_path, 20);
+        execution.log_excerpt = tail_lines(log_path, 40);
         if (result.exit_code != 0) {
             execution.status = "build_failed";
             execution.failure_category = "build_failed";
             execution.summary = "Build failed with exit code " + std::to_string(result.exit_code) + ".";
             execution.artifact_hint = build_dir.string();
+            execution.diagnostic_excerpt = diagnostic_lines(log_path, 8);
             return execution;
         }
     }
@@ -1543,13 +1716,14 @@ BuildExecution BuildExecutor::build_source(const RequestProfile& profile,
             const CommandResult result = run_shell(build_shell_command(command_cwd, *install_command, env_overrides));
             log_handle << result.output << "\n";
             log_handle.flush();
-            execution.log_excerpt = tail_lines(log_path, 20);
+            execution.log_excerpt = tail_lines(log_path, 40);
             if (result.exit_code != 0) {
                 execution.status = "install_failed";
                 execution.failure_category = "install_failed";
                 execution.install_status = "install_failed";
                 execution.summary = "Install failed with exit code " + std::to_string(result.exit_code) + ".";
                 execution.artifact_hint = install_prefix.string();
+                execution.diagnostic_excerpt = diagnostic_lines(log_path, 8);
                 return execution;
             }
             execution.install_status = "installed";

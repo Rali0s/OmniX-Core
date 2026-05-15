@@ -63,6 +63,20 @@ Show the command surface:
 ./build/omnix --help
 ```
 
+Make the current build available on your shell path:
+
+```bash
+./scripts/link_omnix.sh
+```
+
+By default this creates `omnix` and a convenience `tze` shim in `~/.local/bin`. If your shell does not already include that directory, add it once:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then commands such as `omnix gg search --port 11434 --compact` and `tze replay latest` work without the `./build/` prefix. Use `./scripts/link_omnix.sh --with-gg` if you also want `gg search ...` as a direct shim.
+
 Authoritative command dictionary:
 
 ```bash
@@ -180,6 +194,8 @@ For the OpenAI profile, copy `.env.example` to `.env`, fill in the key and model
 ./scripts/omnix_openai.sh defend diag cpu
 ./scripts/omnix_openai.sh defend diag port 5000
 ```
+
+OpenAI freeform answers are a final `ask --assist` fallback after local memory, definitions, command routing, and guarded tool planning miss. Freeform answers may explain, calculate, or propose OmniX commands, but they do not claim local evidence was collected unless OmniX actually ran the command.
 
 TView JSONL exports are local SIEM-ready packet events (`omnix.tview.packet.v1`) with stable `NET.TCP.*`
 analysis codes. Defensive commands are diagnostic-first: OmniX may recommend a manual PID kill, service stop, or

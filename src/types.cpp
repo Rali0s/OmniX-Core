@@ -6,6 +6,26 @@ std::string_view to_string(RequestIntent intent) {
     switch (intent) {
         case RequestIntent::Unknown:
             return "unknown";
+        case RequestIntent::Conversation:
+            return "conversation";
+        case RequestIntent::GeneralDefinitionQuery:
+            return "general_definition_query";
+        case RequestIntent::PacketCapture:
+            return "packet_capture";
+        case RequestIntent::DefenseDiagnostic:
+            return "defense_diagnostic";
+        case RequestIntent::NeuralMath:
+            return "neural_math";
+        case RequestIntent::NeuralRoute:
+            return "neural_route";
+        case RequestIntent::SetPersonaMode:
+            return "set_persona_mode";
+        case RequestIntent::AuthorBuildRecipe:
+            return "author_build_recipe";
+        case RequestIntent::ReviewModule:
+            return "review_module";
+        case RequestIntent::PatchProposal:
+            return "patch_proposal";
         case RequestIntent::IngestData:
             return "ingest_data";
         case RequestIntent::AnalyzeCase:

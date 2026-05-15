@@ -9,12 +9,12 @@
 ## Repo Truth
 - Parsed TZE source currently covers 4 sections: Build CMake, X++ Language Engine, X++ Security Engine, and X++ Self Pre-Processor Engine.
 - Generated section outputs already exist and no longer rely on the old generic fallback stub.
-- The stable deterministic backbone is the current stage set:
-  - `xProcessingCache`
-  - `x.Define.Low`
-  - `x.DisplayPriorityProcessingGate`
-  - `x.DisplayFeedBackLoop`
-  - `x.Store`
+- The stable deterministic backbone keeps legacy source keys for compatibility while rendering HumanReadable labels from [Legacy X++ Translation Map](99-legacy-xpp-translation-map.md):
+  - `Cache.PrepareWorkspace` (`xProcessingCache`)
+  - `Intent.DecodeInstruction` (`x.Define.Low`)
+  - `Knowledge.EvidenceRanking` (`x.DisplayPriorityProcessingGate`)
+  - `Memory.FeedbackReview` (`x.DisplayFeedBackLoop`)
+  - `Memory.StoreArtifact` (`x.Store`)
 
 ## Milestones
 | Milestone | Status | Definition |
@@ -30,6 +30,15 @@
 4. [Epic 4: Self Pre-Processor / uAC Runtime](40-epic-self-preprocessor-uac.md)
 5. [Epic 5: Security Simulation and Audit](50-epic-security-simulation-audit.md)
 6. [Epic 6: TZE Conformance Tests](60-epic-tze-conformance-tests.md)
+7. [V2 Pre/Post Runtime, Teaching Precedence, Ollama Hardening, and Local Retrieval Foundations](97-v2-prepost-teaching-and-retrieval-foundations.md)
+8. [X++ Module Recipe Authoring Phase](98-xpp-module-recipe-authoring.md)
+9. [Legacy X++ Translation Map](99-legacy-xpp-translation-map.md)
+10. [Immediate Goals Completion: Simplex, Ingestion, Defense, Soak, Persona](100-immediate-goals-simplex-defense-soak-persona.md)
+11. [Neuromorphic Backtrace, Backtest, and Back-add Research Track](101-neuromorphic-backtrace-backtest-backadd.md)
+12. [NeuralNetwork + TensorFlow Math Track](102-neuralnetwork-tensorflow-math-track.md)
+13. [Native C++ Neural Signal Router](103-native-neural-signal-router.md)
+14. [Proactive Infrastructure Thresholds](104-proactive-infrastructure-thresholds.md)
+15. [Ghostline `gg` Integration](105-ghostline-gg-integration.md)
 
 ## V2 Completion Criteria
 - Runtime stage execution is derived from source-backed TZE graph data instead of a primarily hardcoded stage pipeline.

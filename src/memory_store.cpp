@@ -30,6 +30,15 @@ std::string trim(std::string_view value) {
     return std::string(value.substr(start, end - start));
 }
 
+std::string lowercase(std::string_view value) {
+    std::string lowered;
+    lowered.reserve(value.size());
+    for (char c : value) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return lowered;
+}
+
 std::string now_timestamp() {
     using clock = std::chrono::system_clock;
     const std::time_t raw = clock::to_time_t(clock::now());
@@ -42,6 +51,11 @@ std::string now_timestamp() {
     std::ostringstream out;
     out << std::put_time(&local, "%Y-%m-%dT%H:%M:%S");
     return out.str();
+}
+
+std::string make_scoped_id(std::string_view prefix, std::string_view seed) {
+    return std::string(prefix) + "-" +
+        std::to_string(std::hash<std::string>{}(std::string(seed)));
 }
 
 std::string read_text(const std::filesystem::path& path) {
@@ -289,6 +303,34 @@ std::vector<std::string> extract_json_string_array(std::string_view text, std::s
     return values;
 }
 
+std::vector<double> extract_json_double_array(std::string_view text, std::string_view key) {
+    std::vector<double> values;
+    const std::size_t start = find_json_value_start(text, key, '[');
+    if (start == std::string::npos) {
+        return values;
+    }
+
+    std::size_t cursor = start + 1;
+    while (cursor < text.size() && text[cursor] != ']') {
+        while (cursor < text.size() &&
+               (text[cursor] == ' ' || text[cursor] == ',' || text[cursor] == '\n')) {
+            ++cursor;
+        }
+        std::size_t end = cursor;
+        while (end < text.size() &&
+               (std::isdigit(static_cast<unsigned char>(text[end])) || text[end] == '-' || text[end] == '+' ||
+                text[end] == '.' || text[end] == 'e' || text[end] == 'E')) {
+            ++end;
+        }
+        if (end == cursor) {
+            break;
+        }
+        values.push_back(std::stod(std::string(text.substr(cursor, end - cursor))));
+        cursor = end;
+    }
+    return values;
+}
+
 std::vector<std::string> extract_object_entries(std::string_view text, std::string_view key) {
     std::vector<std::string> entries;
     const std::size_t start = find_json_value_start(text, key, '[');
@@ -338,6 +380,7 @@ std::vector<std::string> extract_object_entries(std::string_view text, std::stri
 
 std::string render_string_array(const std::vector<std::string>& values);
 std::string join_stage_fields(const std::vector<std::string>& values);
+std::string render_double_array(const std::vector<double>& values);
 
 std::string extract_json_object(std::string_view text, std::string_view key) {
     const std::size_t start = find_json_value_start(text, key, '{');
@@ -426,6 +469,17 @@ QuerySessionRecord parse_query_session_entry(std::string_view object_text) {
     return entry;
 }
 
+MathAttribution parse_math_attribution_entry(std::string_view object_text) {
+    MathAttribution entry;
+    entry.name = extract_json_string(object_text, "name");
+    entry.raw_value = extract_json_double(object_text, "raw_value", 0.0);
+    entry.weight = extract_json_double(object_text, "weight", 0.0);
+    entry.contribution = extract_json_double(object_text, "contribution", 0.0);
+    entry.source = extract_json_string(object_text, "source");
+    entry.rationale = extract_json_string(object_text, "rationale");
+    return entry;
+}
+
 ProviderProbeReport parse_provider_probe_entry(std::string_view object_text) {
     ProviderProbeReport entry;
     entry.provider_id = extract_json_string(object_text, "provider_id");
@@ -453,6 +507,18 @@ AssistAnnotation parse_assist_annotation_entry(std::string_view object_text) {
     return entry;
 }
 
+AssistPlanMetadata parse_assist_plan_metadata_entry(std::string_view object_text) {
+    AssistPlanMetadata entry;
+    entry.provider = extract_json_string(object_text, "provider");
+    entry.model = extract_json_string(object_text, "model");
+    entry.status = extract_json_string(object_text, "status");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.rationale = extract_json_string(object_text, "rationale");
+    entry.warnings = extract_json_string_array(object_text, "warnings");
+    entry.validation_notes = extract_json_string_array(object_text, "validation_notes");
+    return entry;
+}
+
 CommandAssistPlan parse_command_assist_plan_entry(std::string_view object_text) {
     CommandAssistPlan entry;
     entry.task_id = extract_json_string(object_text, "task_id");
@@ -466,6 +532,10 @@ CommandAssistPlan parse_command_assist_plan_entry(std::string_view object_text) 
     entry.requires_confirmation = extract_json_bool(object_text, "requires_confirmation", false);
     entry.safety_notes = extract_json_string_array(object_text, "safety_notes");
     entry.validated = extract_json_bool(object_text, "validated", false);
+    const std::string metadata_text = extract_json_object(object_text, "metadata");
+    if (!metadata_text.empty()) {
+        entry.metadata = parse_assist_plan_metadata_entry(metadata_text);
+    }
     return entry;
 }
 
@@ -480,6 +550,10 @@ ToolAssistPlan parse_tool_assist_plan_entry(std::string_view object_text) {
     entry.rationale = extract_json_string(object_text, "rationale");
     entry.safety_notes = extract_json_string_array(object_text, "safety_notes");
     entry.validated = extract_json_bool(object_text, "validated", false);
+    const std::string metadata_text = extract_json_object(object_text, "metadata");
+    if (!metadata_text.empty()) {
+        entry.metadata = parse_assist_plan_metadata_entry(metadata_text);
+    }
     return entry;
 }
 
@@ -495,6 +569,212 @@ BuildAssistPlan parse_build_assist_plan_entry(std::string_view object_text) {
     entry.confidence = extract_json_double(object_text, "confidence", 0.0);
     entry.safety_notes = extract_json_string_array(object_text, "safety_notes");
     entry.validated = extract_json_bool(object_text, "validated", false);
+    const std::string metadata_text = extract_json_object(object_text, "metadata");
+    if (!metadata_text.empty()) {
+        entry.metadata = parse_assist_plan_metadata_entry(metadata_text);
+    }
+    return entry;
+}
+
+NextStepAssistPlan parse_next_step_assist_plan_entry(std::string_view object_text) {
+    NextStepAssistPlan entry;
+    entry.task_id = extract_json_string(object_text, "task_id");
+    entry.provider_id = extract_json_string(object_text, "provider_id");
+    entry.model = extract_json_string(object_text, "model");
+    entry.status = extract_json_string(object_text, "status");
+    entry.suggested_next_step = extract_json_string(object_text, "suggested_next_step");
+    entry.safer_alternative = extract_json_string(object_text, "safer_alternative");
+    entry.rationale = extract_json_string(object_text, "rationale");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.warnings = extract_json_string_array(object_text, "warnings");
+    entry.validation_notes = extract_json_string_array(object_text, "validation_notes");
+    entry.validated = extract_json_bool(object_text, "validated", false);
+    const std::string metadata_text = extract_json_object(object_text, "metadata");
+    if (!metadata_text.empty()) {
+        entry.metadata = parse_assist_plan_metadata_entry(metadata_text);
+    }
+    return entry;
+}
+
+CaseSummaryAssistPlan parse_case_summary_assist_plan_entry(std::string_view object_text) {
+    CaseSummaryAssistPlan entry;
+    entry.task_id = extract_json_string(object_text, "task_id");
+    entry.provider_id = extract_json_string(object_text, "provider_id");
+    entry.model = extract_json_string(object_text, "model");
+    entry.status = extract_json_string(object_text, "status");
+    entry.summary_title = extract_json_string(object_text, "summary_title");
+    entry.executive_summary = extract_json_string(object_text, "executive_summary");
+    entry.highlights = extract_json_string_array(object_text, "highlights");
+    entry.rationale = extract_json_string(object_text, "rationale");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.warnings = extract_json_string_array(object_text, "warnings");
+    entry.validation_notes = extract_json_string_array(object_text, "validation_notes");
+    entry.validated = extract_json_bool(object_text, "validated", false);
+    const std::string metadata_text = extract_json_object(object_text, "metadata");
+    if (!metadata_text.empty()) {
+        entry.metadata = parse_assist_plan_metadata_entry(metadata_text);
+    }
+    return entry;
+}
+
+FreeformAssistAnswer parse_freeform_assist_answer_entry(std::string_view object_text) {
+    FreeformAssistAnswer entry;
+    entry.task_id = extract_json_string(object_text, "task_id");
+    entry.provider_id = extract_json_string(object_text, "provider_id");
+    entry.model = extract_json_string(object_text, "model");
+    entry.status = extract_json_string(object_text, "status");
+    entry.answer = extract_json_string(object_text, "answer");
+    entry.rationale = extract_json_string(object_text, "rationale");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.suggested_commands = extract_json_string_array(object_text, "suggested_commands");
+    entry.safety_warnings = extract_json_string_array(object_text, "safety_warnings");
+    entry.used_context = extract_json_string_array(object_text, "used_context");
+    entry.validated = extract_json_bool(object_text, "validated", false);
+    const std::string metadata_text = extract_json_object(object_text, "metadata");
+    if (!metadata_text.empty()) {
+        entry.metadata = parse_assist_plan_metadata_entry(metadata_text);
+    }
+    return entry;
+}
+
+DefinitionAnswer parse_definition_answer_entry(std::string_view object_text) {
+    DefinitionAnswer entry;
+    entry.query = extract_json_string(object_text, "query");
+    entry.found = extract_json_bool(object_text, "found", false);
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.mapped_cpp_target = extract_json_string(object_text, "mapped_cpp_target");
+    entry.semantic_family = extract_json_string(object_text, "semantic_family");
+    entry.normalized_concept = extract_json_string(object_text, "normalized_concept");
+    entry.domain_hint = extract_json_string(object_text, "domain_hint");
+    entry.route_class = extract_json_string(object_text, "route_class");
+    entry.selected_source_type = extract_json_string(object_text, "selected_source_type");
+    entry.selected_source_label = extract_json_string(object_text, "selected_source_label");
+    entry.selected_authority_tier = extract_json_string(object_text, "selected_authority_tier");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.comparison_rationale = extract_json_string(object_text, "comparison_rationale");
+    entry.sources = extract_json_string_array(object_text, "sources");
+    entry.suggestions = extract_json_string_array(object_text, "suggestions");
+    for (const std::string& attribution_text : extract_object_entries(object_text, "math_attributions")) {
+        entry.math_attributions.push_back(parse_math_attribution_entry(attribution_text));
+    }
+    return entry;
+}
+
+PostProcessRecord parse_postprocess_record_entry(std::string_view object_text) {
+    PostProcessRecord entry;
+    entry.status = extract_json_string(object_text, "status");
+    entry.final_artifact_summary = extract_json_string(object_text, "final_artifact_summary");
+    entry.provenance = extract_json_string(object_text, "provenance");
+    entry.retention_decision = extract_json_string(object_text, "retention_decision");
+    entry.dropped_transient_chain = extract_json_bool(object_text, "dropped_transient_chain", false);
+    entry.retained_fields = extract_json_string_array(object_text, "retained_fields");
+    entry.discarded_fields = extract_json_string_array(object_text, "discarded_fields");
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    return entry;
+}
+
+ReviewFinding parse_review_finding_entry(std::string_view object_text) {
+    ReviewFinding entry;
+    entry.severity = extract_json_string(object_text, "severity");
+    entry.category = extract_json_string(object_text, "category");
+    entry.file_path = extract_json_string(object_text, "file_path");
+    entry.line = static_cast<std::size_t>(extract_json_int(object_text, "line", 0));
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.rationale = extract_json_string(object_text, "rationale");
+    return entry;
+}
+
+ReviewArtifact parse_review_artifact_entry(std::string_view object_text) {
+    ReviewArtifact entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.target = extract_json_string(object_text, "target");
+    entry.status = extract_json_string(object_text, "status");
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.nearby_symbols = extract_json_string_array(object_text, "nearby_symbols");
+    entry.suggested_tests = extract_json_string_array(object_text, "suggested_tests");
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    entry.artifact_path = extract_json_string(object_text, "artifact_path");
+    for (const std::string& finding_text : extract_object_entries(object_text, "findings")) {
+        entry.findings.push_back(parse_review_finding_entry(finding_text));
+    }
+    const std::string assist_text = extract_json_object(object_text, "assist_annotation");
+    if (!assist_text.empty()) {
+        entry.assist_annotation = parse_assist_annotation_entry(assist_text);
+    }
+    return entry;
+}
+
+PatchProposalArtifact parse_patch_proposal_artifact_entry(std::string_view object_text) {
+    PatchProposalArtifact entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.target = extract_json_string(object_text, "target");
+    entry.status = extract_json_string(object_text, "status");
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.target_files = extract_json_string_array(object_text, "target_files");
+    entry.intended_behavior_changes = extract_json_string_array(object_text, "intended_behavior_changes");
+    entry.acceptance_tests = extract_json_string_array(object_text, "acceptance_tests");
+    entry.unified_diff_text = extract_json_string(object_text, "unified_diff_text");
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    entry.artifact_path = extract_json_string(object_text, "artifact_path");
+    const std::string assist_text = extract_json_object(object_text, "assist_annotation");
+    if (!assist_text.empty()) {
+        entry.assist_annotation = parse_assist_annotation_entry(assist_text);
+    }
+    return entry;
+}
+
+AssistOutcomeRecord parse_assist_outcome_entry(std::string_view object_text) {
+    AssistOutcomeRecord entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.task_type = extract_json_string(object_text, "task_type");
+    entry.plan_type = extract_json_string(object_text, "plan_type");
+    entry.provider_id = extract_json_string(object_text, "provider_id");
+    entry.model = extract_json_string(object_text, "model");
+    entry.status = extract_json_string(object_text, "status");
+    entry.target_label = extract_json_string(object_text, "target_label");
+    entry.canonical_value = extract_json_string(object_text, "canonical_value");
+    entry.rejection_reason = extract_json_string(object_text, "rejection_reason");
+    entry.host_platform = extract_json_string(object_text, "host_platform");
+    entry.environment_signature = extract_json_string(object_text, "environment_signature");
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    return entry;
+}
+
+AssistCorrectionRecord parse_assist_correction_entry(std::string_view object_text) {
+    AssistCorrectionRecord entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.original_prompt = extract_json_string(object_text, "original_prompt");
+    entry.corrected_value = extract_json_string(object_text, "corrected_value");
+    entry.category = extract_json_string(object_text, "category");
+    entry.host_platform = extract_json_string(object_text, "host_platform");
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    return entry;
+}
+
+AssistLearningRecord parse_assist_learning_entry(std::string_view object_text) {
+    AssistLearningRecord entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.category = extract_json_string(object_text, "category");
+    entry.prompt_fragment = extract_json_string(object_text, "prompt_fragment");
+    entry.learned_value = extract_json_string(object_text, "learned_value");
+    entry.host_platform = extract_json_string(object_text, "host_platform");
+    entry.success_count = extract_json_int(object_text, "success_count", 0);
+    entry.rejection_count = extract_json_int(object_text, "rejection_count", 0);
+    entry.last_status = extract_json_string(object_text, "last_status");
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    return entry;
+}
+
+HostAssistPreferenceRecord parse_host_assist_preference_entry(std::string_view object_text) {
+    HostAssistPreferenceRecord entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.host_platform = extract_json_string(object_text, "host_platform");
+    entry.provider_id = extract_json_string(object_text, "provider_id");
+    entry.model = extract_json_string(object_text, "model");
+    entry.preferred_shell_phrases = extract_json_string_array(object_text, "preferred_shell_phrases");
+    entry.preferred_tool_routes = extract_json_string_array(object_text, "preferred_tool_routes");
+    entry.preferred_recipe_routes = extract_json_string_array(object_text, "preferred_recipe_routes");
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
     return entry;
 }
 
@@ -529,6 +809,44 @@ LanguageCandidate parse_language_candidate_entry(std::string_view object_text) {
     return entry;
 }
 
+DecompressionCandidate parse_decompression_candidate_entry(std::string_view object_text) {
+    DecompressionCandidate entry;
+    entry.label = extract_json_string(object_text, "label");
+    entry.status = extract_json_string(object_text, "status");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.notes = extract_json_string_array(object_text, "notes");
+    return entry;
+}
+
+ShellLexiconEntry parse_shell_lexicon_entry(std::string_view object_text) {
+    ShellLexiconEntry entry;
+    entry.phrase = extract_json_string(object_text, "phrase");
+    entry.canonical = extract_json_string(object_text, "canonical");
+    entry.category = extract_json_string(object_text, "category");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.correction_notes = extract_json_string_array(object_text, "correction_notes");
+    entry.clarification_required = extract_json_bool(object_text, "clarification_required", false);
+    return entry;
+}
+
+OperatorPersonaRecord parse_operator_persona_entry(std::string_view object_text) {
+    OperatorPersonaRecord entry;
+    entry.preferred_label = extract_json_string(object_text, "preferred_label");
+    entry.role_label = extract_json_string(object_text, "role_label");
+    entry.local_username = extract_json_string(object_text, "local_username");
+    entry.host_identifier = extract_json_string(object_text, "host_identifier");
+    entry.last_source_map = extract_json_string(object_text, "last_source_map");
+    entry.last_memory_root = extract_json_string(object_text, "last_memory_root");
+    entry.self_description = extract_json_string(object_text, "self_description");
+    entry.persona_mode = extract_json_string(object_text, "persona_mode");
+    entry.tone_profile = extract_json_string(object_text, "tone_profile");
+    entry.interaction_style = extract_json_string(object_text, "interaction_style");
+    entry.safety_posture = extract_json_string(object_text, "safety_posture");
+    entry.preferred_next_action_style = extract_json_string(object_text, "preferred_next_action_style");
+    entry.custom_phrases = extract_json_string_array(object_text, "custom_phrases");
+    return entry;
+}
+
 LanguageResolutionRecord parse_language_resolution_entry(std::string_view object_text) {
     LanguageResolutionRecord entry;
     entry.id = extract_json_string(object_text, "id");
@@ -550,6 +868,10 @@ LanguageResolutionRecord parse_language_resolution_entry(std::string_view object
     for (const std::string& candidate_text : extract_object_entries(object_text, "language_candidates")) {
         entry.language_candidates.push_back(parse_language_candidate_entry(candidate_text));
     }
+    for (const std::string& candidate_text : extract_object_entries(object_text, "decompression_candidates")) {
+        entry.decompression_candidates.push_back(parse_decompression_candidate_entry(candidate_text));
+    }
+    entry.research_notes = extract_json_string_array(object_text, "research_notes");
     entry.reasoning_trace = extract_json_string_array(object_text, "reasoning_trace");
     entry.persisted_at = extract_json_string(object_text, "persisted_at");
     return entry;
@@ -569,6 +891,9 @@ UacStateRecord parse_uac_state_entry(std::string_view object_text) {
     UacStateRecord entry;
     entry.id = extract_json_string(object_text, "id");
     entry.query = extract_json_string(object_text, "query");
+    entry.normalized_prompt = extract_json_string(object_text, "normalized_prompt");
+    entry.query_tokens = extract_json_string_array(object_text, "query_tokens");
+    entry.instruction_family_hint = extract_json_string(object_text, "instruction_family_hint");
     entry.epoch_marker = extract_json_string(object_text, "epoch_marker");
     entry.machine_identifier = extract_json_string(object_text, "machine_identifier");
     entry.chapter_reference = extract_json_string(object_text, "chapter_reference");
@@ -581,12 +906,97 @@ UacStateRecord parse_uac_state_entry(std::string_view object_text) {
     entry.key_store_address_value = extract_json_string(object_text, "key_store_address_value");
     entry.key_budget_value = extract_json_string(object_text, "key_budget_value");
     entry.operational_usage_habit = extract_json_string(object_text, "operational_usage_habit");
+    entry.chapter_series_label = extract_json_string(object_text, "chapter_series_label");
+    entry.epoch_tier_label = extract_json_string(object_text, "epoch_tier_label");
     for (const std::string& trait_text : extract_object_entries(object_text, "indexed_traits")) {
         entry.indexed_traits.push_back(parse_uac_trait_entry(trait_text));
     }
     entry.recovery_hints = extract_json_string_array(object_text, "recovery_hints");
+    entry.deletion_discrepancies = extract_json_string_array(object_text, "deletion_discrepancies");
+    entry.search_context_habits = extract_json_string_array(object_text, "search_context_habits");
+    entry.time_on_site_traits = extract_json_string_array(object_text, "time_on_site_traits");
     entry.reasoning_trace = extract_json_string_array(object_text, "reasoning_trace");
     entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    return entry;
+}
+
+LegacySourceRecord parse_legacy_source_entry(std::string_view object_text) {
+    LegacySourceRecord entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.source_path = extract_json_string(object_text, "source_path");
+    entry.source_label = extract_json_string(object_text, "source_label");
+    entry.source_kind = extract_json_string(object_text, "source_kind");
+    entry.source_hash = extract_json_string(object_text, "source_hash");
+    entry.line_count = static_cast<std::size_t>(extract_json_int(object_text, "line_count", 0));
+    entry.section_count = static_cast<std::size_t>(extract_json_int(object_text, "section_count", 0));
+    entry.symbol_count = static_cast<std::size_t>(extract_json_int(object_text, "symbol_count", 0));
+    entry.tracked_at = extract_json_string(object_text, "tracked_at");
+    return entry;
+}
+
+LegacySymbolCoverage parse_legacy_symbol_coverage_entry(std::string_view object_text) {
+    LegacySymbolCoverage entry;
+    entry.symbol = extract_json_string(object_text, "symbol");
+    entry.section_title = extract_json_string(object_text, "section_title");
+    entry.recovery_status = extract_json_string(object_text, "recovery_status");
+    entry.semantic_family = extract_json_string(object_text, "semantic_family");
+    entry.mapped_cpp_target = extract_json_string(object_text, "mapped_cpp_target");
+    entry.source_origin = extract_json_string(object_text, "source_origin");
+    entry.occurrence_count = static_cast<std::size_t>(extract_json_int(object_text, "occurrence_count", 0));
+    entry.notes = extract_json_string_array(object_text, "notes");
+    return entry;
+}
+
+LegacyRecoveryStatus parse_legacy_recovery_status_entry(std::string_view object_text) {
+    LegacyRecoveryStatus entry;
+    entry.source_label = extract_json_string(object_text, "source_label");
+    entry.implemented_count = static_cast<std::size_t>(extract_json_int(object_text, "implemented_count", 0));
+    entry.partial_count = static_cast<std::size_t>(extract_json_int(object_text, "partial_count", 0));
+    entry.missing_count = static_cast<std::size_t>(extract_json_int(object_text, "missing_count", 0));
+    entry.research_only_count = static_cast<std::size_t>(extract_json_int(object_text, "research_only_count", 0));
+    entry.blocked_count = static_cast<std::size_t>(extract_json_int(object_text, "blocked_count", 0));
+    entry.summary_lines = extract_json_string_array(object_text, "summary_lines");
+    return entry;
+}
+
+LegacyResearchArtifact parse_legacy_research_artifact_entry(std::string_view object_text) {
+    LegacyResearchArtifact entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.label = extract_json_string(object_text, "label");
+    entry.category = extract_json_string(object_text, "category");
+    entry.status = extract_json_string(object_text, "status");
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.source_origin = extract_json_string(object_text, "source_origin");
+    entry.evidence = extract_json_string_array(object_text, "evidence");
+    entry.blocked_paths = extract_json_string_array(object_text, "blocked_paths");
+    return entry;
+}
+
+LegacyCorrelationRecord parse_legacy_correlation_entry(std::string_view object_text) {
+    LegacyCorrelationRecord entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.left_label = extract_json_string(object_text, "left_label");
+    entry.right_label = extract_json_string(object_text, "right_label");
+    entry.correlation_type = extract_json_string(object_text, "correlation_type");
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.strength = extract_json_int(object_text, "strength", 0);
+    entry.evidence = extract_json_string_array(object_text, "evidence");
+    return entry;
+}
+
+LegacyBridgeReport parse_legacy_bridge_report_entry(std::string_view object_text) {
+    LegacyBridgeReport entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.query = extract_json_string(object_text, "query");
+    entry.status = extract_json_string(object_text, "status");
+    entry.bridge_mode = extract_json_string(object_text, "bridge_mode");
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.bridge_steps = extract_json_string_array(object_text, "bridge_steps");
+    entry.safe_actions = extract_json_string_array(object_text, "safe_actions");
+    entry.research_actions = extract_json_string_array(object_text, "research_actions");
+    entry.blocked_actions = extract_json_string_array(object_text, "blocked_actions");
+    entry.correlation_signals = extract_json_string_array(object_text, "correlation_signals");
+    entry.reasoning_trace = extract_json_string_array(object_text, "reasoning_trace");
     return entry;
 }
 
@@ -606,6 +1016,84 @@ TzeStageRecord parse_tze_stage_entry(std::string_view object_text) {
     return entry;
 }
 
+RecipeAuthoringArtifact parse_recipe_authoring_artifact_entry(std::string_view object_text);
+
+NeuralMathSample parse_neural_math_sample_entry(std::string_view object_text) {
+    NeuralMathSample entry;
+    entry.inputs = extract_json_double_array(object_text, "inputs");
+    entry.expected = extract_json_int(object_text, "expected", 0);
+    entry.predicted = extract_json_int(object_text, "predicted", 0);
+    return entry;
+}
+
+NeuralMathReport parse_neural_math_report_entry(std::string_view object_text) {
+    NeuralMathReport entry;
+    entry.status = extract_json_string(object_text, "status");
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.model_type = extract_json_string(object_text, "model_type");
+    entry.dataset = extract_json_string(object_text, "dataset");
+    entry.epochs_requested = static_cast<std::size_t>(extract_json_int(object_text, "epochs_requested", 0));
+    entry.epochs_ran = static_cast<std::size_t>(extract_json_int(object_text, "epochs_ran", 0));
+    entry.learning_rate = extract_json_double(object_text, "learning_rate", 0.0);
+    entry.weights = extract_json_double_array(object_text, "weights");
+    entry.bias = extract_json_double(object_text, "bias", 0.0);
+    entry.accuracy = extract_json_double(object_text, "accuracy", 0.0);
+    for (const std::string& sample_text : extract_object_entries(object_text, "predictions")) {
+        entry.predictions.push_back(parse_neural_math_sample_entry(sample_text));
+    }
+    entry.math_trace = extract_json_string_array(object_text, "math_trace");
+    entry.warnings = extract_json_string_array(object_text, "warnings");
+    return entry;
+}
+
+NeuralFeatureVector parse_neural_feature_vector_entry(std::string_view object_text) {
+    NeuralFeatureVector entry;
+    entry.input_path = extract_json_string(object_text, "input_path");
+    entry.packet_count = static_cast<std::size_t>(extract_json_int(object_text, "packet_count", 0));
+    entry.flow_count = static_cast<std::size_t>(extract_json_int(object_text, "flow_count", 0));
+    entry.control_count = static_cast<std::size_t>(extract_json_int(object_text, "control_count", 0));
+    entry.http_plaintext_count = static_cast<std::size_t>(extract_json_int(object_text, "http_plaintext_count", 0));
+    entry.text_utf8_count = static_cast<std::size_t>(extract_json_int(object_text, "text_utf8_count", 0));
+    entry.tls_opaque_count = static_cast<std::size_t>(extract_json_int(object_text, "tls_opaque_count", 0));
+    entry.opaque_payload_count = static_cast<std::size_t>(extract_json_int(object_text, "opaque_payload_count", 0));
+    entry.parse_error_count = static_cast<std::size_t>(extract_json_int(object_text, "parse_error_count", 0));
+    entry.payload_packet_count = static_cast<std::size_t>(extract_json_int(object_text, "payload_packet_count", 0));
+    entry.unknown_port_count = static_cast<std::size_t>(extract_json_int(object_text, "unknown_port_count", 0));
+    entry.total_payload_bytes = static_cast<std::size_t>(extract_json_int(object_text, "total_payload_bytes", 0));
+    entry.feature_summary = extract_json_string_array(object_text, "feature_summary");
+    return entry;
+}
+
+NeuralRoutePrediction parse_neural_route_prediction_entry(std::string_view object_text) {
+    NeuralRoutePrediction entry;
+    entry.label = extract_json_string(object_text, "label");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
+    entry.rationale = extract_json_string(object_text, "rationale");
+    for (const std::string& attribution_text : extract_object_entries(object_text, "attributions")) {
+        entry.attributions.push_back(parse_math_attribution_entry(attribution_text));
+    }
+    return entry;
+}
+
+NeuralRouteReport parse_neural_route_report_entry(std::string_view object_text) {
+    NeuralRouteReport entry;
+    entry.status = extract_json_string(object_text, "status");
+    entry.summary = extract_json_string(object_text, "summary");
+    entry.input_path = extract_json_string(object_text, "input_path");
+    entry.packet_count = static_cast<std::size_t>(extract_json_int(object_text, "packet_count", 0));
+    entry.flow_count = static_cast<std::size_t>(extract_json_int(object_text, "flow_count", 0));
+    const std::string features_text = extract_json_object(object_text, "features");
+    if (!features_text.empty()) {
+        entry.features = parse_neural_feature_vector_entry(features_text);
+    }
+    for (const std::string& prediction_text : extract_object_entries(object_text, "predictions")) {
+        entry.predictions.push_back(parse_neural_route_prediction_entry(prediction_text));
+    }
+    entry.warnings = extract_json_string_array(object_text, "warnings");
+    entry.artifact_path = extract_json_string(object_text, "artifact_path");
+    return entry;
+}
+
 TzeRunRecord parse_tze_run_entry(std::string_view object_text) {
     TzeRunRecord entry;
     entry.id = extract_json_string(object_text, "id");
@@ -615,6 +1103,7 @@ TzeRunRecord parse_tze_run_entry(std::string_view object_text) {
     entry.target = extract_json_string(object_text, "target");
     entry.linked_case_id = extract_json_string(object_text, "linked_case_id");
     entry.status = extract_json_string(object_text, "status");
+    entry.source_map_path = extract_json_string(object_text, "source_map_path");
     entry.reasoning_provider = extract_json_string(object_text, "reasoning_provider");
     entry.provider_probe_status = extract_json_string(object_text, "provider_probe_status");
     entry.assist_status = extract_json_string(object_text, "assist_status");
@@ -643,6 +1132,18 @@ TzeRunRecord parse_tze_run_entry(std::string_view object_text) {
     if (!build_assist_plan_text.empty()) {
         entry.build_assist_plan = parse_build_assist_plan_entry(build_assist_plan_text);
     }
+    const std::string next_step_assist_plan_text = extract_json_object(object_text, "next_step_assist_plan");
+    if (!next_step_assist_plan_text.empty()) {
+        entry.next_step_assist_plan = parse_next_step_assist_plan_entry(next_step_assist_plan_text);
+    }
+    const std::string case_summary_assist_plan_text = extract_json_object(object_text, "case_summary_assist_plan");
+    if (!case_summary_assist_plan_text.empty()) {
+        entry.case_summary_assist_plan = parse_case_summary_assist_plan_entry(case_summary_assist_plan_text);
+    }
+    const std::string freeform_assist_answer_text = extract_json_object(object_text, "freeform_assist_answer");
+    if (!freeform_assist_answer_text.empty()) {
+        entry.freeform_assist_answer = parse_freeform_assist_answer_entry(freeform_assist_answer_text);
+    }
     const std::string security_audit_text = extract_json_object(object_text, "security_audit");
     if (!security_audit_text.empty()) {
         entry.security_audit = parse_security_audit_entry(security_audit_text);
@@ -655,9 +1156,58 @@ TzeRunRecord parse_tze_run_entry(std::string_view object_text) {
     if (!uac_state_text.empty()) {
         entry.uac_state = parse_uac_state_entry(uac_state_text);
     }
+    const std::string postprocess_text = extract_json_object(object_text, "postprocess_record");
+    if (!postprocess_text.empty()) {
+        entry.postprocess_record = parse_postprocess_record_entry(postprocess_text);
+    }
+    const std::string legacy_source_text = extract_json_object(object_text, "legacy_source");
+    if (!legacy_source_text.empty()) {
+        entry.legacy_source = parse_legacy_source_entry(legacy_source_text);
+    }
+    const std::string legacy_bridge_text = extract_json_object(object_text, "legacy_bridge_report");
+    if (!legacy_bridge_text.empty()) {
+        entry.legacy_bridge_report = parse_legacy_bridge_report_entry(legacy_bridge_text);
+    }
     const std::string query_session_text = extract_json_object(object_text, "query_session");
     if (!query_session_text.empty()) {
         entry.query_session = parse_query_session_entry(query_session_text);
+    }
+    for (const std::string& artifact_text : extract_object_entries(object_text, "legacy_research_artifacts")) {
+        entry.legacy_research_artifacts.push_back(parse_legacy_research_artifact_entry(artifact_text));
+    }
+    for (const std::string& correlation_text : extract_object_entries(object_text, "legacy_correlations")) {
+        entry.legacy_correlations.push_back(parse_legacy_correlation_entry(correlation_text));
+    }
+    for (const std::string& coverage_text : extract_object_entries(object_text, "legacy_symbol_coverage")) {
+        entry.legacy_symbol_coverage.push_back(parse_legacy_symbol_coverage_entry(coverage_text));
+    }
+    const std::string legacy_status_text = extract_json_object(object_text, "legacy_recovery_status");
+    if (!legacy_status_text.empty()) {
+        entry.legacy_recovery_status = parse_legacy_recovery_status_entry(legacy_status_text);
+    }
+    const std::string review_artifact_text = extract_json_object(object_text, "review_artifact");
+    if (!review_artifact_text.empty()) {
+        entry.review_artifact = parse_review_artifact_entry(review_artifact_text);
+    }
+    const std::string patch_proposal_text = extract_json_object(object_text, "patch_proposal_artifact");
+    if (!patch_proposal_text.empty()) {
+        entry.patch_proposal_artifact = parse_patch_proposal_artifact_entry(patch_proposal_text);
+    }
+    const std::string recipe_authoring_text = extract_json_object(object_text, "recipe_authoring_artifact");
+    if (!recipe_authoring_text.empty()) {
+        entry.recipe_authoring_artifact = parse_recipe_authoring_artifact_entry(recipe_authoring_text);
+    }
+    const std::string definition_answer_text = extract_json_object(object_text, "definition_answer");
+    if (!definition_answer_text.empty()) {
+        entry.definition_answer = parse_definition_answer_entry(definition_answer_text);
+    }
+    const std::string neural_math_text = extract_json_object(object_text, "neural_math_report");
+    if (!neural_math_text.empty()) {
+        entry.neural_math_report = parse_neural_math_report_entry(neural_math_text);
+    }
+    const std::string neural_route_text = extract_json_object(object_text, "neural_route_report");
+    if (!neural_route_text.empty()) {
+        entry.neural_route_report = parse_neural_route_report_entry(neural_route_text);
     }
     for (const std::string& stage_text : extract_object_entries(object_text, "stages")) {
         entry.stages.push_back(parse_tze_stage_entry(stage_text));
@@ -668,10 +1218,15 @@ TzeRunRecord parse_tze_run_entry(std::string_view object_text) {
 StoredDefinition parse_definition_entry(std::string_view object_text) {
     StoredDefinition entry;
     entry.term = extract_json_string(object_text, "term");
+    entry.normalized_concept = extract_json_string(object_text, "normalized_concept");
+    entry.domain_hint = extract_json_string(object_text, "domain_hint");
     entry.summary = extract_json_string(object_text, "summary");
     entry.mapped_cpp_target = extract_json_string(object_text, "mapped_cpp_target");
     entry.semantic_family = extract_json_string(object_text, "semantic_family");
     entry.source = extract_json_string(object_text, "source");
+    entry.source_type = extract_json_string(object_text, "source_type");
+    entry.authority_tier = extract_json_string(object_text, "authority_tier");
+    entry.confidence = extract_json_double(object_text, "confidence", 0.0);
     return entry;
 }
 
@@ -699,6 +1254,67 @@ LearnedRecipeRecord parse_learned_recipe_entry(std::string_view object_text) {
     entry.last_artifact = extract_json_string(object_text, "last_artifact");
     entry.last_install_prefix = extract_json_string(object_text, "last_install_prefix");
     entry.confidence_score = extract_json_int(object_text, "confidence_score", 50);
+    return entry;
+}
+
+BuildRecipe parse_build_recipe_entry(std::string_view object_text) {
+    BuildRecipe entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.acquisition_method = extract_json_string(object_text, "acquisition_method");
+    entry.build_system = extract_json_string(object_text, "build_system");
+    entry.supported_platforms = extract_json_string_array(object_text, "supported_platforms");
+    entry.default_target = extract_json_string(object_text, "default_target");
+    entry.install_target = extract_json_string(object_text, "install_target");
+    entry.artifact_patterns = extract_json_string_array(object_text, "artifact_patterns");
+    entry.install_output_patterns = extract_json_string_array(object_text, "install_output_patterns");
+    entry.fallback_stage_patterns = extract_json_string_array(object_text, "fallback_stage_patterns");
+    entry.dependency_hints = extract_json_string_array(object_text, "dependency_hints");
+    entry.configure_arguments = extract_json_string_array(object_text, "configure_arguments");
+    entry.supports_install = extract_json_bool(object_text, "supports_install", true);
+    entry.copy_artifacts_on_install = extract_json_bool(object_text, "copy_artifacts_on_install", false);
+    return entry;
+}
+
+AuthoredRecipeRecord parse_authored_recipe_entry(std::string_view object_text) {
+    AuthoredRecipeRecord entry;
+    const std::string recipe_text = extract_json_object(object_text, "recipe");
+    if (!recipe_text.empty()) {
+        entry.recipe = parse_build_recipe_entry(recipe_text);
+    }
+    entry.resolved_source_path = extract_json_string(object_text, "resolved_source_path");
+    entry.canonical_name = extract_json_string(object_text, "canonical_name");
+    entry.origin_provider = extract_json_string(object_text, "origin_provider");
+    entry.origin_model = extract_json_string(object_text, "origin_model");
+    entry.evidence_summary = extract_json_string_array(object_text, "evidence_summary");
+    entry.validation_status = extract_json_string(object_text, "validation_status");
+    entry.last_validation_summary = extract_json_string(object_text, "last_validation_summary");
+    entry.last_validation_log = extract_json_string(object_text, "last_validation_log");
+    entry.last_artifact = extract_json_string(object_text, "last_artifact");
+    entry.authoring_run_id = extract_json_string(object_text, "authoring_run_id");
+    entry.active_scope = extract_json_string(object_text, "active_scope");
+    entry.active = extract_json_bool(object_text, "active", false);
+    entry.repair_attempted = extract_json_bool(object_text, "repair_attempted", false);
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
+    return entry;
+}
+
+RecipeAuthoringArtifact parse_recipe_authoring_artifact_entry(std::string_view object_text) {
+    RecipeAuthoringArtifact entry;
+    entry.id = extract_json_string(object_text, "id");
+    entry.source_path = extract_json_string(object_text, "source_path");
+    entry.resolved_source_path = extract_json_string(object_text, "resolved_source_path");
+    entry.canonical_project_name = extract_json_string(object_text, "canonical_project_name");
+    entry.provider_id = extract_json_string(object_text, "provider_id");
+    entry.model = extract_json_string(object_text, "model");
+    entry.status = extract_json_string(object_text, "status");
+    entry.generated_recipe_id = extract_json_string(object_text, "generated_recipe_id");
+    entry.generated_build_system = extract_json_string(object_text, "generated_build_system");
+    entry.rationale = extract_json_string(object_text, "rationale");
+    entry.ranked_evidence = extract_json_string_array(object_text, "ranked_evidence");
+    entry.validation_feedback = extract_json_string_array(object_text, "validation_feedback");
+    entry.repair_attempted = extract_json_bool(object_text, "repair_attempted", false);
+    entry.activated = extract_json_bool(object_text, "activated", false);
+    entry.persisted_at = extract_json_string(object_text, "persisted_at");
     return entry;
 }
 
@@ -794,6 +1410,9 @@ DecisionCandidate parse_decision_candidate_entry(std::string_view object_text) {
     entry.supporting_signals = extract_json_string_array(object_text, "supporting_signals");
     entry.validation_checks = extract_json_string_array(object_text, "validation_checks");
     entry.score_trace = extract_json_string_array(object_text, "score_trace");
+    for (const std::string& attribution_text : extract_object_entries(object_text, "math_attributions")) {
+        entry.math_attributions.push_back(parse_math_attribution_entry(attribution_text));
+    }
     entry.operator_feedback = extract_json_string(object_text, "operator_feedback");
     entry.feedback_note = extract_json_string(object_text, "feedback_note");
     entry.feedback_timestamp = extract_json_string(object_text, "feedback_timestamp");
@@ -857,6 +1476,100 @@ std::string render_history_jsonl(const MemorySnapshot& snapshot) {
         out << render_history_entry(entry) << '\n';
     }
     return out.str();
+}
+
+std::string first_non_empty_line(std::string_view text) {
+    std::istringstream input{std::string(text)};
+    std::string line;
+    while (std::getline(input, line)) {
+        line = trim(line);
+        if (!line.empty()) {
+            return line;
+        }
+    }
+    return {};
+}
+
+std::string collapse_whitespace(std::string_view text) {
+    std::string collapsed;
+    collapsed.reserve(text.size());
+    bool previous_space = false;
+    for (char c : text) {
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (!previous_space) {
+                collapsed.push_back(' ');
+            }
+            previous_space = true;
+            continue;
+        }
+        previous_space = false;
+        collapsed.push_back(c);
+    }
+    return trim(collapsed);
+}
+
+std::string truncate_summary(std::string text, std::size_t max_length = 220) {
+    if (text.size() <= max_length) {
+        return text;
+    }
+    if (max_length <= 3) {
+        return text.substr(0, max_length);
+    }
+    return text.substr(0, max_length - 3) + "...";
+}
+
+std::string summarize_interaction_for_history(const ProcessingReport& report) {
+    if (report.postprocess_record.has_value() && !report.postprocess_record->final_artifact_summary.empty()) {
+        std::string summary = report.postprocess_record->final_artifact_summary;
+        if (!report.postprocess_record->provenance.empty()) {
+            summary += " [source=" + report.postprocess_record->provenance + "]";
+        }
+        if (!report.produced_artifact.empty()) {
+            summary += " [artifact=" + report.produced_artifact + "]";
+        }
+        return truncate_summary(collapse_whitespace(summary));
+    }
+
+    if (report.freeform_assist_answer.has_value() && !report.freeform_assist_answer->answer.empty()) {
+        std::string summary = report.freeform_assist_answer->answer + " [source=openai_freeform]";
+        return truncate_summary(collapse_whitespace(summary));
+    }
+
+    if (report.definition_answer.has_value()) {
+        const DefinitionAnswer& answer = *report.definition_answer;
+        std::string summary = answer.summary.empty() ? first_non_empty_line(report.answer_explanation) : answer.summary;
+        if (summary.empty()) {
+            summary = "Definition lookup completed.";
+        }
+        if (!answer.selected_source_type.empty()) {
+            summary += " [source=" + answer.selected_source_type + "]";
+        }
+        if (!answer.selected_authority_tier.empty()) {
+            summary += " [authority=" + answer.selected_authority_tier + "]";
+        }
+        if (!report.produced_artifact.empty()) {
+            summary += " [artifact=" + report.produced_artifact + "]";
+        }
+        return truncate_summary(collapse_whitespace(summary));
+    }
+
+    if (!report.produced_artifact.empty()) {
+        std::string summary = first_non_empty_line(report.answer_explanation);
+        if (summary.empty()) {
+            summary = report.answer_status.empty() ? "Artifact stored." : "Artifact stored for " + report.answer_status + ".";
+        }
+        summary += " [artifact=" + report.produced_artifact + "]";
+        return truncate_summary(collapse_whitespace(summary));
+    }
+
+    const std::string primary_line = first_non_empty_line(report.answer_explanation);
+    if (!primary_line.empty()) {
+        return truncate_summary(collapse_whitespace(primary_line));
+    }
+    if (!report.answer_status.empty()) {
+        return truncate_summary(collapse_whitespace(report.answer_status));
+    }
+    return {};
 }
 
 std::string render_query_candidate_json(const QueryCandidate& entry) {
@@ -935,6 +1648,15 @@ std::string render_language_candidate_json(const LanguageCandidate& entry) {
     return out.str();
 }
 
+std::string render_decompression_candidate_json(const DecompressionCandidate& entry) {
+    std::ostringstream out;
+    out << "{\"label\":\"" << escape_json(entry.label)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"confidence\":" << std::fixed << std::setprecision(4) << entry.confidence
+        << ",\"notes\":" << render_string_array(entry.notes) << "}";
+    return out.str();
+}
+
 std::string render_language_resolution_json(const LanguageResolutionRecord& entry) {
     std::ostringstream out;
     out << "{\"id\":\"" << escape_json(entry.id)
@@ -964,7 +1686,15 @@ std::string render_language_resolution_json(const LanguageResolutionRecord& entr
         }
         out << render_language_candidate_json(entry.language_candidates[index]);
     }
-    out << "],\"reasoning_trace\":" << render_string_array(entry.reasoning_trace)
+    out << "],\"decompression_candidates\":[";
+    for (std::size_t index = 0; index < entry.decompression_candidates.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << render_decompression_candidate_json(entry.decompression_candidates[index]);
+    }
+    out << "],\"research_notes\":" << render_string_array(entry.research_notes)
+        << ",\"reasoning_trace\":" << render_string_array(entry.reasoning_trace)
         << ",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
     return out.str();
 }
@@ -983,6 +1713,9 @@ std::string render_uac_state_json(const UacStateRecord& entry) {
     std::ostringstream out;
     out << "{\"id\":\"" << escape_json(entry.id)
         << "\",\"query\":\"" << escape_json(entry.query)
+        << "\",\"normalized_prompt\":\"" << escape_json(entry.normalized_prompt)
+        << "\",\"query_tokens\":" << render_string_array(entry.query_tokens)
+        << ",\"instruction_family_hint\":\"" << escape_json(entry.instruction_family_hint)
         << "\",\"epoch_marker\":\"" << escape_json(entry.epoch_marker)
         << "\",\"machine_identifier\":\"" << escape_json(entry.machine_identifier)
         << "\",\"chapter_reference\":\"" << escape_json(entry.chapter_reference)
@@ -995,6 +1728,8 @@ std::string render_uac_state_json(const UacStateRecord& entry) {
         << "\",\"key_store_address_value\":\"" << escape_json(entry.key_store_address_value)
         << "\",\"key_budget_value\":\"" << escape_json(entry.key_budget_value)
         << "\",\"operational_usage_habit\":\"" << escape_json(entry.operational_usage_habit)
+        << "\",\"chapter_series_label\":\"" << escape_json(entry.chapter_series_label)
+        << "\",\"epoch_tier_label\":\"" << escape_json(entry.epoch_tier_label)
         << "\",\"indexed_traits\":[";
     for (std::size_t index = 0; index < entry.indexed_traits.size(); ++index) {
         if (index != 0) {
@@ -1003,8 +1738,91 @@ std::string render_uac_state_json(const UacStateRecord& entry) {
         out << render_uac_trait_json(entry.indexed_traits[index]);
     }
     out << "],\"recovery_hints\":" << render_string_array(entry.recovery_hints)
+        << ",\"deletion_discrepancies\":" << render_string_array(entry.deletion_discrepancies)
+        << ",\"search_context_habits\":" << render_string_array(entry.search_context_habits)
+        << ",\"time_on_site_traits\":" << render_string_array(entry.time_on_site_traits)
         << ",\"reasoning_trace\":" << render_string_array(entry.reasoning_trace)
         << ",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
+    return out.str();
+}
+
+std::string render_legacy_source_json(const LegacySourceRecord& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"source_path\":\"" << escape_json(entry.source_path)
+        << "\",\"source_label\":\"" << escape_json(entry.source_label)
+        << "\",\"source_kind\":\"" << escape_json(entry.source_kind)
+        << "\",\"source_hash\":\"" << escape_json(entry.source_hash)
+        << "\",\"line_count\":" << entry.line_count
+        << ",\"section_count\":" << entry.section_count
+        << ",\"symbol_count\":" << entry.symbol_count
+        << ",\"tracked_at\":\"" << escape_json(entry.tracked_at) << "\"}";
+    return out.str();
+}
+
+std::string render_legacy_symbol_coverage_json(const LegacySymbolCoverage& entry) {
+    std::ostringstream out;
+    out << "{\"symbol\":\"" << escape_json(entry.symbol)
+        << "\",\"section_title\":\"" << escape_json(entry.section_title)
+        << "\",\"recovery_status\":\"" << escape_json(entry.recovery_status)
+        << "\",\"semantic_family\":\"" << escape_json(entry.semantic_family)
+        << "\",\"mapped_cpp_target\":\"" << escape_json(entry.mapped_cpp_target)
+        << "\",\"source_origin\":\"" << escape_json(entry.source_origin)
+        << "\",\"occurrence_count\":" << entry.occurrence_count
+        << ",\"notes\":" << render_string_array(entry.notes) << "}";
+    return out.str();
+}
+
+std::string render_legacy_recovery_status_json(const LegacyRecoveryStatus& entry) {
+    std::ostringstream out;
+    out << "{\"source_label\":\"" << escape_json(entry.source_label)
+        << "\",\"implemented_count\":" << entry.implemented_count
+        << ",\"partial_count\":" << entry.partial_count
+        << ",\"missing_count\":" << entry.missing_count
+        << ",\"research_only_count\":" << entry.research_only_count
+        << ",\"blocked_count\":" << entry.blocked_count
+        << ",\"summary_lines\":" << render_string_array(entry.summary_lines) << "}";
+    return out.str();
+}
+
+std::string render_legacy_research_artifact_json(const LegacyResearchArtifact& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"label\":\"" << escape_json(entry.label)
+        << "\",\"category\":\"" << escape_json(entry.category)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"source_origin\":\"" << escape_json(entry.source_origin)
+        << "\",\"evidence\":" << render_string_array(entry.evidence)
+        << ",\"blocked_paths\":" << render_string_array(entry.blocked_paths) << "}";
+    return out.str();
+}
+
+std::string render_legacy_correlation_json(const LegacyCorrelationRecord& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"left_label\":\"" << escape_json(entry.left_label)
+        << "\",\"right_label\":\"" << escape_json(entry.right_label)
+        << "\",\"correlation_type\":\"" << escape_json(entry.correlation_type)
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"strength\":" << entry.strength
+        << ",\"evidence\":" << render_string_array(entry.evidence) << "}";
+    return out.str();
+}
+
+std::string render_legacy_bridge_report_json(const LegacyBridgeReport& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"query\":\"" << escape_json(entry.query)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"bridge_mode\":\"" << escape_json(entry.bridge_mode)
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"bridge_steps\":" << render_string_array(entry.bridge_steps)
+        << ",\"safe_actions\":" << render_string_array(entry.safe_actions)
+        << ",\"research_actions\":" << render_string_array(entry.research_actions)
+        << ",\"blocked_actions\":" << render_string_array(entry.blocked_actions)
+        << ",\"correlation_signals\":" << render_string_array(entry.correlation_signals)
+        << ",\"reasoning_trace\":" << render_string_array(entry.reasoning_trace) << "}";
     return out.str();
 }
 
@@ -1035,6 +1853,18 @@ std::string render_assist_annotation_json(const AssistAnnotation& entry) {
     return out.str();
 }
 
+std::string render_assist_plan_metadata_json(const AssistPlanMetadata& entry) {
+    std::ostringstream out;
+    out << "{\"provider\":\"" << escape_json(entry.provider)
+        << "\",\"model\":\"" << escape_json(entry.model)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"confidence\":" << entry.confidence
+        << ",\"rationale\":\"" << escape_json(entry.rationale)
+        << "\",\"warnings\":" << render_string_array(entry.warnings)
+        << ",\"validation_notes\":" << render_string_array(entry.validation_notes) << "}";
+    return out.str();
+}
+
 std::string render_command_assist_plan_json(const CommandAssistPlan& entry) {
     std::ostringstream out;
     out << "{\"task_id\":\"" << escape_json(entry.task_id)
@@ -1047,6 +1877,7 @@ std::string render_command_assist_plan_json(const CommandAssistPlan& entry) {
         << "\",\"confidence\":" << entry.confidence
         << ",\"requires_confirmation\":" << (entry.requires_confirmation ? "true" : "false")
         << ",\"safety_notes\":" << render_string_array(entry.safety_notes)
+        << ",\"metadata\":" << render_assist_plan_metadata_json(entry.metadata)
         << ",\"validated\":" << (entry.validated ? "true" : "false") << "}";
     return out.str();
 }
@@ -1061,6 +1892,7 @@ std::string render_tool_assist_plan_json(const ToolAssistPlan& entry) {
         << "\",\"arguments\":" << render_string_array(entry.arguments)
         << ",\"rationale\":\"" << escape_json(entry.rationale)
         << "\",\"safety_notes\":" << render_string_array(entry.safety_notes)
+        << ",\"metadata\":" << render_assist_plan_metadata_json(entry.metadata)
         << ",\"validated\":" << (entry.validated ? "true" : "false") << "}";
     return out.str();
 }
@@ -1076,7 +1908,324 @@ std::string render_build_assist_plan_json(const BuildAssistPlan& entry) {
         << "\",\"rationale\":\"" << escape_json(entry.rationale)
         << "\",\"confidence\":" << entry.confidence
         << ",\"safety_notes\":" << render_string_array(entry.safety_notes)
+        << ",\"metadata\":" << render_assist_plan_metadata_json(entry.metadata)
         << ",\"validated\":" << (entry.validated ? "true" : "false") << "}";
+    return out.str();
+}
+
+std::string render_next_step_assist_plan_json(const NextStepAssistPlan& entry) {
+    std::ostringstream out;
+    out << "{\"task_id\":\"" << escape_json(entry.task_id)
+        << "\",\"provider_id\":\"" << escape_json(entry.provider_id)
+        << "\",\"model\":\"" << escape_json(entry.model)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"suggested_next_step\":\"" << escape_json(entry.suggested_next_step)
+        << "\",\"safer_alternative\":\"" << escape_json(entry.safer_alternative)
+        << "\",\"rationale\":\"" << escape_json(entry.rationale)
+        << "\",\"confidence\":" << entry.confidence
+        << ",\"warnings\":" << render_string_array(entry.warnings)
+        << ",\"validation_notes\":" << render_string_array(entry.validation_notes)
+        << ",\"metadata\":" << render_assist_plan_metadata_json(entry.metadata)
+        << ",\"validated\":" << (entry.validated ? "true" : "false") << "}";
+    return out.str();
+}
+
+std::string render_case_summary_assist_plan_json(const CaseSummaryAssistPlan& entry) {
+    std::ostringstream out;
+    out << "{\"task_id\":\"" << escape_json(entry.task_id)
+        << "\",\"provider_id\":\"" << escape_json(entry.provider_id)
+        << "\",\"model\":\"" << escape_json(entry.model)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"summary_title\":\"" << escape_json(entry.summary_title)
+        << "\",\"executive_summary\":\"" << escape_json(entry.executive_summary)
+        << "\",\"highlights\":" << render_string_array(entry.highlights)
+        << ",\"rationale\":\"" << escape_json(entry.rationale)
+        << "\",\"confidence\":" << entry.confidence
+        << ",\"warnings\":" << render_string_array(entry.warnings)
+        << ",\"validation_notes\":" << render_string_array(entry.validation_notes)
+        << ",\"metadata\":" << render_assist_plan_metadata_json(entry.metadata)
+        << ",\"validated\":" << (entry.validated ? "true" : "false") << "}";
+    return out.str();
+}
+
+std::string render_freeform_assist_answer_json(const FreeformAssistAnswer& entry) {
+    std::ostringstream out;
+    out << "{\"task_id\":\"" << escape_json(entry.task_id)
+        << "\",\"provider_id\":\"" << escape_json(entry.provider_id)
+        << "\",\"model\":\"" << escape_json(entry.model)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"answer\":\"" << escape_json(entry.answer)
+        << "\",\"rationale\":\"" << escape_json(entry.rationale)
+        << "\",\"confidence\":" << entry.confidence
+        << ",\"suggested_commands\":" << render_string_array(entry.suggested_commands)
+        << ",\"safety_warnings\":" << render_string_array(entry.safety_warnings)
+        << ",\"used_context\":" << render_string_array(entry.used_context)
+        << ",\"metadata\":" << render_assist_plan_metadata_json(entry.metadata)
+        << ",\"validated\":" << (entry.validated ? "true" : "false") << "}";
+    return out.str();
+}
+
+std::string render_math_attribution_json(const MathAttribution& entry) {
+    std::ostringstream out;
+    out << "{\"name\":\"" << escape_json(entry.name)
+        << "\",\"raw_value\":" << entry.raw_value
+        << ",\"weight\":" << entry.weight
+        << ",\"contribution\":" << entry.contribution
+        << ",\"source\":\"" << escape_json(entry.source)
+        << "\",\"rationale\":\"" << escape_json(entry.rationale) << "\"}";
+    return out.str();
+}
+
+std::string render_math_attributions_json(const std::vector<MathAttribution>& entries) {
+    std::ostringstream out;
+    out << "[";
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << render_math_attribution_json(entries[index]);
+    }
+    out << "]";
+    return out.str();
+}
+
+std::string render_definition_answer_json(const DefinitionAnswer& entry) {
+    std::ostringstream out;
+    out << "{\"query\":\"" << escape_json(entry.query)
+        << "\",\"found\":" << (entry.found ? "true" : "false")
+        << ",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"mapped_cpp_target\":\"" << escape_json(entry.mapped_cpp_target)
+        << "\",\"semantic_family\":\"" << escape_json(entry.semantic_family)
+        << "\",\"normalized_concept\":\"" << escape_json(entry.normalized_concept)
+        << "\",\"domain_hint\":\"" << escape_json(entry.domain_hint)
+        << "\",\"route_class\":\"" << escape_json(entry.route_class)
+        << "\",\"selected_source_type\":\"" << escape_json(entry.selected_source_type)
+        << "\",\"selected_source_label\":\"" << escape_json(entry.selected_source_label)
+        << "\",\"selected_authority_tier\":\"" << escape_json(entry.selected_authority_tier)
+        << "\",\"confidence\":" << entry.confidence
+        << ",\"comparison_rationale\":\"" << escape_json(entry.comparison_rationale)
+        << "\",\"sources\":" << render_string_array(entry.sources)
+        << ",\"suggestions\":" << render_string_array(entry.suggestions)
+        << ",\"math_attributions\":" << render_math_attributions_json(entry.math_attributions) << "}";
+    return out.str();
+}
+
+std::string render_postprocess_record_json(const PostProcessRecord& entry) {
+    std::ostringstream out;
+    out << "{\"status\":\"" << escape_json(entry.status)
+        << "\",\"final_artifact_summary\":\"" << escape_json(entry.final_artifact_summary)
+        << "\",\"provenance\":\"" << escape_json(entry.provenance)
+        << "\",\"retention_decision\":\"" << escape_json(entry.retention_decision)
+        << "\",\"dropped_transient_chain\":" << (entry.dropped_transient_chain ? "true" : "false")
+        << ",\"retained_fields\":" << render_string_array(entry.retained_fields)
+        << ",\"discarded_fields\":" << render_string_array(entry.discarded_fields)
+        << ",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
+    return out.str();
+}
+
+std::string render_neural_math_sample_json(const NeuralMathSample& entry) {
+    std::ostringstream out;
+    out << "{\"inputs\":" << render_double_array(entry.inputs)
+        << ",\"expected\":" << entry.expected
+        << ",\"predicted\":" << entry.predicted << "}";
+    return out.str();
+}
+
+std::string render_neural_math_report_json(const NeuralMathReport& entry) {
+    std::ostringstream out;
+    out << "{\"status\":\"" << escape_json(entry.status)
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"model_type\":\"" << escape_json(entry.model_type)
+        << "\",\"dataset\":\"" << escape_json(entry.dataset)
+        << "\",\"epochs_requested\":" << entry.epochs_requested
+        << ",\"epochs_ran\":" << entry.epochs_ran
+        << ",\"learning_rate\":" << entry.learning_rate
+        << ",\"weights\":" << render_double_array(entry.weights)
+        << ",\"bias\":" << entry.bias
+        << ",\"accuracy\":" << entry.accuracy
+        << ",\"predictions\":[";
+    for (std::size_t index = 0; index < entry.predictions.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << render_neural_math_sample_json(entry.predictions[index]);
+    }
+    out << "],\"math_trace\":" << render_string_array(entry.math_trace)
+        << ",\"warnings\":" << render_string_array(entry.warnings) << "}";
+    return out.str();
+}
+
+std::string render_neural_feature_vector_json(const NeuralFeatureVector& entry) {
+    std::ostringstream out;
+    out << "{\"input_path\":\"" << escape_json(entry.input_path)
+        << "\",\"packet_count\":" << entry.packet_count
+        << ",\"flow_count\":" << entry.flow_count
+        << ",\"control_count\":" << entry.control_count
+        << ",\"http_plaintext_count\":" << entry.http_plaintext_count
+        << ",\"text_utf8_count\":" << entry.text_utf8_count
+        << ",\"tls_opaque_count\":" << entry.tls_opaque_count
+        << ",\"opaque_payload_count\":" << entry.opaque_payload_count
+        << ",\"parse_error_count\":" << entry.parse_error_count
+        << ",\"payload_packet_count\":" << entry.payload_packet_count
+        << ",\"unknown_port_count\":" << entry.unknown_port_count
+        << ",\"total_payload_bytes\":" << entry.total_payload_bytes
+        << ",\"feature_summary\":" << render_string_array(entry.feature_summary) << "}";
+    return out.str();
+}
+
+std::string render_neural_route_prediction_json(const NeuralRoutePrediction& entry) {
+    std::ostringstream out;
+    out << "{\"label\":\"" << escape_json(entry.label)
+        << "\",\"confidence\":" << entry.confidence
+        << ",\"rationale\":\"" << escape_json(entry.rationale)
+        << "\",\"attributions\":" << render_math_attributions_json(entry.attributions) << "}";
+    return out.str();
+}
+
+std::string render_neural_route_report_json(const NeuralRouteReport& entry) {
+    std::ostringstream out;
+    out << "{\"status\":\"" << escape_json(entry.status)
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"input_path\":\"" << escape_json(entry.input_path)
+        << "\",\"packet_count\":" << entry.packet_count
+        << ",\"flow_count\":" << entry.flow_count
+        << ",\"features\":" << render_neural_feature_vector_json(entry.features)
+        << ",\"predictions\":[";
+    for (std::size_t index = 0; index < entry.predictions.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << render_neural_route_prediction_json(entry.predictions[index]);
+    }
+    out << "],\"warnings\":" << render_string_array(entry.warnings)
+        << ",\"artifact_path\":\"" << escape_json(entry.artifact_path) << "\"}";
+    return out.str();
+}
+
+std::string render_review_finding_json(const ReviewFinding& entry) {
+    std::ostringstream out;
+    out << "{\"severity\":\"" << escape_json(entry.severity)
+        << "\",\"category\":\"" << escape_json(entry.category)
+        << "\",\"file_path\":\"" << escape_json(entry.file_path)
+        << "\",\"line\":" << entry.line
+        << ",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"rationale\":\"" << escape_json(entry.rationale) << "\"}";
+    return out.str();
+}
+
+std::string render_review_artifact_json(const ReviewArtifact& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"target\":\"" << escape_json(entry.target)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"findings\":[";
+    for (std::size_t index = 0; index < entry.findings.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << render_review_finding_json(entry.findings[index]);
+    }
+    out << "],\"nearby_symbols\":" << render_string_array(entry.nearby_symbols)
+        << ",\"suggested_tests\":" << render_string_array(entry.suggested_tests)
+        << ",\"persisted_at\":\"" << escape_json(entry.persisted_at)
+        << "\",\"artifact_path\":\"" << escape_json(entry.artifact_path)
+        << "\",\"assist_annotation\":"
+        << (entry.assist_annotation.has_value() ? render_assist_annotation_json(*entry.assist_annotation) : "null")
+        << "}";
+    return out.str();
+}
+
+std::string render_patch_proposal_artifact_json(const PatchProposalArtifact& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"target\":\"" << escape_json(entry.target)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"summary\":\"" << escape_json(entry.summary)
+        << "\",\"target_files\":" << render_string_array(entry.target_files)
+        << ",\"intended_behavior_changes\":" << render_string_array(entry.intended_behavior_changes)
+        << ",\"acceptance_tests\":" << render_string_array(entry.acceptance_tests)
+        << ",\"unified_diff_text\":\"" << escape_json(entry.unified_diff_text)
+        << "\",\"persisted_at\":\"" << escape_json(entry.persisted_at)
+        << "\",\"artifact_path\":\"" << escape_json(entry.artifact_path)
+        << "\",\"assist_annotation\":"
+        << (entry.assist_annotation.has_value() ? render_assist_annotation_json(*entry.assist_annotation) : "null")
+        << "}";
+    return out.str();
+}
+
+std::string render_recipe_authoring_artifact_json(const RecipeAuthoringArtifact& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"source_path\":\"" << escape_json(entry.source_path)
+        << "\",\"resolved_source_path\":\"" << escape_json(entry.resolved_source_path)
+        << "\",\"canonical_project_name\":\"" << escape_json(entry.canonical_project_name)
+        << "\",\"provider_id\":\"" << escape_json(entry.provider_id)
+        << "\",\"model\":\"" << escape_json(entry.model)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"generated_recipe_id\":\"" << escape_json(entry.generated_recipe_id)
+        << "\",\"generated_build_system\":\"" << escape_json(entry.generated_build_system)
+        << "\",\"rationale\":\"" << escape_json(entry.rationale)
+        << "\",\"ranked_evidence\":" << render_string_array(entry.ranked_evidence)
+        << ",\"validation_feedback\":" << render_string_array(entry.validation_feedback)
+        << ",\"repair_attempted\":" << (entry.repair_attempted ? "true" : "false")
+        << ",\"activated\":" << (entry.activated ? "true" : "false")
+        << ",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
+    return out.str();
+}
+
+std::string render_assist_outcome_json(const AssistOutcomeRecord& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"task_type\":\"" << escape_json(entry.task_type)
+        << "\",\"plan_type\":\"" << escape_json(entry.plan_type)
+        << "\",\"provider_id\":\"" << escape_json(entry.provider_id)
+        << "\",\"model\":\"" << escape_json(entry.model)
+        << "\",\"status\":\"" << escape_json(entry.status)
+        << "\",\"target_label\":\"" << escape_json(entry.target_label)
+        << "\",\"canonical_value\":\"" << escape_json(entry.canonical_value)
+        << "\",\"rejection_reason\":\"" << escape_json(entry.rejection_reason)
+        << "\",\"host_platform\":\"" << escape_json(entry.host_platform)
+        << "\",\"environment_signature\":\"" << escape_json(entry.environment_signature)
+        << "\",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
+    return out.str();
+}
+
+std::string render_assist_correction_json(const AssistCorrectionRecord& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"original_prompt\":\"" << escape_json(entry.original_prompt)
+        << "\",\"corrected_value\":\"" << escape_json(entry.corrected_value)
+        << "\",\"category\":\"" << escape_json(entry.category)
+        << "\",\"host_platform\":\"" << escape_json(entry.host_platform)
+        << "\",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
+    return out.str();
+}
+
+std::string render_assist_learning_json(const AssistLearningRecord& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"category\":\"" << escape_json(entry.category)
+        << "\",\"prompt_fragment\":\"" << escape_json(entry.prompt_fragment)
+        << "\",\"learned_value\":\"" << escape_json(entry.learned_value)
+        << "\",\"host_platform\":\"" << escape_json(entry.host_platform)
+        << "\",\"success_count\":" << entry.success_count
+        << ",\"rejection_count\":" << entry.rejection_count
+        << ",\"last_status\":\"" << escape_json(entry.last_status)
+        << "\",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
+    return out.str();
+}
+
+std::string render_host_assist_preference_json(const HostAssistPreferenceRecord& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"host_platform\":\"" << escape_json(entry.host_platform)
+        << "\",\"provider_id\":\"" << escape_json(entry.provider_id)
+        << "\",\"model\":\"" << escape_json(entry.model)
+        << "\",\"preferred_shell_phrases\":" << render_string_array(entry.preferred_shell_phrases)
+        << ",\"preferred_tool_routes\":" << render_string_array(entry.preferred_tool_routes)
+        << ",\"preferred_recipe_routes\":" << render_string_array(entry.preferred_recipe_routes)
+        << ",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
     return out.str();
 }
 
@@ -1114,6 +2263,20 @@ std::string render_security_audits_json(const MemorySnapshot& snapshot) {
     for (std::size_t index = 0; index < snapshot.security_audits.size(); ++index) {
         out << "    " << render_security_audit_json(snapshot.security_audits[index]);
         if (index + 1 < snapshot.security_audits.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ]\n}\n";
+    return out.str();
+}
+
+std::string render_legacy_sources_json(const MemorySnapshot& snapshot) {
+    std::ostringstream out;
+    out << "{\n  \"entries\": [\n";
+    for (std::size_t index = 0; index < snapshot.legacy_sources.size(); ++index) {
+        out << "    " << render_legacy_source_json(snapshot.legacy_sources[index]);
+        if (index + 1 < snapshot.legacy_sources.size()) {
             out << ",";
         }
         out << "\n";
@@ -1185,6 +2348,7 @@ std::string render_tze_runs_json(const MemorySnapshot& snapshot) {
             << "\",\"target\":\"" << escape_json(entry.target)
             << "\",\"linked_case_id\":\"" << escape_json(entry.linked_case_id)
             << "\",\"status\":\"" << escape_json(entry.status)
+            << "\",\"source_map_path\":\"" << escape_json(entry.source_map_path)
             << "\",\"reasoning_provider\":\"" << escape_json(entry.reasoning_provider)
             << "\",\"provider_probe_status\":\"" << escape_json(entry.provider_probe_status)
             << "\",\"assist_status\":\"" << escape_json(entry.assist_status)
@@ -1203,15 +2367,67 @@ std::string render_tze_runs_json(const MemorySnapshot& snapshot) {
             << (entry.tool_assist_plan.has_value() ? render_tool_assist_plan_json(*entry.tool_assist_plan) : "null")
             << ",\"build_assist_plan\":"
             << (entry.build_assist_plan.has_value() ? render_build_assist_plan_json(*entry.build_assist_plan) : "null")
+            << ",\"next_step_assist_plan\":"
+            << (entry.next_step_assist_plan.has_value() ? render_next_step_assist_plan_json(*entry.next_step_assist_plan) : "null")
+            << ",\"case_summary_assist_plan\":"
+            << (entry.case_summary_assist_plan.has_value() ? render_case_summary_assist_plan_json(*entry.case_summary_assist_plan) : "null")
+            << ",\"freeform_assist_answer\":"
+            << (entry.freeform_assist_answer.has_value() ? render_freeform_assist_answer_json(*entry.freeform_assist_answer) : "null")
             << ",\"security_audit\":"
             << (entry.security_audit.has_value() ? render_security_audit_json(*entry.security_audit) : "null")
             << ",\"language_resolution\":"
             << (entry.language_resolution.has_value() ? render_language_resolution_json(*entry.language_resolution) : "null")
             << ",\"uac_state\":"
             << (entry.uac_state.has_value() ? render_uac_state_json(*entry.uac_state) : "null")
+            << ",\"postprocess_record\":"
+            << (entry.postprocess_record.has_value() ? render_postprocess_record_json(*entry.postprocess_record) : "null")
+            << ",\"legacy_source\":"
+            << (entry.legacy_source.has_value() ? render_legacy_source_json(*entry.legacy_source) : "null")
+            << ",\"legacy_bridge_report\":"
+            << (entry.legacy_bridge_report.has_value() ? render_legacy_bridge_report_json(*entry.legacy_bridge_report) : "null")
             << ",\"query_session\":"
             << (entry.query_session.has_value() ? render_query_session_json(*entry.query_session) : "null")
-            << ",\"stages\":[";
+            << ",\"legacy_research_artifacts\":[";
+        for (std::size_t artifact_index = 0; artifact_index < entry.legacy_research_artifacts.size(); ++artifact_index) {
+            if (artifact_index != 0) {
+                out << ",";
+            }
+            out << render_legacy_research_artifact_json(entry.legacy_research_artifacts[artifact_index]);
+        }
+        out << "],\"legacy_correlations\":[";
+        for (std::size_t correlation_index = 0; correlation_index < entry.legacy_correlations.size(); ++correlation_index) {
+            if (correlation_index != 0) {
+                out << ",";
+            }
+            out << render_legacy_correlation_json(entry.legacy_correlations[correlation_index]);
+        }
+        out << "],\"legacy_symbol_coverage\":[";
+        for (std::size_t coverage_index = 0; coverage_index < entry.legacy_symbol_coverage.size(); ++coverage_index) {
+            if (coverage_index != 0) {
+                out << ",";
+            }
+            out << render_legacy_symbol_coverage_json(entry.legacy_symbol_coverage[coverage_index]);
+        }
+        out << "]";
+        if (entry.legacy_recovery_status.has_value()) {
+            out << ",\"legacy_recovery_status\":"
+                << render_legacy_recovery_status_json(*entry.legacy_recovery_status);
+        } else {
+            out << ",\"legacy_recovery_status\":null";
+        }
+        out << ",\"review_artifact\":"
+            << (entry.review_artifact.has_value() ? render_review_artifact_json(*entry.review_artifact) : "null");
+        out << ",\"patch_proposal_artifact\":"
+            << (entry.patch_proposal_artifact.has_value() ? render_patch_proposal_artifact_json(*entry.patch_proposal_artifact) : "null");
+        out << ",\"recipe_authoring_artifact\":"
+            << (entry.recipe_authoring_artifact.has_value() ? render_recipe_authoring_artifact_json(*entry.recipe_authoring_artifact) : "null");
+        out << ",\"definition_answer\":"
+            << (entry.definition_answer.has_value() ? render_definition_answer_json(*entry.definition_answer) : "null");
+        out << ",\"neural_math_report\":"
+            << (entry.neural_math_report.has_value() ? render_neural_math_report_json(*entry.neural_math_report) : "null");
+        out << ",\"neural_route_report\":"
+            << (entry.neural_route_report.has_value() ? render_neural_route_report_json(*entry.neural_route_report) : "null");
+        out << ",\"stages\":[";
         for (std::size_t stage_index = 0; stage_index < entry.stages.size(); ++stage_index) {
             if (stage_index != 0) {
                 out << ",";
@@ -1234,10 +2450,15 @@ std::string render_definitions_json(const std::vector<StoredDefinition>& entries
     for (std::size_t index = 0; index < entries.size(); ++index) {
         const StoredDefinition& entry = entries[index];
         out << "    {\"term\":\"" << escape_json(entry.term)
+            << "\",\"normalized_concept\":\"" << escape_json(entry.normalized_concept)
+            << "\",\"domain_hint\":\"" << escape_json(entry.domain_hint)
             << "\",\"summary\":\"" << escape_json(entry.summary)
             << "\",\"mapped_cpp_target\":\"" << escape_json(entry.mapped_cpp_target)
             << "\",\"semantic_family\":\"" << escape_json(entry.semantic_family)
-            << "\",\"source\":\"" << escape_json(entry.source) << "\"}";
+            << "\",\"source\":\"" << escape_json(entry.source)
+            << "\",\"source_type\":\"" << escape_json(entry.source_type)
+            << "\",\"authority_tier\":\"" << escape_json(entry.authority_tier)
+            << "\",\"confidence\":" << entry.confidence << "}";
         if (index + 1 < entries.size()) {
             out << ",";
         }
@@ -1256,7 +2477,93 @@ std::string render_preferences_json(const MemorySnapshot& snapshot) {
         }
         out << "\"" << escape_json(snapshot.source_preference_order[index]) << "\"";
     }
-    out << "]\n}\n";
+    out << "],\n  \"operator_persona\": ";
+    if (snapshot.operator_persona.has_value()) {
+        const OperatorPersonaRecord& persona = *snapshot.operator_persona;
+        out << "{\"preferred_label\":\"" << escape_json(persona.preferred_label)
+            << "\",\"role_label\":\"" << escape_json(persona.role_label)
+            << "\",\"local_username\":\"" << escape_json(persona.local_username)
+            << "\",\"host_identifier\":\"" << escape_json(persona.host_identifier)
+            << "\",\"last_source_map\":\"" << escape_json(persona.last_source_map)
+            << "\",\"last_memory_root\":\"" << escape_json(persona.last_memory_root)
+            << "\",\"self_description\":\"" << escape_json(persona.self_description)
+            << "\",\"persona_mode\":\"" << escape_json(persona.persona_mode)
+            << "\",\"tone_profile\":\"" << escape_json(persona.tone_profile)
+            << "\",\"interaction_style\":\"" << escape_json(persona.interaction_style)
+            << "\",\"safety_posture\":\"" << escape_json(persona.safety_posture)
+            << "\",\"preferred_next_action_style\":\"" << escape_json(persona.preferred_next_action_style)
+            << "\",\"custom_phrases\":[";
+        for (std::size_t index = 0; index < persona.custom_phrases.size(); ++index) {
+            if (index != 0) {
+                out << ", ";
+            }
+            out << "\"" << escape_json(persona.custom_phrases[index]) << "\"";
+        }
+        out << "]}";
+    } else {
+        out << "null";
+    }
+    out << ",\n  \"shell_lexicon_overlay\": [";
+    for (std::size_t index = 0; index < snapshot.shell_lexicon_overlay.size(); ++index) {
+        const ShellLexiconEntry& entry = snapshot.shell_lexicon_overlay[index];
+        if (index != 0) {
+            out << ", ";
+        }
+        out << "{\"phrase\":\"" << escape_json(entry.phrase)
+            << "\",\"canonical\":\"" << escape_json(entry.canonical)
+            << "\",\"category\":\"" << escape_json(entry.category)
+            << "\",\"confidence\":" << entry.confidence
+            << ",\"clarification_required\":" << (entry.clarification_required ? "true" : "false")
+            << ",\"correction_notes\":[";
+        for (std::size_t note_index = 0; note_index < entry.correction_notes.size(); ++note_index) {
+            if (note_index != 0) {
+                out << ", ";
+            }
+            out << "\"" << escape_json(entry.correction_notes[note_index]) << "\"";
+        }
+        out << "]}";
+    }
+    out << "],\n  \"assist_learning_status\": {\"outcomes\":" << snapshot.assist_outcomes.size()
+        << ",\"corrections\":" << snapshot.assist_corrections.size()
+        << ",\"learned_routes\":" << snapshot.assist_learning.size() << "}\n}\n";
+    return out.str();
+}
+
+std::string render_assist_memory_json(const MemorySnapshot& snapshot) {
+    std::ostringstream out;
+    out << "{\n  \"assist_outcomes\": [\n";
+    for (std::size_t index = 0; index < snapshot.assist_outcomes.size(); ++index) {
+        out << "    " << render_assist_outcome_json(snapshot.assist_outcomes[index]);
+        if (index + 1 < snapshot.assist_outcomes.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ],\n  \"assist_corrections\": [\n";
+    for (std::size_t index = 0; index < snapshot.assist_corrections.size(); ++index) {
+        out << "    " << render_assist_correction_json(snapshot.assist_corrections[index]);
+        if (index + 1 < snapshot.assist_corrections.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ],\n  \"assist_learning\": [\n";
+    for (std::size_t index = 0; index < snapshot.assist_learning.size(); ++index) {
+        out << "    " << render_assist_learning_json(snapshot.assist_learning[index]);
+        if (index + 1 < snapshot.assist_learning.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ],\n  \"host_assist_preferences\": [\n";
+    for (std::size_t index = 0; index < snapshot.host_assist_preferences.size(); ++index) {
+        out << "    " << render_host_assist_preference_json(snapshot.host_assist_preferences[index]);
+        if (index + 1 < snapshot.host_assist_preferences.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ]\n}\n";
     return out.str();
 }
 
@@ -1291,6 +2598,54 @@ std::string render_projects_json(const MemorySnapshot& snapshot) {
             << "\",\"last_install_prefix\":\"" << escape_json(entry.last_install_prefix)
             << "\",\"confidence_score\":" << entry.confidence_score << "}";
         if (index + 1 < snapshot.learned_recipes.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "  ]\n}\n";
+    return out.str();
+}
+
+std::string render_build_recipe_json(const BuildRecipe& entry) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << escape_json(entry.id)
+        << "\",\"acquisition_method\":\"" << escape_json(entry.acquisition_method)
+        << "\",\"build_system\":\"" << escape_json(entry.build_system)
+        << "\",\"supported_platforms\":" << render_string_array(entry.supported_platforms)
+        << ",\"default_target\":\"" << escape_json(entry.default_target)
+        << "\",\"install_target\":\"" << escape_json(entry.install_target)
+        << "\",\"artifact_patterns\":" << render_string_array(entry.artifact_patterns)
+        << ",\"install_output_patterns\":" << render_string_array(entry.install_output_patterns)
+        << ",\"fallback_stage_patterns\":" << render_string_array(entry.fallback_stage_patterns)
+        << ",\"dependency_hints\":" << render_string_array(entry.dependency_hints)
+        << ",\"configure_arguments\":" << render_string_array(entry.configure_arguments)
+        << ",\"supports_install\":" << (entry.supports_install ? "true" : "false")
+        << ",\"copy_artifacts_on_install\":" << (entry.copy_artifacts_on_install ? "true" : "false")
+        << "}";
+    return out.str();
+}
+
+std::string render_authored_recipes_json(const MemorySnapshot& snapshot) {
+    std::ostringstream out;
+    out << "{\n  \"entries\": [\n";
+    for (std::size_t index = 0; index < snapshot.authored_recipes.size(); ++index) {
+        const AuthoredRecipeRecord& entry = snapshot.authored_recipes[index];
+        out << "    {\"recipe\":" << render_build_recipe_json(entry.recipe)
+            << ",\"resolved_source_path\":\"" << escape_json(entry.resolved_source_path)
+            << "\",\"canonical_name\":\"" << escape_json(entry.canonical_name)
+            << "\",\"origin_provider\":\"" << escape_json(entry.origin_provider)
+            << "\",\"origin_model\":\"" << escape_json(entry.origin_model)
+            << "\",\"evidence_summary\":" << render_string_array(entry.evidence_summary)
+            << ",\"validation_status\":\"" << escape_json(entry.validation_status)
+            << "\",\"last_validation_summary\":\"" << escape_json(entry.last_validation_summary)
+            << "\",\"last_validation_log\":\"" << escape_json(entry.last_validation_log)
+            << "\",\"last_artifact\":\"" << escape_json(entry.last_artifact)
+            << "\",\"authoring_run_id\":\"" << escape_json(entry.authoring_run_id)
+            << "\",\"active_scope\":\"" << escape_json(entry.active_scope)
+            << "\",\"active\":" << (entry.active ? "true" : "false")
+            << ",\"repair_attempted\":" << (entry.repair_attempted ? "true" : "false")
+            << ",\"persisted_at\":\"" << escape_json(entry.persisted_at) << "\"}";
+        if (index + 1 < snapshot.authored_recipes.size()) {
             out << ",";
         }
         out << "\n";
@@ -1338,6 +2693,19 @@ std::string render_string_array(const std::vector<std::string>& values) {
             out << ",";
         }
         out << "\"" << escape_json(values[index]) << "\"";
+    }
+    out << "]";
+    return out.str();
+}
+
+std::string render_double_array(const std::vector<double>& values) {
+    std::ostringstream out;
+    out << "[";
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << values[index];
     }
     out << "]";
     return out.str();
@@ -1431,6 +2799,7 @@ std::string render_cases_json(const MemorySnapshot& snapshot) {
             << ",\"supporting_signals\":" << render_string_array(entry.supporting_signals)
             << ",\"validation_checks\":" << render_string_array(entry.validation_checks)
             << ",\"score_trace\":" << render_string_array(entry.score_trace)
+            << ",\"math_attributions\":" << render_math_attributions_json(entry.math_attributions)
             << ",\"operator_feedback\":\"" << escape_json(entry.operator_feedback)
             << "\",\"feedback_note\":\"" << escape_json(entry.feedback_note)
             << "\",\"feedback_timestamp\":\"" << escape_json(entry.feedback_timestamp)
@@ -1493,6 +2862,69 @@ std::string join_stage_fields(const std::vector<std::string>& values) {
             out << ", ";
         }
         out << values[index];
+    }
+    return out.str();
+}
+
+std::string replace_all_copy(std::string value, std::string_view needle, std::string_view replacement) {
+    std::size_t offset = 0;
+    while ((offset = value.find(needle, offset)) != std::string::npos) {
+        value.replace(offset, needle.size(), replacement);
+        offset += replacement.size();
+    }
+    return value;
+}
+
+std::string human_readable_stage_id(std::string_view stage_id) {
+    if (stage_id == "xProcessingCache") {
+        return "Cache.PrepareWorkspace";
+    }
+    if (stage_id == "x.Define.Low") {
+        return "Intent.DecodeInstruction";
+    }
+    if (stage_id == "x.DisplayPriorityProcessingGate") {
+        return "Knowledge.EvidenceRanking";
+    }
+    if (stage_id == "x.DisplayFeedBackLoop") {
+        return "Memory.FeedbackReview";
+    }
+    if (stage_id == "x.Store") {
+        return "Memory.StoreArtifact";
+    }
+    return std::string(stage_id);
+}
+
+std::string render_stage_label(const TzeStageRecord& stage) {
+    const std::string readable = human_readable_stage_id(stage.stage_id);
+    if (readable == stage.stage_id) {
+        return stage.stage_id;
+    }
+    return readable + " (legacy=" + stage.stage_id + ")";
+}
+
+std::string translate_storage_names(std::string text) {
+    text = replace_all_copy(std::move(text), "xMap_Temp", "Storage.Temporary");
+    text = replace_all_copy(std::move(text), "xMap_Perm", "Storage.Permanent");
+    text = replace_all_copy(std::move(text), "xMap_Core", "Storage.Core");
+    return text;
+}
+
+std::string human_readable_storage_text(std::string_view value) {
+    const std::string raw(value);
+    if (raw.rfind("x.Store(", 0) == 0 && !raw.empty() && raw.back() == ')') {
+        const std::string inner = raw.substr(8, raw.size() - 9);
+        return "Memory.StoreArtifact(" + translate_storage_names(inner) + ") (legacy=" + raw + ")";
+    }
+    return translate_storage_names(raw);
+}
+
+std::string join_stage_fields_for_display(const std::vector<std::string>& values) {
+    std::ostringstream out;
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        if (index != 0) {
+            out << ", ";
+        }
+        out << human_readable_storage_text(values[index]);
     }
     return out.str();
 }
@@ -1568,6 +3000,49 @@ std::string render_query_session_summary(const QuerySessionRecord& session) {
                 out << " context=" << join_stage_fields(candidate.matched_context);
             }
             out << "\n";
+        }
+    }
+    return out.str();
+}
+
+std::string render_legacy_source_summary(const LegacySourceRecord& entry) {
+    std::ostringstream out;
+    out << " - Source: " << entry.source_label << "\n";
+    out << " - Path: " << entry.source_path << "\n";
+    out << " - Kind: " << entry.source_kind << "\n";
+    out << " - Lines: " << entry.line_count << "\n";
+    out << " - Sections: " << entry.section_count << "\n";
+    out << " - Symbols: " << entry.symbol_count << "\n";
+    return out.str();
+}
+
+std::string render_legacy_bridge_summary(const LegacyBridgeReport& entry) {
+    std::ostringstream out;
+    out << " - Status: " << entry.status << "\n";
+    out << " - Mode: " << entry.bridge_mode << "\n";
+    out << " - Summary: " << entry.summary << "\n";
+    if (!entry.bridge_steps.empty()) {
+        out << " - Bridge steps:\n";
+        for (const std::string& step : entry.bridge_steps) {
+            out << "   - " << step << "\n";
+        }
+    }
+    if (!entry.safe_actions.empty()) {
+        out << " - Safe actions:\n";
+        for (const std::string& action : entry.safe_actions) {
+            out << "   - " << action << "\n";
+        }
+    }
+    if (!entry.research_actions.empty()) {
+        out << " - Research actions:\n";
+        for (const std::string& action : entry.research_actions) {
+            out << "   - " << action << "\n";
+        }
+    }
+    if (!entry.blocked_actions.empty()) {
+        out << " - Blocked actions:\n";
+        for (const std::string& action : entry.blocked_actions) {
+            out << "   - " << action << "\n";
         }
     }
     return out.str();
@@ -1706,6 +3181,91 @@ std::string render_build_assist_plan_summary(const BuildAssistPlan& plan) {
     return out.str();
 }
 
+std::string render_next_step_assist_plan_summary(const NextStepAssistPlan& plan) {
+    std::ostringstream out;
+    out << " - Task: " << plan.task_id << "\n";
+    out << " - Provider: " << plan.provider_id;
+    if (!plan.model.empty()) {
+        out << " (" << plan.model << ")";
+    }
+    out << "\n";
+    out << " - Status: " << plan.status << "\n";
+    out << " - Suggested next step: " << plan.suggested_next_step << "\n";
+    if (!plan.safer_alternative.empty()) {
+        out << " - Safer alternative: " << plan.safer_alternative << "\n";
+    }
+    out << " - Confidence: " << plan.confidence << "\n";
+    if (!plan.rationale.empty()) {
+        out << " - Rationale: " << plan.rationale << "\n";
+    }
+    if (!plan.warnings.empty()) {
+        out << " - Warnings: " << join_stage_fields(plan.warnings) << "\n";
+    }
+    out << " - Validated: " << (plan.validated ? "yes" : "no") << "\n";
+    return out.str();
+}
+
+std::string render_case_summary_assist_plan_summary(const CaseSummaryAssistPlan& plan) {
+    std::ostringstream out;
+    out << " - Task: " << plan.task_id << "\n";
+    out << " - Provider: " << plan.provider_id;
+    if (!plan.model.empty()) {
+        out << " (" << plan.model << ")";
+    }
+    out << "\n";
+    out << " - Status: " << plan.status << "\n";
+    if (!plan.summary_title.empty()) {
+        out << " - Title: " << plan.summary_title << "\n";
+    }
+    out << " - Executive summary: " << plan.executive_summary << "\n";
+    if (!plan.highlights.empty()) {
+        out << " - Highlights: " << join_stage_fields(plan.highlights) << "\n";
+    }
+    out << " - Confidence: " << plan.confidence << "\n";
+    out << " - Validated: " << (plan.validated ? "yes" : "no") << "\n";
+    return out.str();
+}
+
+std::string render_review_artifact_summary(const ReviewArtifact& entry) {
+    std::ostringstream out;
+    out << " - Target: " << entry.target << "\n";
+    out << " - Status: " << entry.status << "\n";
+    out << " - Summary: " << entry.summary << "\n";
+    out << " - Findings: " << entry.findings.size() << "\n";
+    for (const ReviewFinding& finding : entry.findings) {
+        out << "   - [" << finding.severity << "] " << finding.category << " :: " << finding.summary;
+        if (!finding.file_path.empty()) {
+            out << " (" << finding.file_path;
+            if (finding.line != 0) {
+                out << ":" << finding.line;
+            }
+            out << ")";
+        }
+        out << "\n";
+    }
+    if (!entry.suggested_tests.empty()) {
+        out << " - Suggested tests: " << join_stage_fields(entry.suggested_tests) << "\n";
+    }
+    return out.str();
+}
+
+std::string render_patch_proposal_artifact_summary(const PatchProposalArtifact& entry) {
+    std::ostringstream out;
+    out << " - Target: " << entry.target << "\n";
+    out << " - Status: " << entry.status << "\n";
+    out << " - Summary: " << entry.summary << "\n";
+    if (!entry.target_files.empty()) {
+        out << " - Target files: " << join_stage_fields(entry.target_files) << "\n";
+    }
+    if (!entry.intended_behavior_changes.empty()) {
+        out << " - Intended changes: " << join_stage_fields(entry.intended_behavior_changes) << "\n";
+    }
+    if (!entry.acceptance_tests.empty()) {
+        out << " - Acceptance tests: " << join_stage_fields(entry.acceptance_tests) << "\n";
+    }
+    return out.str();
+}
+
 std::string render_security_audit_summary(const SecurityAudit& entry) {
     std::ostringstream out;
     out << " - Status: " << entry.status << "\n";
@@ -1752,6 +3312,20 @@ std::string render_language_resolution_summary(const LanguageResolutionRecord& e
     } else if (entry.manual_confirmation_used) {
         out << " - Manual confirmation: " << entry.manual_confirmation_response << "\n";
     }
+    if (!entry.decompression_candidates.empty()) {
+        out << " - Decompression ladder:\n";
+        for (const DecompressionCandidate& candidate : entry.decompression_candidates) {
+            out << "   - " << candidate.label << " [" << candidate.status << "] confidence="
+                << std::fixed << std::setprecision(2) << candidate.confidence;
+            if (!candidate.notes.empty()) {
+                out << " notes=" << join_stage_fields(candidate.notes);
+            }
+            out << "\n";
+        }
+    }
+    if (!entry.research_notes.empty()) {
+        out << " - Research notes: " << join_stage_fields(entry.research_notes) << "\n";
+    }
     if (!entry.reasoning_trace.empty()) {
         out << " - Trace: " << join_stage_fields(entry.reasoning_trace) << "\n";
     }
@@ -1760,12 +3334,27 @@ std::string render_language_resolution_summary(const LanguageResolutionRecord& e
 
 std::string render_uac_state_summary(const UacStateRecord& entry) {
     std::ostringstream out;
+    if (!entry.normalized_prompt.empty()) {
+        out << " - Normalized prompt: " << entry.normalized_prompt << "\n";
+    }
+    if (!entry.query_tokens.empty()) {
+        out << " - Tokens: " << join_stage_fields(entry.query_tokens) << "\n";
+    }
+    if (!entry.instruction_family_hint.empty()) {
+        out << " - Instruction family: " << entry.instruction_family_hint << "\n";
+    }
     out << " - Epoch: " << entry.epoch_marker << "\n";
     out << " - Machine: " << entry.machine_identifier << "\n";
-    out << " - Namespace: " << entry.store_namespace << "\n";
-    out << " - Search namespace: " << entry.search_namespace << "\n";
+    out << " - Namespace: " << human_readable_storage_text(entry.store_namespace) << "\n";
+    out << " - Search namespace: " << human_readable_storage_text(entry.search_namespace) << "\n";
     out << " - GENx: " << entry.genx_token_value << "\n";
     out << " - Compression: " << entry.compression_label << "\n";
+    if (!entry.chapter_series_label.empty()) {
+        out << " - Chapter series: " << entry.chapter_series_label << "\n";
+    }
+    if (!entry.epoch_tier_label.empty()) {
+        out << " - Epoch tier: " << entry.epoch_tier_label << "\n";
+    }
     out << " - Key store: " << entry.key_store_address_value << "\n";
     out << " - Key budget: " << entry.key_budget_value << "\n";
     if (!entry.indexed_traits.empty()) {
@@ -1781,8 +3370,85 @@ std::string render_uac_state_summary(const UacStateRecord& entry) {
     if (!entry.recovery_hints.empty()) {
         out << " - Recovery hints: " << join_stage_fields(entry.recovery_hints) << "\n";
     }
+    if (!entry.deletion_discrepancies.empty()) {
+        out << " - Deletion discrepancies: " << join_stage_fields(entry.deletion_discrepancies) << "\n";
+    }
+    if (!entry.search_context_habits.empty()) {
+        out << " - Search context habits: " << join_stage_fields(entry.search_context_habits) << "\n";
+    }
+    if (!entry.time_on_site_traits.empty()) {
+        out << " - Time-on-site traits: " << join_stage_fields(entry.time_on_site_traits) << "\n";
+    }
     if (!entry.reasoning_trace.empty()) {
         out << " - Trace: " << join_stage_fields(entry.reasoning_trace) << "\n";
+    }
+    return out.str();
+}
+
+std::string render_freeform_assist_answer_summary(const FreeformAssistAnswer& answer) {
+    std::ostringstream out;
+    out << " - Task: " << answer.task_id << "\n";
+    out << " - Provider: " << answer.provider_id;
+    if (!answer.model.empty()) {
+        out << " (" << answer.model << ")";
+    }
+    out << "\n";
+    out << " - Status: " << answer.status << "\n";
+    out << " - Answer: " << answer.answer << "\n";
+    out << " - Confidence: " << answer.confidence << "\n";
+    if (!answer.rationale.empty()) {
+        out << " - Rationale: " << answer.rationale << "\n";
+    }
+    if (!answer.suggested_commands.empty()) {
+        out << " - Suggested commands: " << join_stage_fields(answer.suggested_commands) << "\n";
+    }
+    if (!answer.safety_warnings.empty()) {
+        out << " - Safety warnings: " << join_stage_fields(answer.safety_warnings) << "\n";
+    }
+    if (!answer.used_context.empty()) {
+        out << " - Used context: " << join_stage_fields(answer.used_context) << "\n";
+    }
+    return out.str();
+}
+
+std::string render_postprocess_record_summary(const PostProcessRecord& entry) {
+    std::ostringstream out;
+    out << " - Status: " << entry.status << "\n";
+    if (!entry.final_artifact_summary.empty()) {
+        out << " - Final artifact: " << entry.final_artifact_summary << "\n";
+    }
+    if (!entry.provenance.empty()) {
+        out << " - Provenance: " << entry.provenance << "\n";
+    }
+    if (!entry.retention_decision.empty()) {
+        out << " - Retention: " << entry.retention_decision << "\n";
+    }
+    out << " - Dropped transient chain: " << (entry.dropped_transient_chain ? "yes" : "no") << "\n";
+    if (!entry.retained_fields.empty()) {
+        out << " - Retained fields: " << join_stage_fields(entry.retained_fields) << "\n";
+    }
+    if (!entry.discarded_fields.empty()) {
+        out << " - Discarded fields: " << join_stage_fields(entry.discarded_fields) << "\n";
+    }
+    return out.str();
+}
+
+std::string render_recipe_authoring_artifact_summary(const RecipeAuthoringArtifact& entry) {
+    std::ostringstream out;
+    out << " - Status: " << entry.status << "\n";
+    if (!entry.generated_recipe_id.empty()) {
+        out << " - Recipe id: " << entry.generated_recipe_id << "\n";
+    }
+    if (!entry.generated_build_system.empty()) {
+        out << " - Build system: " << entry.generated_build_system << "\n";
+    }
+    out << " - Activated: " << (entry.activated ? "yes" : "no") << "\n";
+    out << " - Repair attempted: " << (entry.repair_attempted ? "yes" : "no") << "\n";
+    if (!entry.ranked_evidence.empty()) {
+        out << " - Ranked evidence: " << join_stage_fields(entry.ranked_evidence) << "\n";
+    }
+    if (!entry.validation_feedback.empty()) {
+        out << " - Validation feedback: " << join_stage_fields(entry.validation_feedback) << "\n";
     }
     return out.str();
 }
@@ -2089,6 +3755,16 @@ void ensure_file_exists(const std::filesystem::path& path, const std::string& de
     write_text(path, default_content);
 }
 
+std::string current_host_platform() {
+#if defined(__APPLE__)
+    return "macos";
+#elif defined(__linux__)
+    return "linux";
+#else
+    return "unknown";
+#endif
+}
+
 }  // namespace
 
 MemoryPaths MemoryStore::resolve_paths(const std::filesystem::path& requested_root) const {
@@ -2108,10 +3784,13 @@ MemoryPaths MemoryStore::resolve_paths(const std::filesystem::path& requested_ro
     paths.definitions_path = paths.root / "definitions.json";
     paths.preferences_path = paths.root / "preferences.json";
     paths.projects_path = paths.root / "projects.json";
+    paths.authored_recipes_path = paths.root / "authored_recipes.json";
     paths.native_tools_path = paths.root / "native_tools.json";
     paths.language_contexts_path = paths.root / "language_contexts.json";
     paths.uac_states_path = paths.root / "uac_states.json";
     paths.security_audits_path = paths.root / "security_audits.json";
+    paths.legacy_sources_path = paths.root / "legacy_sources.json";
+    paths.assist_memory_path = paths.root / "assist_memory.json";
     paths.cases_path = paths.root / "cases.json";
     paths.workspaces_root = paths.root / "workspaces";
     paths.installs_root = paths.root / "installs";
@@ -2126,10 +3805,14 @@ MemoryPaths MemoryStore::resolve_paths(const std::filesystem::path& requested_ro
     ensure_file_exists(paths.definitions_path, "{\n  \"entries\": []\n}\n");
     ensure_file_exists(paths.preferences_path, "{\n  \"source_preference_order\": [\"Wikipedia\", \"Oxford\", \"Webster\"]\n}\n");
     ensure_file_exists(paths.projects_path, "{\n  \"entries\": [],\n  \"learned_recipes\": []\n}\n");
+    ensure_file_exists(paths.authored_recipes_path, "{\n  \"entries\": []\n}\n");
     ensure_file_exists(paths.native_tools_path, "{\n  \"entries\": []\n}\n");
     ensure_file_exists(paths.language_contexts_path, "{\n  \"entries\": []\n}\n");
     ensure_file_exists(paths.uac_states_path, "{\n  \"entries\": []\n}\n");
     ensure_file_exists(paths.security_audits_path, "{\n  \"entries\": []\n}\n");
+    ensure_file_exists(paths.legacy_sources_path, "{\n  \"entries\": []\n}\n");
+    ensure_file_exists(paths.assist_memory_path,
+                       "{\n  \"assist_outcomes\": [],\n  \"assist_corrections\": [],\n  \"assist_learning\": [],\n  \"host_assist_preferences\": []\n}\n");
     ensure_file_exists(paths.cases_path, "{\n  \"observations\": [],\n  \"normalized_objects\": [],\n  \"evidence_links\": [],\n  \"analyst_comments\": [],\n  \"decision_candidates\": [],\n  \"case_records\": [],\n  \"case_links\": []\n}\n");
     return paths;
 }
@@ -2164,6 +3847,13 @@ MemorySnapshot MemoryStore::load(const std::filesystem::path& requested_root) co
     if (snapshot.source_preference_order.empty()) {
         snapshot.source_preference_order = {"Wikipedia", "Oxford", "Webster"};
     }
+    const std::string operator_persona_text = extract_json_object(preferences_json, "operator_persona");
+    if (!operator_persona_text.empty()) {
+        snapshot.operator_persona = parse_operator_persona_entry(operator_persona_text);
+    }
+    for (const std::string& object_text : extract_object_entries(preferences_json, "shell_lexicon_overlay")) {
+        snapshot.shell_lexicon_overlay.push_back(parse_shell_lexicon_entry(object_text));
+    }
 
     const std::string projects_json = read_text(snapshot.paths.projects_path);
     for (const std::string& object_text : extract_object_entries(projects_json, "entries")) {
@@ -2171,6 +3861,11 @@ MemorySnapshot MemoryStore::load(const std::filesystem::path& requested_root) co
     }
     for (const std::string& object_text : extract_object_entries(projects_json, "learned_recipes")) {
         snapshot.learned_recipes.push_back(parse_learned_recipe_entry(object_text));
+    }
+
+    const std::string authored_recipes_json = read_text(snapshot.paths.authored_recipes_path);
+    for (const std::string& object_text : extract_object_entries(authored_recipes_json, "entries")) {
+        snapshot.authored_recipes.push_back(parse_authored_recipe_entry(object_text));
     }
 
     const std::string native_tools_json = read_text(snapshot.paths.native_tools_path);
@@ -2191,6 +3886,25 @@ MemorySnapshot MemoryStore::load(const std::filesystem::path& requested_root) co
     const std::string security_audits_json = read_text(snapshot.paths.security_audits_path);
     for (const std::string& object_text : extract_object_entries(security_audits_json, "entries")) {
         snapshot.security_audits.push_back(parse_security_audit_entry(object_text));
+    }
+
+    const std::string legacy_sources_json = read_text(snapshot.paths.legacy_sources_path);
+    for (const std::string& object_text : extract_object_entries(legacy_sources_json, "entries")) {
+        snapshot.legacy_sources.push_back(parse_legacy_source_entry(object_text));
+    }
+
+    const std::string assist_memory_json = read_text(snapshot.paths.assist_memory_path);
+    for (const std::string& object_text : extract_object_entries(assist_memory_json, "assist_outcomes")) {
+        snapshot.assist_outcomes.push_back(parse_assist_outcome_entry(object_text));
+    }
+    for (const std::string& object_text : extract_object_entries(assist_memory_json, "assist_corrections")) {
+        snapshot.assist_corrections.push_back(parse_assist_correction_entry(object_text));
+    }
+    for (const std::string& object_text : extract_object_entries(assist_memory_json, "assist_learning")) {
+        snapshot.assist_learning.push_back(parse_assist_learning_entry(object_text));
+    }
+    for (const std::string& object_text : extract_object_entries(assist_memory_json, "host_assist_preferences")) {
+        snapshot.host_assist_preferences.push_back(parse_host_assist_preference_entry(object_text));
     }
 
     const std::string cases_json = read_text(snapshot.paths.cases_path);
@@ -2225,10 +3939,13 @@ void MemoryStore::persist_snapshot(const MemorySnapshot& snapshot) const {
     write_text(snapshot.paths.definitions_path, render_definitions_json(snapshot.definitions));
     write_text(snapshot.paths.preferences_path, render_preferences_json(snapshot));
     write_text(snapshot.paths.projects_path, render_projects_json(snapshot));
+    write_text(snapshot.paths.authored_recipes_path, render_authored_recipes_json(snapshot));
     write_text(snapshot.paths.native_tools_path, render_native_tools_json(snapshot));
     write_text(snapshot.paths.language_contexts_path, render_language_contexts_json(snapshot));
     write_text(snapshot.paths.uac_states_path, render_uac_states_json(snapshot));
     write_text(snapshot.paths.security_audits_path, render_security_audits_json(snapshot));
+    write_text(snapshot.paths.legacy_sources_path, render_legacy_sources_json(snapshot));
+    write_text(snapshot.paths.assist_memory_path, render_assist_memory_json(snapshot));
     write_text(snapshot.paths.cases_path, render_cases_json(snapshot));
 }
 
@@ -2291,6 +4008,9 @@ std::string MemoryStore::render_tze_run(const MemorySnapshot& snapshot, std::str
         out << " - Linked case: " << entry->linked_case_id << "\n";
     }
     out << " - Status: " << entry->status << "\n";
+    if (!entry->source_map_path.empty()) {
+        out << " - Source map: " << entry->source_map_path << "\n";
+    }
     if (!entry->reasoning_provider.empty()) {
         out << " - Reasoning provider: " << entry->reasoning_provider << "\n";
     }
@@ -2316,6 +4036,18 @@ std::string MemoryStore::render_tze_run(const MemorySnapshot& snapshot, std::str
     if (entry->build_assist_plan.has_value()) {
         out << "Build assist plan:\n";
         out << render_build_assist_plan_summary(*entry->build_assist_plan);
+    }
+    if (entry->next_step_assist_plan.has_value()) {
+        out << "Next-step assist plan:\n";
+        out << render_next_step_assist_plan_summary(*entry->next_step_assist_plan);
+    }
+    if (entry->case_summary_assist_plan.has_value()) {
+        out << "Case summary assist plan:\n";
+        out << render_case_summary_assist_plan_summary(*entry->case_summary_assist_plan);
+    }
+    if (entry->freeform_assist_answer.has_value()) {
+        out << "Freeform assist answer:\n";
+        out << render_freeform_assist_answer_summary(*entry->freeform_assist_answer);
     }
     if (!entry->next_action.empty()) {
         out << " - Next action: " << entry->next_action << "\n";
@@ -2345,15 +4077,134 @@ std::string MemoryStore::render_tze_run(const MemorySnapshot& snapshot, std::str
         out << "uAC state:\n";
         out << render_uac_state_summary(*entry->uac_state);
     }
+    if (entry->postprocess_record.has_value()) {
+        out << "Postprocess:\n";
+        out << render_postprocess_record_summary(*entry->postprocess_record);
+    }
+    if (entry->recipe_authoring_artifact.has_value()) {
+        out << "Recipe authoring:\n";
+        out << render_recipe_authoring_artifact_summary(*entry->recipe_authoring_artifact);
+    }
+    if (entry->legacy_source.has_value()) {
+        out << "Legacy source:\n";
+        out << render_legacy_source_summary(*entry->legacy_source);
+    }
+    if (entry->legacy_bridge_report.has_value()) {
+        out << "Legacy bridge:\n";
+        out << render_legacy_bridge_summary(*entry->legacy_bridge_report);
+    }
+    if (entry->legacy_recovery_status.has_value()) {
+        out << "Legacy recovery:\n";
+        out << " - Implemented: " << entry->legacy_recovery_status->implemented_count << "\n";
+        out << " - Partial: " << entry->legacy_recovery_status->partial_count << "\n";
+        out << " - Missing: " << entry->legacy_recovery_status->missing_count << "\n";
+        out << " - Research-only: " << entry->legacy_recovery_status->research_only_count << "\n";
+        out << " - Blocked: " << entry->legacy_recovery_status->blocked_count << "\n";
+    }
     if (entry->query_session.has_value()) {
         out << "Query session:\n";
         out << render_query_session_summary(*entry->query_session);
     }
+    if (entry->definition_answer.has_value()) {
+        out << "Definition answer:\n";
+        out << " - Query: " << entry->definition_answer->query << "\n";
+        if (!entry->definition_answer->summary.empty()) {
+            out << " - Summary: " << entry->definition_answer->summary << "\n";
+        }
+        if (!entry->definition_answer->domain_hint.empty()) {
+            out << " - Domain: " << entry->definition_answer->domain_hint << "\n";
+        }
+        if (!entry->definition_answer->selected_source_type.empty()) {
+            out << " - Source: " << entry->definition_answer->selected_source_type;
+            if (!entry->definition_answer->selected_source_label.empty()) {
+                out << " (" << entry->definition_answer->selected_source_label << ")";
+            }
+            out << "\n";
+        }
+        if (!entry->definition_answer->selected_authority_tier.empty()) {
+            out << " - Authority tier: " << entry->definition_answer->selected_authority_tier << "\n";
+        }
+        if (!entry->definition_answer->comparison_rationale.empty()) {
+            out << " - Comparison rationale: " << entry->definition_answer->comparison_rationale << "\n";
+        }
+        if (!entry->definition_answer->math_attributions.empty()) {
+            out << " - Math attributions:\n";
+            for (const MathAttribution& attribution : entry->definition_answer->math_attributions) {
+                out << "   - " << attribution.name
+                    << " raw=" << attribution.raw_value
+                    << " weight=" << attribution.weight
+                    << " contribution=" << attribution.contribution;
+                if (!attribution.source.empty()) {
+                    out << " source=" << attribution.source;
+                }
+                if (!attribution.rationale.empty()) {
+                    out << " | " << attribution.rationale;
+                }
+                out << "\n";
+            }
+        }
+    }
+    if (entry->neural_math_report.has_value()) {
+        const NeuralMathReport& neural = *entry->neural_math_report;
+        out << "Neural math:\n";
+        out << " - Status: " << neural.status << "\n";
+        out << " - Model: " << neural.model_type << "\n";
+        out << " - Dataset: " << neural.dataset << "\n";
+        if (!neural.summary.empty()) {
+            out << " - Summary: " << neural.summary << "\n";
+        }
+        out << " - Accuracy: " << neural.accuracy << "\n";
+        if (!neural.math_trace.empty()) {
+            out << " - Trace: " << join_stage_fields_for_display(neural.math_trace) << "\n";
+        }
+    }
+    if (entry->neural_route_report.has_value()) {
+        const NeuralRouteReport& neural = *entry->neural_route_report;
+        out << "Neural route:\n";
+        out << " - Status: " << neural.status << "\n";
+        out << " - Input: " << neural.input_path << "\n";
+        out << " - Packets: " << neural.packet_count << "\n";
+        out << " - Flows: " << neural.flow_count << "\n";
+        if (!neural.summary.empty()) {
+            out << " - Summary: " << neural.summary << "\n";
+        }
+        if (!neural.predictions.empty()) {
+            const NeuralRoutePrediction& top = neural.predictions.front();
+            out << " - Top label: " << top.label << " confidence=" << top.confidence << "\n";
+            if (!top.attributions.empty()) {
+                out << " - Math attributions:\n";
+                for (const MathAttribution& attribution : top.attributions) {
+                    out << "   - " << attribution.name
+                        << " raw=" << attribution.raw_value
+                        << " weight=" << attribution.weight
+                        << " contribution=" << attribution.contribution;
+                    if (!attribution.source.empty()) {
+                        out << " source=" << attribution.source;
+                    }
+                    if (!attribution.rationale.empty()) {
+                        out << " | " << attribution.rationale;
+                    }
+                    out << "\n";
+                }
+            }
+        }
+        if (!neural.artifact_path.empty()) {
+            out << " - Artifact: " << neural.artifact_path << "\n";
+        }
+    }
+    if (entry->review_artifact.has_value()) {
+        out << "Review artifact:\n";
+        out << render_review_artifact_summary(*entry->review_artifact);
+    }
+    if (entry->patch_proposal_artifact.has_value()) {
+        out << "Patch proposal artifact:\n";
+        out << render_patch_proposal_artifact_summary(*entry->patch_proposal_artifact);
+    }
     out << "Stages:\n";
     for (const TzeStageRecord& stage : entry->stages) {
-        out << " - " << stage.stage_id << " [" << stage.status << "] " << stage.module;
+        out << " - " << render_stage_label(stage) << " [" << stage.status << "] " << stage.module;
         if (!stage.detail.empty()) {
-            out << " | " << stage.detail;
+            out << " | " << human_readable_storage_text(stage.detail);
         }
         out << "\n";
         const std::string source_ref = render_stage_source(stage);
@@ -2364,10 +4215,10 @@ std::string MemoryStore::render_tze_run(const MemorySnapshot& snapshot, std::str
             out << "   excerpt: " << stage.source_excerpt << "\n";
         }
         if (!stage.inputs.empty()) {
-            out << "   inputs: " << join_stage_fields(stage.inputs) << "\n";
+            out << "   inputs: " << join_stage_fields_for_display(stage.inputs) << "\n";
         }
         if (!stage.outputs.empty()) {
-            out << "   outputs: " << join_stage_fields(stage.outputs) << "\n";
+            out << "   outputs: " << join_stage_fields_for_display(stage.outputs) << "\n";
         }
     }
     return out.str();
@@ -2465,7 +4316,7 @@ std::string MemoryStore::render_tze_diff(const MemorySnapshot& snapshot,
     for (const auto& [stage_id, left_stage] : left_stages) {
         const auto right_it = right_stages.find(stage_id);
         if (right_it == right_stages.end()) {
-            stage_changes.push_back(stage_id + ": removed from right-hand run");
+            stage_changes.push_back(render_stage_label(left_stage) + ": removed from right-hand run");
             continue;
         }
         const TzeStageRecord& right_stage = right_it->second;
@@ -2473,7 +4324,7 @@ std::string MemoryStore::render_tze_diff(const MemorySnapshot& snapshot,
             left_stage.module != right_stage.module || left_stage.inputs != right_stage.inputs ||
             left_stage.outputs != right_stage.outputs || !same_stage_provenance(left_stage, right_stage)) {
             std::ostringstream line;
-            line << stage_id << ": [" << left_stage.status << "] -> [" << right_stage.status << "]";
+            line << render_stage_label(left_stage) << ": [" << left_stage.status << "] -> [" << right_stage.status << "]";
             if (left_stage.inputs != right_stage.inputs) {
                 line << " | inputs changed";
             }
@@ -2490,9 +4341,8 @@ std::string MemoryStore::render_tze_diff(const MemorySnapshot& snapshot,
         }
     }
     for (const auto& [stage_id, right_stage] : right_stages) {
-        (void)right_stage;
         if (left_stages.find(stage_id) == left_stages.end()) {
-            stage_changes.push_back(stage_id + ": added in right-hand run");
+            stage_changes.push_back(render_stage_label(right_stage) + ": added in right-hand run");
         }
     }
 
@@ -2658,25 +4508,29 @@ std::string MemoryStore::render_tze_change_explanation(const MemorySnapshot& sna
     const auto explain_stage = [&stage_lines](std::string_view stage_id,
                                               const TzeStageRecord& lhs,
                                               const TzeStageRecord& rhs) {
+        const std::string label = human_readable_stage_id(stage_id);
+        const std::string display = label == stage_id
+            ? std::string(stage_id)
+            : label + "` (legacy=`" + std::string(stage_id) + ")";
         if (lhs.status == rhs.status && lhs.detail == rhs.detail && lhs.inputs == rhs.inputs &&
             lhs.outputs == rhs.outputs && same_stage_provenance(lhs, rhs)) {
             return;
         }
         if (!same_stage_provenance(lhs, rhs) &&
             lhs.status == rhs.status && lhs.detail == rhs.detail && lhs.inputs == rhs.inputs && lhs.outputs == rhs.outputs) {
-            stage_lines.push_back("`" + std::string(stage_id) + "` kept the same runtime behavior, but its source-backed origin changed.");
+            stage_lines.push_back("`" + display + "` kept the same runtime behavior, but its source-backed origin changed.");
             return;
         }
         if (stage_id == "x.Define.Low") {
-            stage_lines.push_back("`x.Define.Low` changed, so intent decoding or target selection differed between the two runs.");
+            stage_lines.push_back("`Intent.DecodeInstruction` (legacy=`x.Define.Low`) changed, so intent decoding or target selection differed between the two runs.");
             return;
         }
         if (stage_id == "x.DisplayPriorityProcessingGate") {
-            stage_lines.push_back("`x.DisplayPriorityProcessingGate` changed, so Omni reordered knowledge sources or module preferences.");
+            stage_lines.push_back("`Knowledge.EvidenceRanking` (legacy=`x.DisplayPriorityProcessingGate`) changed, so Omni reordered knowledge sources or module preferences.");
             return;
         }
         if (stage_id == "x.DisplayFeedBackLoop") {
-            stage_lines.push_back("`x.DisplayFeedBackLoop` changed, so the later run used different prior outcomes or learned context.");
+            stage_lines.push_back("`Memory.FeedbackReview` (legacy=`x.DisplayFeedBackLoop`) changed, so the later run used different prior outcomes or learned context.");
             return;
         }
         if (stage_id == "x.Assist.Plan") {
@@ -2712,28 +4566,27 @@ std::string MemoryStore::render_tze_change_explanation(const MemorySnapshot& sna
             return;
         }
         if (stage_id == "x.Store") {
-            stage_lines.push_back("`x.Store` changed, so persistence targets or saved results differed between the runs.");
+            stage_lines.push_back("`Memory.StoreArtifact` (legacy=`x.Store`) changed, so persistence targets or saved results differed between the runs.");
             return;
         }
         if (stage_id == "xProcessingCache") {
-            stage_lines.push_back("`xProcessingCache` changed, so the run opened or reused a different cache/work-buffer state.");
+            stage_lines.push_back("`Cache.PrepareWorkspace` (legacy=`xProcessingCache`) changed, so the run opened or reused a different cache/work-buffer state.");
             return;
         }
-        stage_lines.push_back("`" + std::string(stage_id) + "` changed between runs.");
+        stage_lines.push_back("`" + display + "` changed between runs.");
     };
 
     for (const auto& [stage_id, left_stage] : left_stages) {
         const auto it = right_stages.find(stage_id);
         if (it == right_stages.end()) {
-            stage_lines.push_back("`" + stage_id + "` was present in the left run but missing on the right.");
+            stage_lines.push_back("`" + render_stage_label(left_stage) + "` was present in the left run but missing on the right.");
             continue;
         }
         explain_stage(stage_id, left_stage, it->second);
     }
     for (const auto& [stage_id, right_stage] : right_stages) {
-        (void)right_stage;
         if (left_stages.find(stage_id) == left_stages.end()) {
-            stage_lines.push_back("`" + stage_id + "` was added in the right-hand run.");
+            stage_lines.push_back("`" + render_stage_label(right_stage) + "` was added in the right-hand run.");
         }
     }
 
@@ -2788,6 +4641,9 @@ std::string MemoryStore::write_tze_run_report(const MemorySnapshot& snapshot,
         report << "- Linked case: " << entry->linked_case_id << "\n";
     }
     report << "- Status: " << entry->status << "\n";
+    if (!entry->source_map_path.empty()) {
+        report << "- Source map: " << entry->source_map_path << "\n";
+    }
     report << "- Reasoning provider: " << entry->reasoning_provider << "\n";
     if (entry->provider_probe_report.has_value()) {
         report << "\n## Provider Probe\n\n";
@@ -2795,7 +4651,8 @@ std::string MemoryStore::write_tze_run_report(const MemorySnapshot& snapshot,
     }
     if (!entry->assist_status.empty() || entry->assist_annotation.has_value() || entry->command_assist_plan.has_value() ||
         entry->tool_assist_plan.has_value() ||
-        entry->build_assist_plan.has_value()) {
+        entry->build_assist_plan.has_value() ||
+        entry->freeform_assist_answer.has_value()) {
         report << "\n## Guarded Assist\n\n";
         report << "- Status: " << (entry->assist_status.empty() ? "assist_bypassed" : entry->assist_status) << "\n";
         if (entry->assist_annotation.has_value()) {
@@ -2809,6 +4666,9 @@ std::string MemoryStore::write_tze_run_report(const MemorySnapshot& snapshot,
         }
         if (entry->build_assist_plan.has_value()) {
             report << render_build_assist_plan_summary(*entry->build_assist_plan) << "\n";
+        }
+        if (entry->freeform_assist_answer.has_value()) {
+            report << render_freeform_assist_answer_summary(*entry->freeform_assist_answer) << "\n";
         }
     }
     if (!entry->produced_artifact.empty()) {
@@ -2829,16 +4689,134 @@ std::string MemoryStore::write_tze_run_report(const MemorySnapshot& snapshot,
         report << "\n## uAC State\n\n";
         report << render_uac_state_summary(*entry->uac_state) << "\n";
     }
+    if (entry->postprocess_record.has_value()) {
+        report << "\n## Postprocess\n\n";
+        report << render_postprocess_record_summary(*entry->postprocess_record) << "\n";
+    }
+    if (entry->recipe_authoring_artifact.has_value()) {
+        report << "\n## Recipe Authoring\n\n";
+        report << render_recipe_authoring_artifact_summary(*entry->recipe_authoring_artifact) << "\n";
+    }
+    if (entry->legacy_source.has_value()) {
+        report << "\n## Legacy Source\n\n";
+        report << render_legacy_source_summary(*entry->legacy_source) << "\n";
+    }
+    if (entry->legacy_bridge_report.has_value()) {
+        report << "\n## Legacy Bridge\n\n";
+        report << render_legacy_bridge_summary(*entry->legacy_bridge_report) << "\n";
+    }
+    if (entry->legacy_recovery_status.has_value()) {
+        report << "\n## Legacy Recovery\n\n";
+        report << "- Implemented: " << entry->legacy_recovery_status->implemented_count << "\n";
+        report << "- Partial: " << entry->legacy_recovery_status->partial_count << "\n";
+        report << "- Missing: " << entry->legacy_recovery_status->missing_count << "\n";
+        report << "- Research-only: " << entry->legacy_recovery_status->research_only_count << "\n";
+        report << "- Blocked: " << entry->legacy_recovery_status->blocked_count << "\n";
+        for (const std::string& line : entry->legacy_recovery_status->summary_lines) {
+            report << "- " << line << "\n";
+        }
+    }
     if (entry->query_session.has_value()) {
         report << "\n## Query Session\n\n";
         report << render_query_session_summary(*entry->query_session) << "\n";
     }
+    if (entry->definition_answer.has_value()) {
+        report << "\n## Definition Answer\n\n";
+        report << "- Query: " << entry->definition_answer->query << "\n";
+        if (!entry->definition_answer->summary.empty()) {
+            report << "- Summary: " << entry->definition_answer->summary << "\n";
+        }
+        if (!entry->definition_answer->domain_hint.empty()) {
+            report << "- Domain: " << entry->definition_answer->domain_hint << "\n";
+        }
+        if (!entry->definition_answer->selected_source_type.empty()) {
+            report << "- Source: " << entry->definition_answer->selected_source_type << "\n";
+        }
+        if (!entry->definition_answer->selected_source_label.empty()) {
+            report << "- Source label: " << entry->definition_answer->selected_source_label << "\n";
+        }
+        if (!entry->definition_answer->selected_authority_tier.empty()) {
+            report << "- Authority tier: " << entry->definition_answer->selected_authority_tier << "\n";
+        }
+        if (!entry->definition_answer->comparison_rationale.empty()) {
+            report << "- Comparison rationale: " << entry->definition_answer->comparison_rationale << "\n";
+        }
+        for (const MathAttribution& attribution : entry->definition_answer->math_attributions) {
+            report << "- Math attribution: " << attribution.name
+                   << " raw=" << attribution.raw_value
+                   << " weight=" << attribution.weight
+                   << " contribution=" << attribution.contribution;
+            if (!attribution.source.empty()) {
+                report << " source=" << attribution.source;
+            }
+            if (!attribution.rationale.empty()) {
+                report << " | " << attribution.rationale;
+            }
+            report << "\n";
+        }
+    }
+    if (entry->neural_math_report.has_value()) {
+        const NeuralMathReport& neural = *entry->neural_math_report;
+        report << "\n## Neural Math\n\n";
+        report << "- Status: " << neural.status << "\n";
+        report << "- Model: " << neural.model_type << "\n";
+        report << "- Dataset: " << neural.dataset << "\n";
+        report << "- Epochs: " << neural.epochs_ran << " / " << neural.epochs_requested << "\n";
+        report << "- Learning rate: " << neural.learning_rate << "\n";
+        report << "- Accuracy: " << neural.accuracy << "\n";
+        if (!neural.summary.empty()) {
+            report << "- Summary: " << neural.summary << "\n";
+        }
+        for (const std::string& line : neural.math_trace) {
+            report << "- Trace: " << line << "\n";
+        }
+    }
+    if (entry->neural_route_report.has_value()) {
+        const NeuralRouteReport& neural = *entry->neural_route_report;
+        report << "\n## Neural Signal Router\n\n";
+        report << "- Status: " << neural.status << "\n";
+        report << "- Input: " << neural.input_path << "\n";
+        report << "- Packets: " << neural.packet_count << "\n";
+        report << "- Flows: " << neural.flow_count << "\n";
+        if (!neural.summary.empty()) {
+            report << "- Summary: " << neural.summary << "\n";
+        }
+        if (!neural.artifact_path.empty()) {
+            report << "- Artifact: " << neural.artifact_path << "\n";
+        }
+        for (const NeuralRoutePrediction& prediction : neural.predictions) {
+            report << "- Prediction: " << prediction.label
+                   << " confidence=" << prediction.confidence
+                   << " | " << prediction.rationale << "\n";
+            for (const MathAttribution& attribution : prediction.attributions) {
+                report << "- Math attribution: " << attribution.name
+                       << " raw=" << attribution.raw_value
+                       << " weight=" << attribution.weight
+                       << " contribution=" << attribution.contribution;
+                if (!attribution.source.empty()) {
+                    report << " source=" << attribution.source;
+                }
+                if (!attribution.rationale.empty()) {
+                    report << " | " << attribution.rationale;
+                }
+                report << "\n";
+            }
+        }
+    }
+    if (entry->review_artifact.has_value()) {
+        report << "\n## Review Artifact\n\n";
+        report << render_review_artifact_summary(*entry->review_artifact) << "\n";
+    }
+    if (entry->patch_proposal_artifact.has_value()) {
+        report << "\n## Patch Proposal Artifact\n\n";
+        report << render_patch_proposal_artifact_summary(*entry->patch_proposal_artifact) << "\n";
+    }
 
     report << "\n## Stage Trace\n\n";
     for (const TzeStageRecord& stage : entry->stages) {
-        report << "- " << stage.stage_id << " [" << stage.status << "] " << stage.module << "\n";
+        report << "- " << render_stage_label(stage) << " [" << stage.status << "] " << stage.module << "\n";
         if (!stage.detail.empty()) {
-            report << "  - Detail: " << stage.detail << "\n";
+            report << "  - Detail: " << human_readable_storage_text(stage.detail) << "\n";
         }
         const std::string source_ref = render_stage_source(stage);
         if (!source_ref.empty()) {
@@ -2848,10 +4826,10 @@ std::string MemoryStore::write_tze_run_report(const MemorySnapshot& snapshot,
             report << "  - Source excerpt: `" << stage.source_excerpt << "`\n";
         }
         if (!stage.inputs.empty()) {
-            report << "  - Inputs: " << join_stage_fields(stage.inputs) << "\n";
+            report << "  - Inputs: " << join_stage_fields_for_display(stage.inputs) << "\n";
         }
         if (!stage.outputs.empty()) {
-            report << "  - Outputs: " << join_stage_fields(stage.outputs) << "\n";
+            report << "  - Outputs: " << join_stage_fields_for_display(stage.outputs) << "\n";
         }
     }
 
@@ -3169,6 +5147,12 @@ std::string MemoryStore::render_tze_chain(const MemorySnapshot& snapshot, std::s
         }
         if (!entry->produced_artifact.empty()) {
             out << " | artifact=" << entry->produced_artifact;
+        }
+        if (entry->uac_state.has_value() && !entry->uac_state->instruction_family_hint.empty()) {
+            out << " | pre=" << entry->uac_state->instruction_family_hint;
+        }
+        if (entry->postprocess_record.has_value() && !entry->postprocess_record->status.empty()) {
+            out << " | post=" << entry->postprocess_record->status;
         }
         if (!entry->feedback_status.empty()) {
             out << " | feedback=" << entry->feedback_status;
@@ -3557,11 +5541,117 @@ void MemoryStore::record_interaction(MemorySnapshot& snapshot, const ProcessingR
     entry.intent = report.resolved_intent;
     entry.project = report.resolved_project;
     entry.status = report.answer_status;
-    entry.summary = report.answer_explanation;
+    entry.summary = summarize_interaction_for_history(report);
     snapshot.history.push_back(entry);
 
     std::ofstream output(snapshot.paths.history_path, std::ios::app);
     output << render_history_entry(entry) << '\n';
+
+    auto record_plan_outcome = [&](std::string_view plan_type,
+                                   std::string_view canonical_value,
+                                   std::string_view provider_id,
+                                   std::string_view model,
+                                   std::string_view status,
+                                   std::string_view rejection_reason) {
+        if (provider_id.empty() && canonical_value.empty()) {
+            return;
+        }
+        AssistOutcomeRecord outcome;
+        outcome.id = make_scoped_id("assist-outcome",
+                                    report.tze_run_id.empty() ? report.raw_prompt
+                                                              : report.tze_run_id + std::string(plan_type));
+        outcome.task_type = report.resolved_intent;
+        outcome.plan_type = std::string(plan_type);
+        outcome.provider_id = std::string(provider_id);
+        outcome.model = std::string(model);
+        outcome.status = std::string(status);
+        outcome.target_label = report.resolved_project.empty() ? report.raw_prompt : report.resolved_project;
+        outcome.canonical_value = std::string(canonical_value);
+        outcome.rejection_reason = std::string(rejection_reason);
+        outcome.host_platform = current_host_platform();
+        if (report.preflight_report.has_value()) {
+            outcome.environment_signature = report.preflight_report->environment_signature;
+        } else if (report.build_execution.has_value()) {
+            outcome.environment_signature = report.build_execution->environment_signature;
+        } else if (report.tool_resolution.has_value()) {
+            outcome.environment_signature = report.tool_resolution->environment_signature;
+        }
+        outcome.persisted_at = now_timestamp();
+        remember_assist_outcome(snapshot, outcome);
+    };
+
+    if (report.command_assist_plan.has_value()) {
+        record_plan_outcome("command",
+                            report.command_assist_plan->canonical_command,
+                            report.command_assist_plan->provider_id,
+                            report.command_assist_plan->model,
+                            report.assist_status.empty() ? report.command_assist_plan->status : report.assist_status,
+                            report.assist_status == "assist_bypassed" ? report.answer_explanation : "");
+    }
+    if (report.tool_assist_plan.has_value()) {
+        record_plan_outcome("tool",
+                            report.tool_assist_plan->tool_name,
+                            report.tool_assist_plan->provider_id,
+                            report.tool_assist_plan->model,
+                            report.assist_status.empty() ? report.tool_assist_plan->status : report.assist_status,
+                            report.assist_status == "assist_bypassed" ? report.answer_explanation : "");
+    }
+    if (report.build_assist_plan.has_value()) {
+        record_plan_outcome("build",
+                            report.build_assist_plan->selected_recipe_id,
+                            report.build_assist_plan->provider_id,
+                            report.build_assist_plan->model,
+                            report.assist_status.empty() ? report.build_assist_plan->status : report.assist_status,
+                            report.assist_status == "assist_bypassed" ? report.answer_explanation : "");
+    }
+    if (report.next_step_assist_plan.has_value()) {
+        record_plan_outcome("next_step",
+                            report.next_step_assist_plan->suggested_next_step,
+                            report.next_step_assist_plan->provider_id,
+                            report.next_step_assist_plan->model,
+                            report.next_step_assist_plan->status,
+                            {});
+    }
+    if (report.case_summary_assist_plan.has_value()) {
+        record_plan_outcome("case_summary",
+                            report.case_summary_assist_plan->summary_title,
+                            report.case_summary_assist_plan->provider_id,
+                            report.case_summary_assist_plan->model,
+                            report.case_summary_assist_plan->status,
+                            {});
+    }
+    if (report.freeform_assist_answer.has_value()) {
+        record_plan_outcome("freeform",
+                            report.freeform_assist_answer->answer,
+                            report.freeform_assist_answer->provider_id,
+                            report.freeform_assist_answer->model,
+                            report.freeform_assist_answer->status,
+                            {});
+    }
+    if (report.shell_normalization.has_value() && !report.shell_normalization->correction_notes.empty()) {
+        AssistCorrectionRecord correction;
+        correction.id = make_scoped_id("assist-correction", report.raw_prompt);
+        correction.original_prompt = report.raw_prompt;
+        correction.corrected_value = report.shell_normalization->canonical;
+        correction.category = report.shell_normalization->category;
+        correction.host_platform = current_host_platform();
+        correction.persisted_at = now_timestamp();
+        remember_assist_correction(snapshot, correction);
+    }
+    if (report.shell_normalization.has_value()) {
+        AssistLearningRecord learning;
+        learning.id = make_scoped_id("assist-learning",
+                                     report.shell_normalization->canonical + report.shell_normalization->category);
+        learning.category = report.shell_normalization->category;
+        learning.prompt_fragment = report.shell_normalization->phrase;
+        learning.learned_value = report.shell_normalization->canonical;
+        learning.host_platform = current_host_platform();
+        learning.success_count = report.answer_status == "unknown_intent" ? 0 : 1;
+        learning.rejection_count = report.answer_status == "unknown_intent" ? 1 : 0;
+        learning.last_status = report.answer_status;
+        learning.persisted_at = now_timestamp();
+        remember_assist_learning(snapshot, learning);
+    }
 }
 
 void MemoryStore::remember_tze_run(MemorySnapshot& snapshot, const TzeRunRecord& record) const {
@@ -3595,23 +5685,73 @@ void MemoryStore::remember_definition(MemorySnapshot& snapshot, const Definition
         return;
     }
 
+    const auto infer_authority_tier = [&answer]() {
+        if (!answer.selected_authority_tier.empty()) {
+            return answer.selected_authority_tier;
+        }
+        if (answer.selected_source_type == "local_glossary") {
+            return std::string("operator_override");
+        }
+        if (answer.selected_source_type == "system_dictionary" ||
+            answer.selected_source_type == "webster_fallback") {
+            return std::string("reference_cache");
+        }
+        return std::string("memory_artifact");
+    };
+    const auto authority_rank = [](std::string_view authority) {
+        if (authority == "operator_override") {
+            return 3;
+        }
+        if (authority == "memory_artifact") {
+            return 2;
+        }
+        if (authority == "reference_cache") {
+            return 1;
+        }
+        return 0;
+    };
+    const std::string authority_tier = infer_authority_tier();
+
     const auto existing = std::find_if(snapshot.definitions.begin(), snapshot.definitions.end(), [&answer](const StoredDefinition& entry) {
-        return entry.term == answer.query;
+        const std::string entry_normalized =
+            !entry.normalized_concept.empty() ? entry.normalized_concept : lowercase(entry.term);
+        const bool concept_match = entry.term == answer.query ||
+            entry_normalized == answer.normalized_concept;
+        const bool domain_match = lowercase(entry.domain_hint) == lowercase(answer.domain_hint);
+        return concept_match && domain_match;
     });
     if (existing != snapshot.definitions.end()) {
+        if (authority_rank(existing->authority_tier) > authority_rank(authority_tier)) {
+            return;
+        }
+        existing->term = answer.query;
+        existing->normalized_concept = answer.normalized_concept;
+        existing->domain_hint = answer.domain_hint;
         existing->summary = answer.summary;
         existing->mapped_cpp_target = answer.mapped_cpp_target;
         existing->semantic_family = answer.semantic_family;
-        existing->source = answer.sources.empty() ? "memory" : answer.sources.front();
+        existing->source = answer.selected_source_label.empty()
+            ? (answer.sources.empty() ? "memory" : answer.sources.front())
+            : answer.selected_source_label;
+        existing->source_type = answer.selected_source_type.empty() ? "memory" : answer.selected_source_type;
+        existing->authority_tier = authority_tier;
+        existing->confidence = answer.confidence;
         return;
     }
 
     snapshot.definitions.push_back({
         answer.query,
+        answer.normalized_concept,
+        answer.domain_hint,
         answer.summary,
         answer.mapped_cpp_target,
         answer.semantic_family,
-        answer.sources.empty() ? "memory" : answer.sources.front(),
+        answer.selected_source_label.empty()
+            ? (answer.sources.empty() ? "memory" : answer.sources.front())
+            : answer.selected_source_label,
+        answer.selected_source_type.empty() ? "memory" : answer.selected_source_type,
+        authority_tier,
+        answer.confidence,
     });
 }
 
@@ -3684,6 +5824,89 @@ void MemoryStore::remember_uac_state(MemorySnapshot& snapshot, const UacStateRec
     snapshot.uac_states.push_back(std::move(stored));
 }
 
+void MemoryStore::remember_legacy_source(MemorySnapshot& snapshot, const LegacySourceRecord& record) const {
+    if (record.id.empty()) {
+        return;
+    }
+
+    LegacySourceRecord stored = record;
+    if (stored.tracked_at.empty()) {
+        stored.tracked_at = now_timestamp();
+    }
+
+    const auto existing = std::find_if(snapshot.legacy_sources.begin(),
+                                       snapshot.legacy_sources.end(),
+                                       [&stored](const LegacySourceRecord& entry) {
+                                           return entry.id == stored.id || entry.source_path == stored.source_path;
+                                       });
+    if (existing != snapshot.legacy_sources.end()) {
+        *existing = stored;
+        return;
+    }
+
+    snapshot.legacy_sources.push_back(std::move(stored));
+}
+
+void MemoryStore::remember_operator_persona(MemorySnapshot& snapshot, const OperatorPersonaRecord& record) const {
+    snapshot.operator_persona = record;
+}
+
+void MemoryStore::remember_assist_outcome(MemorySnapshot& snapshot, const AssistOutcomeRecord& record) const {
+    if (record.id.empty()) {
+        return;
+    }
+    const auto existing = std::find_if(snapshot.assist_outcomes.begin(),
+                                       snapshot.assist_outcomes.end(),
+                                       [&record](const AssistOutcomeRecord& entry) { return entry.id == record.id; });
+    if (existing != snapshot.assist_outcomes.end()) {
+        *existing = record;
+        return;
+    }
+    snapshot.assist_outcomes.push_back(record);
+}
+
+void MemoryStore::remember_assist_correction(MemorySnapshot& snapshot, const AssistCorrectionRecord& record) const {
+    if (record.id.empty()) {
+        return;
+    }
+    const auto existing = std::find_if(snapshot.assist_corrections.begin(),
+                                       snapshot.assist_corrections.end(),
+                                       [&record](const AssistCorrectionRecord& entry) { return entry.id == record.id; });
+    if (existing != snapshot.assist_corrections.end()) {
+        *existing = record;
+        return;
+    }
+    snapshot.assist_corrections.push_back(record);
+}
+
+void MemoryStore::remember_assist_learning(MemorySnapshot& snapshot, const AssistLearningRecord& record) const {
+    if (record.id.empty()) {
+        return;
+    }
+    const auto existing = std::find_if(snapshot.assist_learning.begin(),
+                                       snapshot.assist_learning.end(),
+                                       [&record](const AssistLearningRecord& entry) { return entry.id == record.id; });
+    if (existing != snapshot.assist_learning.end()) {
+        *existing = record;
+        return;
+    }
+    snapshot.assist_learning.push_back(record);
+}
+
+void MemoryStore::remember_host_assist_preference(MemorySnapshot& snapshot, const HostAssistPreferenceRecord& record) const {
+    if (record.id.empty()) {
+        return;
+    }
+    const auto existing = std::find_if(snapshot.host_assist_preferences.begin(),
+                                       snapshot.host_assist_preferences.end(),
+                                       [&record](const HostAssistPreferenceRecord& entry) { return entry.id == record.id; });
+    if (existing != snapshot.host_assist_preferences.end()) {
+        *existing = record;
+        return;
+    }
+    snapshot.host_assist_preferences.push_back(record);
+}
+
 void MemoryStore::remember_project(MemorySnapshot& snapshot,
                                    std::string_view canonical_name,
                                    std::string_view resolved_source_path,
@@ -3731,6 +5954,31 @@ void MemoryStore::remember_recipe_result(MemorySnapshot& snapshot, const Learned
         return;
     }
     snapshot.learned_recipes.push_back(record);
+}
+
+void MemoryStore::remember_authored_recipe(MemorySnapshot& snapshot, const AuthoredRecipeRecord& record) const {
+    if (record.recipe.id.empty() || record.resolved_source_path.empty()) {
+        return;
+    }
+
+    AuthoredRecipeRecord normalized = record;
+    std::error_code ec;
+    const std::filesystem::path resolved = std::filesystem::weakly_canonical(record.resolved_source_path, ec);
+    if (!ec) {
+        normalized.resolved_source_path = resolved.string();
+    }
+
+    const auto existing = std::find_if(snapshot.authored_recipes.begin(),
+                                       snapshot.authored_recipes.end(),
+                                       [&normalized](const AuthoredRecipeRecord& entry) {
+                                           return entry.recipe.id == normalized.recipe.id &&
+                                               entry.resolved_source_path == normalized.resolved_source_path;
+                                       });
+    if (existing != snapshot.authored_recipes.end()) {
+        *existing = normalized;
+        return;
+    }
+    snapshot.authored_recipes.push_back(normalized);
 }
 
 void MemoryStore::remember_native_tool(MemorySnapshot& snapshot, const NativeToolRecord& record) const {
@@ -3879,6 +6127,35 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
             out << " - " << source << "\n";
         }
 
+        if (snapshot.operator_persona.has_value()) {
+            const OperatorPersonaRecord& persona = *snapshot.operator_persona;
+            out << "Operator Persona:\n";
+            if (!persona.preferred_label.empty()) {
+                out << " - Label: " << persona.preferred_label << "\n";
+            }
+            if (!persona.role_label.empty()) {
+                out << " - Role: " << persona.role_label << "\n";
+            }
+            if (!persona.local_username.empty()) {
+                out << " - Local user: " << persona.local_username << "\n";
+            }
+            if (!persona.host_identifier.empty()) {
+                out << " - Host: " << persona.host_identifier << "\n";
+            }
+            if (!persona.persona_mode.empty()) {
+                out << " - Mode: " << persona.persona_mode << "\n";
+            }
+            if (!persona.tone_profile.empty()) {
+                out << " - Tone: " << persona.tone_profile << "\n";
+            }
+            if (!persona.interaction_style.empty()) {
+                out << " - Style: " << persona.interaction_style << "\n";
+            }
+            if (!persona.safety_posture.empty()) {
+                out << " - Safety posture: " << persona.safety_posture << "\n";
+            }
+        }
+
         if (!snapshot.learned_recipes.empty()) {
             std::map<std::string, LearnedRecipeRecord> preferred;
             for (const LearnedRecipeRecord& entry : snapshot.learned_recipes) {
@@ -3903,6 +6180,16 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
                     out << " install=" << entry.last_install_prefix;
                 }
                 out << "\n";
+            }
+        }
+
+        if (!snapshot.authored_recipes.empty()) {
+            out << "Authored Recipes:\n";
+            for (const AuthoredRecipeRecord& entry : snapshot.authored_recipes) {
+                out << " - " << entry.canonical_name << " :: " << entry.recipe.id
+                    << " path=" << entry.resolved_source_path
+                    << " status=" << entry.validation_status
+                    << " active=" << (entry.active ? "yes" : "no") << "\n";
             }
         }
 
@@ -3978,6 +6265,112 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
                 out << " traits=" << entry.indexed_traits.size() << "\n";
             }
         }
+
+        if (!snapshot.legacy_sources.empty()) {
+            out << "Legacy Sources:\n";
+            for (const LegacySourceRecord& entry : snapshot.legacy_sources) {
+                out << " - " << entry.source_label
+                    << " path=" << entry.source_path
+                    << " sections=" << entry.section_count
+                    << " symbols=" << entry.symbol_count << "\n";
+            }
+        }
+        if (!snapshot.assist_outcomes.empty() || !snapshot.assist_corrections.empty() || !snapshot.assist_learning.empty()) {
+            out << "Assist Learning:\n";
+            out << " - Outcomes: " << snapshot.assist_outcomes.size() << "\n";
+            out << " - Corrections: " << snapshot.assist_corrections.size() << "\n";
+            out << " - Learned routes: " << snapshot.assist_learning.size() << "\n";
+        }
+        return out.str();
+    }
+
+    if (view == "assist") {
+        out << "Assist Memory:\n";
+        out << " - Outcomes: " << snapshot.assist_outcomes.size() << "\n";
+        const std::size_t outcome_start = snapshot.assist_outcomes.size() > 8 ? snapshot.assist_outcomes.size() - 8 : 0;
+        for (std::size_t index = outcome_start; index < snapshot.assist_outcomes.size(); ++index) {
+            const AssistOutcomeRecord& entry = snapshot.assist_outcomes[index];
+            out << "   * [" << entry.status << "] " << entry.plan_type << " :: " << entry.canonical_value;
+            if (!entry.provider_id.empty()) {
+                out << " via " << entry.provider_id;
+            }
+            if (!entry.model.empty()) {
+                out << " (" << entry.model << ")";
+            }
+            if (!entry.rejection_reason.empty()) {
+                out << " reject=" << entry.rejection_reason;
+            }
+            out << "\n";
+        }
+        out << " - Corrections: " << snapshot.assist_corrections.size() << "\n";
+        for (const AssistCorrectionRecord& entry : snapshot.assist_corrections) {
+            out << "   * " << entry.original_prompt << " -> " << entry.corrected_value << " [" << entry.category << "]\n";
+        }
+        out << " - Learned routes: " << snapshot.assist_learning.size() << "\n";
+        for (const AssistLearningRecord& entry : snapshot.assist_learning) {
+            out << "   * " << entry.category << " :: " << entry.prompt_fragment << " => " << entry.learned_value
+                << " success=" << entry.success_count << " reject=" << entry.rejection_count << "\n";
+        }
+        if (!snapshot.host_assist_preferences.empty()) {
+            out << " - Host preferences:\n";
+            for (const HostAssistPreferenceRecord& entry : snapshot.host_assist_preferences) {
+                out << "   * " << entry.host_platform << " :: " << entry.provider_id;
+                if (!entry.model.empty()) {
+                    out << " (" << entry.model << ")";
+                }
+                out << "\n";
+            }
+        }
+        return out.str();
+    }
+
+    if (view == "persona" || view == "operator") {
+        out << "Operator Persona:\n";
+        if (!snapshot.operator_persona.has_value()) {
+            out << " - No richer operator persona is stored yet.\n";
+            return out.str();
+        }
+        const OperatorPersonaRecord& persona = *snapshot.operator_persona;
+        out << " - Label: " << (persona.preferred_label.empty() ? "(unset)" : persona.preferred_label) << "\n";
+        if (!persona.role_label.empty()) {
+            out << " - Role: " << persona.role_label << "\n";
+        }
+        if (!persona.local_username.empty()) {
+            out << " - Local user: " << persona.local_username << "\n";
+        }
+        if (!persona.host_identifier.empty()) {
+            out << " - Host: " << persona.host_identifier << "\n";
+        }
+        if (!persona.persona_mode.empty()) {
+            out << " - Mode: " << persona.persona_mode << "\n";
+        }
+        if (!persona.tone_profile.empty()) {
+            out << " - Tone: " << persona.tone_profile << "\n";
+        }
+        if (!persona.interaction_style.empty()) {
+            out << " - Style: " << persona.interaction_style << "\n";
+        }
+        if (!persona.safety_posture.empty()) {
+            out << " - Safety posture: " << persona.safety_posture << "\n";
+        }
+        if (!persona.preferred_next_action_style.empty()) {
+            out << " - Next-action style: " << persona.preferred_next_action_style << "\n";
+        }
+        if (!persona.last_source_map.empty()) {
+            out << " - Last source map: " << persona.last_source_map << "\n";
+        }
+        if (!persona.last_memory_root.empty()) {
+            out << " - Last memory root: " << persona.last_memory_root << "\n";
+        }
+        if (!persona.self_description.empty()) {
+            out << " - About: " << persona.self_description << "\n";
+        }
+        if (!persona.custom_phrases.empty()) {
+            out << " - Custom phrases:\n";
+            for (const std::string& phrase : persona.custom_phrases) {
+                out << "   * " << phrase << "\n";
+            }
+        }
         return out.str();
     }
 
@@ -3985,8 +6378,21 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
         out << "Stored Definitions:\n";
         for (const StoredDefinition& entry : snapshot.definitions) {
             out << " - " << entry.term << " => " << entry.summary;
+            if (!entry.domain_hint.empty()) {
+                out << " (domain=" << entry.domain_hint << ")";
+            }
+            if (!entry.authority_tier.empty()) {
+                out << " [authority=" << entry.authority_tier << "]";
+            }
             if (!entry.mapped_cpp_target.empty()) {
                 out << " [" << entry.mapped_cpp_target << "]";
+            }
+            if (!entry.source_type.empty()) {
+                out << " <" << entry.source_type;
+                if (!entry.source.empty()) {
+                    out << ":" << entry.source;
+                }
+                out << ">";
             }
             out << "\n";
         }
@@ -4004,6 +6410,12 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
             }
             if (!entry.target.empty()) {
                 out << " | target=" << entry.target;
+            }
+            if (entry.uac_state.has_value() && !entry.uac_state->instruction_family_hint.empty()) {
+                out << " | pre=" << entry.uac_state->instruction_family_hint;
+            }
+            if (entry.postprocess_record.has_value() && !entry.postprocess_record->status.empty()) {
+                out << " | post=" << entry.postprocess_record->status;
             }
             if (!entry.reasoning_provider.empty()) {
                 out << " | provider=" << entry.reasoning_provider;
@@ -4029,6 +6441,10 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
             if (entry.query_session.has_value() && !entry.query_session->final_results.empty()) {
                 out << " | query=" << join_stage_fields(entry.query_session->final_results);
             }
+            if (entry.neural_math_report.has_value() && !entry.neural_math_report->dataset.empty()) {
+                out << " | neural=" << entry.neural_math_report->dataset
+                    << " acc=" << entry.neural_math_report->accuracy;
+            }
             if (entry.security_audit.has_value() && !entry.security_audit->behavior_mode.empty()) {
                 out << " | security=" << entry.security_audit->behavior_mode;
             }
@@ -4040,9 +6456,9 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
             }
             out << "\n";
             for (const TzeStageRecord& stage : entry.stages) {
-                out << "   - " << stage.stage_id << " [" << stage.status << "] " << stage.module;
+                out << "   - " << render_stage_label(stage) << " [" << stage.status << "] " << stage.module;
                 if (!stage.detail.empty()) {
-                    out << " | " << stage.detail;
+                    out << " | " << human_readable_storage_text(stage.detail);
                 }
                 out << "\n";
             }
@@ -4111,6 +6527,22 @@ std::string MemoryStore::render_view(const MemorySnapshot& snapshot, std::string
             if (!entry.recovery_hints.empty()) {
                 out << "   - recovery: " << join_stage_fields(entry.recovery_hints) << "\n";
             }
+        }
+        return out.str();
+    }
+
+    if (view == "legacy") {
+        out << "Legacy Sources:\n";
+        if (snapshot.legacy_sources.empty()) {
+            out << " - No stored legacy source maps.\n";
+            return out.str();
+        }
+        for (const LegacySourceRecord& entry : snapshot.legacy_sources) {
+            out << " - " << entry.id << " | " << entry.source_label
+                << " | " << entry.source_path
+                << " | lines=" << entry.line_count
+                << " | sections=" << entry.section_count
+                << " | symbols=" << entry.symbol_count << "\n";
         }
         return out.str();
     }

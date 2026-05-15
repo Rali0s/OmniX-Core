@@ -4,6 +4,7 @@
 #include "tze/language_engine.hpp"
 #include "tze/memory_store.hpp"
 #include "tze/native_tool_registry.hpp"
+#include "tze/packet_capture_engine.hpp"
 #include "tze/processing_engine.hpp"
 #include "tze/preprocessor_runtime.hpp"
 #include "tze/query_runtime.hpp"
@@ -17,10 +18,12 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -71,6 +74,21 @@ private:
     std::string key_;
     std::string previous_;
     bool had_previous_ = false;
+};
+
+class ScopedCurrentPath {
+public:
+    explicit ScopedCurrentPath(const std::filesystem::path& path) : previous_(std::filesystem::current_path()) {
+        std::filesystem::current_path(path);
+    }
+
+    ~ScopedCurrentPath() {
+        std::error_code error;
+        std::filesystem::current_path(previous_, error);
+    }
+
+private:
+    std::filesystem::path previous_;
 };
 
 std::string load_main_source() {
@@ -371,7 +389,40 @@ void test_language_engine_resolves_native_context() {
     require(record.confidence > 0.0, "Expected language resolution to produce a nonzero confidence.");
     require(!record.os_candidates.empty(), "Expected language resolution to emit OS candidates.");
     require(!record.language_candidates.empty(), "Expected language resolution to emit language candidates.");
+    require(record.decompression_candidates.empty(),
+            "Expected ordinary language resolution to avoid legacy decompression candidates.");
     require(!session.operations.empty(), "Expected language resolution to index evidence through the query session.");
+}
+
+void test_language_engine_recovers_legacy_decompression_ladder() {
+    const std::filesystem::path memory_root = kBinaryRoot / "legacy-language-engine-memory";
+    safe_remove_all(memory_root);
+
+    tze::MemoryStore store;
+    tze::MemorySnapshot snapshot = store.load(memory_root);
+    tze::QueryRuntime runtime;
+    tze::QuerySessionRecord session = runtime.open_session("Investigate", "define BinaryDecompresser");
+
+    const tze::LanguageResolutionRecord record = tze::LanguageEngine::resolve_context(
+        "BinaryDecompresser TernaryDecompression Base4Decompression file coherence",
+        "/Volumes/CoE/Tzu.cpp",
+        "auto",
+        snapshot,
+        &session);
+
+    require(!record.decompression_candidates.empty(),
+            "Expected the legacy language path to emit decompression candidates.");
+    require(record.decompression_candidates.front().label == "native-compression-algorithms",
+            "Expected the decompression ladder to prefer native deterministic handling first.");
+    require(std::find_if(record.decompression_candidates.begin(),
+                         record.decompression_candidates.end(),
+                         [](const tze::DecompressionCandidate& candidate) {
+                             return candidate.label == "ternary-decompression" &&
+                                 candidate.status == "research-only";
+                         }) != record.decompression_candidates.end(),
+            "Expected ternary decompression to remain a research-only legacy branch.");
+    require(!record.research_notes.empty(),
+            "Expected the legacy decompression ladder to preserve research notes.");
 }
 
 void test_preprocessor_runtime_resolves_uac_state() {
@@ -393,7 +444,53 @@ void test_preprocessor_runtime_resolves_uac_state() {
     require(!state.store_namespace.empty(), "Expected uAC state resolution to emit a persistent namespace.");
     require(!state.indexed_traits.empty(), "Expected uAC state resolution to emit indexed traits.");
     require(!state.recovery_hints.empty(), "Expected uAC state resolution to emit recovery hints.");
+    require(!state.chapter_series_label.empty(), "Expected uAC recovery to emit a chapter/series label.");
+    require(!state.epoch_tier_label.empty(), "Expected uAC recovery to emit an epoch-tier label.");
+    require(!state.deletion_discrepancies.empty(), "Expected uAC recovery to track deletion discrepancies.");
+    require(!state.search_context_habits.empty(), "Expected uAC recovery to track search context habits.");
+    require(!state.time_on_site_traits.empty(), "Expected uAC recovery to track time-on-site traits.");
     require(!session.operations.empty(), "Expected uAC resolution to index evidence through the query session.");
+}
+
+void test_cli_legacy_coverage_and_report() {
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::filesystem::path fixture = kBinaryRoot / "legacy-tzu-fixture.cpp";
+
+    std::ofstream output(fixture);
+    output
+        << "X$:Build CMake\n"
+        << "xProcessingCache(findStorage);\n"
+        << "x.Define.Low(Investigate);\n"
+        << "x.DisplayPriorityProcessingGate(UseSources);\n"
+        << "x.DisplayFeedBackLoop(UseFeedback);\n"
+        << "x.Store(runLedger);\n"
+        << "X$:X++ Language Engine\n"
+        << "BinaryDecompresser(data);\n"
+        << "TernaryDecompression(data);\n"
+        << "Base4Decompression(data);\n"
+        << "X$:X++ Security Engine\n"
+        << "xXOmni::Premit(RSRD);\n"
+        << "X$:X++ Self Pre-Processor Engine\n"
+        << "x.reGENx(uAC);\n";
+    output.close();
+
+    const CommandCapture coverage = run_command_capture(
+        shell_quote(binary.string()) + " legacy coverage " + shell_quote(fixture.string()));
+    require(coverage.exit_code == 0, "Expected `omnix legacy coverage` to succeed.");
+    require(coverage.output.find("Structured merge status") != std::string::npos,
+            "Expected legacy coverage to print the structured merge summary.");
+    require(coverage.output.find("xProcessingCache [implemented]") != std::string::npos,
+            "Expected legacy coverage to classify the core spine as implemented.");
+    require(coverage.output.find("xXOmni::Premit [partial]") != std::string::npos,
+            "Expected legacy coverage to report the xXOmni bridge as partially recovered.");
+
+    const CommandCapture report = run_command_capture(
+        shell_quote(binary.string()) + " legacy report " + shell_quote(fixture.string()));
+    require(report.exit_code == 0, "Expected `omnix legacy report` to succeed.");
+    require(report.output.find("Legacy archaeology report") != std::string::npos,
+            "Expected legacy report to print the archaeology heading.");
+    require(report.output.find("language/decompression ladder: partial") != std::string::npos,
+            "Expected legacy report to summarize the decompression recovery track.");
 }
 
 void make_executable(const std::filesystem::path& path, const std::string& body) {
@@ -767,6 +864,301 @@ void test_build_executor_doctor_reports_package_guidance() {
                          [](const std::string& line) { return line.find("libpcap") != std::string::npos; }) !=
                 doctor.dependency_checks.end(),
             "Expected nmap doctor checks to mention libpcap.");
+    require(!doctor.build_guidance.empty(), "Expected doctor to include universal build guidance.");
+    require(!doctor.next_steps.empty(), "Expected doctor to include next-step guidance.");
+}
+
+void test_build_executor_doctor_reports_universal_cmake_guidance() {
+    const std::filesystem::path root = kBinaryRoot / "fake-doctor-cmake";
+    const std::filesystem::path bin_dir = root / "bin";
+    const std::filesystem::path source_dir = root / "sample-project";
+    safe_remove_all(root);
+    std::filesystem::create_directories(bin_dir);
+    std::filesystem::create_directories(source_dir);
+
+    make_executable(bin_dir / "gcc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'gcc test'; exit 0; fi\nexit 0\n");
+    make_executable(bin_dir / "g++", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'g++ test'; exit 0; fi\nexit 0\n");
+    make_executable(bin_dir / "cmake", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'cmake version 3.30.0'; exit 0; fi\nexit 0\n");
+    make_executable(bin_dir / "pkg-config", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'pkg-config test'; exit 0; fi\nexit 0\n");
+
+    std::ofstream cmakelists(source_dir / "CMakeLists.txt");
+    cmakelists << "cmake_minimum_required(VERSION 3.15)\nproject(sample CXX)\nadd_executable(sample main.cpp)\n";
+    std::ofstream main_cpp(source_dir / "main.cpp");
+    main_cpp << "int main(){return 0;}\n";
+
+    ScopedEnvVar path_override("PATH", bin_dir.string());
+    tze::RequestProfile profile;
+    profile.project_reference = source_dir.string();
+    profile.memory_root_path = (root / "home").string();
+
+    tze::BuildExecutor executor;
+    const tze::DoctorReport doctor = executor.doctor(profile, std::nullopt, source_dir);
+    require(doctor.build_system == "cmake", "Expected doctor to report the detected CMake build system.");
+    require(std::find_if(doctor.dependency_checks.begin(),
+                         doctor.dependency_checks.end(),
+                         [](const std::string& line) { return line.find("cmake: available") != std::string::npos; }) !=
+                doctor.dependency_checks.end(),
+            "Expected universal CMake doctor checks.");
+    require(std::find_if(doctor.configure_flags.begin(),
+                         doctor.configure_flags.end(),
+                         [](const std::string& line) { return line.find("-DCMAKE_BUILD_TYPE=Release") != std::string::npos; }) !=
+                doctor.configure_flags.end(),
+            "Expected doctor to explain injected CMake flags.");
+    require(std::find_if(doctor.build_guidance.begin(),
+                         doctor.build_guidance.end(),
+                         [](const std::string& line) { return line.find("omnix preflight") != std::string::npos; }) !=
+                doctor.build_guidance.end(),
+            "Expected doctor to include a universal preflight command.");
+}
+
+void test_build_executor_doctor_guides_tshark_dependencies() {
+    const std::filesystem::path root = kBinaryRoot / "fake-doctor-tshark";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    make_executable(root / "git", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'git version test'; exit 0; fi\nexit 0\n");
+    make_executable(root / "gcc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'gcc test'; exit 0; fi\nexit 0\n");
+    make_executable(root / "g++", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'g++ test'; exit 0; fi\nexit 0\n");
+    make_executable(root / "cmake", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'cmake version 3.30.0'; exit 0; fi\nexit 0\n");
+    make_executable(root / "pkg-config", "#!/bin/sh\nif [ \"$1\" = \"--exists\" ]; then exit 1; fi\necho 'pkg-config test'\n");
+    make_executable(root / "brew", "#!/bin/sh\nexit 0\n");
+
+    ScopedEnvVar path_override("PATH", root.string());
+    tze::ProjectAliasRegistry aliases;
+    const std::optional<tze::ProjectAlias> alias = aliases.find("tshark");
+    require(alias.has_value(), "Expected bundled tshark alias.");
+
+    tze::RequestProfile profile;
+    profile.project_reference = "tshark";
+    profile.memory_root_path = (root / "home").string();
+
+    tze::BuildExecutor executor;
+    const tze::DoctorReport doctor = executor.doctor(profile, alias);
+    require(doctor.status == "doctor_attention_needed",
+            "Expected tshark doctor to flag missing project-specific dependencies.");
+    require(std::find_if(doctor.dependency_checks.begin(),
+                         doctor.dependency_checks.end(),
+                         [](const std::string& line) { return line.find("glib-2.0") != std::string::npos; }) !=
+                doctor.dependency_checks.end(),
+            "Expected tshark doctor checks to mention GLib.");
+    require(std::find_if(doctor.configure_flags.begin(),
+                         doctor.configure_flags.end(),
+                         [](const std::string& line) { return line.find("-DBUILD_tshark=ON") != std::string::npos; }) !=
+                doctor.configure_flags.end(),
+            "Expected tshark doctor to surface recipe CMake flags.");
+    require(std::find_if(doctor.package_guidance.begin(),
+                         doctor.package_guidance.end(),
+                         [](const tze::PackageManagerGuidance& guidance) {
+                             return guidance.id == "brew" &&
+                                    std::find_if(guidance.commands.begin(),
+                                                 guidance.commands.end(),
+                                                 [](const std::string& command) {
+                                                     return command.find("flex") != std::string::npos &&
+                                                            command.find("gnutls") != std::string::npos;
+                                                 }) != guidance.commands.end();
+                         }) != doctor.package_guidance.end(),
+            "Expected tshark doctor to include richer package guidance.");
+}
+
+std::vector<unsigned char> sample_tcp_packet(const std::vector<unsigned char>& payload) {
+    std::vector<unsigned char> packet(14 + 20 + 20 + payload.size(), 0);
+    packet[12] = 0x08;
+    packet[13] = 0x00;
+    const std::size_t ip = 14;
+    packet[ip] = 0x45;
+    const std::uint16_t total = static_cast<std::uint16_t>(20 + 20 + payload.size());
+    packet[ip + 2] = static_cast<unsigned char>(total >> 8);
+    packet[ip + 3] = static_cast<unsigned char>(total & 0xff);
+    packet[ip + 8] = 64;
+    packet[ip + 9] = 6;
+    packet[ip + 12] = 127;
+    packet[ip + 15] = 1;
+    packet[ip + 16] = 127;
+    packet[ip + 19] = 1;
+    const std::size_t tcp = ip + 20;
+    packet[tcp] = 0x13;
+    packet[tcp + 1] = 0x88;
+    packet[tcp + 2] = 0xef;
+    packet[tcp + 3] = 0x32;
+    packet[tcp + 12] = 0x50;
+    packet[tcp + 13] = 0x18;
+    std::copy(payload.begin(), payload.end(), packet.begin() + static_cast<std::ptrdiff_t>(tcp + 20));
+    return packet;
+}
+
+void write_u32_le(std::ofstream& out, std::uint32_t value) {
+    const std::array<unsigned char, 4> bytes = {
+        static_cast<unsigned char>(value & 0xff),
+        static_cast<unsigned char>((value >> 8) & 0xff),
+        static_cast<unsigned char>((value >> 16) & 0xff),
+        static_cast<unsigned char>((value >> 24) & 0xff),
+    };
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+void write_u16_le(std::ofstream& out, std::uint16_t value) {
+    const std::array<unsigned char, 2> bytes = {
+        static_cast<unsigned char>(value & 0xff),
+        static_cast<unsigned char>((value >> 8) & 0xff),
+    };
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+void write_pcap_fixture(const std::filesystem::path& path, const std::vector<unsigned char>& packet) {
+    std::ofstream out(path, std::ios::binary);
+    write_u32_le(out, 0xa1b2c3d4);
+    write_u16_le(out, 2);
+    write_u16_le(out, 4);
+    write_u32_le(out, 0);
+    write_u32_le(out, 0);
+    write_u32_le(out, 65535);
+    write_u32_le(out, 1);
+    write_u32_le(out, 1);
+    write_u32_le(out, 42);
+    write_u32_le(out, static_cast<std::uint32_t>(packet.size()));
+    write_u32_le(out, static_cast<std::uint32_t>(packet.size()));
+    out.write(reinterpret_cast<const char*>(packet.data()), static_cast<std::streamsize>(packet.size()));
+}
+
+void test_packet_capture_parser_decodes_http_payload() {
+    const std::string request = "GET /health HTTP/1.1\r\nHost: localhost:5000\r\n\r\n";
+    const std::vector<unsigned char> payload(request.begin(), request.end());
+    const std::vector<unsigned char> packet = sample_tcp_packet(payload);
+    const std::optional<tze::PacketRecord> record =
+        tze::PacketCaptureEngine::parse_packet_bytes(packet.data(), packet.size(), 1, 32, "fixture");
+    require(record.has_value(), "Expected packet parser to decode an Ethernet IPv4/TCP packet.");
+    require(record->src_port == 5000, "Expected source port 5000.");
+    require(record->dst_port == 61234, "Expected destination port 61234.");
+    require(record->classification == "plaintext_http", "Expected plaintext HTTP classification.");
+    require(record->analysis_code == "NET.TCP.HTTP_PLAINTEXT", "Expected HTTP Simplex analysis code.");
+    require(record->payload_text_status.find("text_utf8") != std::string::npos,
+            "Expected HTTP payload to expose a UTF-8 text readout.");
+    require(!record->plaintext_decode.empty() &&
+                record->plaintext_decode.front().find("GET /health") != std::string::npos,
+            "Expected HTTP request line decode.");
+}
+
+void test_packet_capture_parser_labels_tls_payload() {
+    const std::vector<unsigned char> packet = sample_tcp_packet({0x16, 0x03, 0x03, 0x00, 0x2a, 0x01});
+    const std::optional<tze::PacketRecord> record =
+        tze::PacketCaptureEngine::parse_packet_bytes(packet.data(), packet.size(), 1, 32, "fixture");
+    require(record.has_value(), "Expected packet parser to decode TLS-like packet.");
+    require(record->classification == "tls_or_encrypted", "Expected TLS-like packet to be labeled encrypted.");
+    require(record->analysis_code == "NET.TCP.TLS_OPAQUE", "Expected TLS-like packet to use the opaque TLS code.");
+}
+
+void test_packet_capture_parser_classifies_plain_utf8_payload() {
+    const std::string text = "hello from plaintext service\n";
+    const std::vector<unsigned char> packet = sample_tcp_packet(std::vector<unsigned char>(text.begin(), text.end()));
+    const std::optional<tze::PacketRecord> record =
+        tze::PacketCaptureEngine::parse_packet_bytes(packet.data(), packet.size(), 1, 64, "fixture");
+    require(record.has_value(), "Expected packet parser to decode plain UTF-8 packet.");
+    require(record->classification == "text_utf8", "Expected non-HTTP readable payload to classify as text_utf8.");
+    require(record->analysis_code == "NET.TCP.TEXT_UTF8", "Expected readable payload Simplex code.");
+    require(record->payload_text_utf8.find("hello from plaintext service") != std::string::npos,
+            "Expected UTF-8 readout to include plaintext payload.");
+}
+
+void test_cli_tview_pcap_fixture_decodes_http() {
+    const std::filesystem::path root = kBinaryRoot / "tview-pcap-fixture";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+    const std::string request = "GET /health HTTP/1.1\r\nHost: localhost:5000\r\n\r\n";
+    const std::vector<unsigned char> payload(request.begin(), request.end());
+    const std::filesystem::path fixture = root / "http-5000.pcap";
+    write_pcap_fixture(fixture, sample_tcp_packet(payload));
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture run = run_command_capture(
+        shell_quote(binary.string()) + " tview pcap " + shell_quote(fixture.string()) +
+        " --port 5000 --payload-bytes 24 --memory-root " + shell_quote((root / "memory").string()) +
+        " --verbose");
+    require(run.exit_code == 0, "Expected tview pcap fixture command to succeed.");
+    require(run.output.find("OmniXTView: capture_complete") != std::string::npos,
+            "Expected tview fixture output to report capture_complete.");
+    require(run.output.find("decode: GET /health HTTP/1.1") != std::string::npos,
+            "Expected tview fixture output to decode plaintext HTTP.");
+}
+
+void test_cli_tview_pcap_fixture_exports_jsonl() {
+    const std::filesystem::path root = kBinaryRoot / "tview-jsonl-fixture";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+    const std::string request = "GET /health HTTP/1.1\r\nHost: localhost:5000\r\n\r\n";
+    const std::vector<unsigned char> payload(request.begin(), request.end());
+    const std::filesystem::path fixture = root / "http-5000.pcap";
+    const std::filesystem::path jsonl = root / "packets.jsonl";
+    write_pcap_fixture(fixture, sample_tcp_packet(payload));
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture run = run_command_capture(
+        shell_quote(binary.string()) + " tview pcap " + shell_quote(fixture.string()) +
+        " --port 5000 --payload-bytes 32 --out " + shell_quote(jsonl.string()) +
+        " --memory-root " + shell_quote((root / "memory").string()) + " --verbose");
+    require(run.exit_code == 0, "Expected tview pcap JSONL export command to succeed.");
+    const std::string exported = xpp::read_text_file(jsonl);
+    require(exported.find("\"event_type\":\"omnix.tview.packet.v1\"") != std::string::npos,
+            "Expected JSONL export to include versioned TView packet events.");
+    require(exported.find("\"analysis_code\":\"NET.TCP.HTTP_PLAINTEXT\"") != std::string::npos,
+            "Expected JSONL export to include the Simplex analysis code.");
+    require(exported.find("\"payload_text_utf8\"") != std::string::npos,
+            "Expected JSONL export to include UTF-8 payload readout field.");
+}
+
+void test_unix_evidence_parser_parses_tview_jsonl() {
+    tze::ObservationRecord observation;
+    observation.id = "obs-tview";
+    observation.case_id = "case-tview";
+    observation.source_kind = "file";
+    observation.source_ref = "packets.jsonl";
+    observation.raw_content =
+        "{\"event_type\":\"omnix.tview.packet.v1\",\"src_ip\":\"127.0.0.1\",\"src_port\":5000,"
+        "\"dst_ip\":\"127.0.0.1\",\"dst_port\":61234,\"payload_length\":48,"
+        "\"analysis_code\":\"NET.TCP.HTTP_PLAINTEXT\"}\n";
+
+    const tze::UnixEvidenceParser parser;
+    const std::vector<tze::NormalizedObject> objects = parser.parse(observation);
+    require(std::find_if(objects.begin(), objects.end(), [](const tze::NormalizedObject& object) {
+                return object.object_type == "packet_capture_summary";
+            }) != objects.end(),
+            "Expected TView JSONL to produce a packet capture summary.");
+    require(std::find_if(objects.begin(), objects.end(), [](const tze::NormalizedObject& object) {
+                return object.object_type == "packet_flow_summary";
+            }) != objects.end(),
+            "Expected TView JSONL to produce packet flow evidence.");
+    require(std::find_if(objects.begin(), objects.end(), [](const tze::NormalizedObject& object) {
+                return object.object_type == "packet_payload_observation";
+            }) != objects.end(),
+            "Expected TView JSONL to produce packet payload evidence.");
+}
+
+void test_intent_resolver_routes_port_investigation_to_tview() {
+    tze::IntentResolver resolver;
+    const tze::IntentResolution resolution = resolver.resolve("Investigate port 5000");
+    require(resolution.intent == tze::RequestIntent::PacketCapture,
+            "Expected port investigation to route to packet capture.");
+    require(resolution.primary_target == "5000", "Expected port 5000 as packet-capture target.");
+}
+
+void test_defense_diagnostic_routes_and_stays_non_destructive() {
+    tze::IntentResolver resolver;
+    const tze::IntentResolution resolution = resolver.resolve("show CPU hogs");
+    require(resolution.intent == tze::RequestIntent::DefenseDiagnostic,
+            "Expected CPU diagnostic prompt to route to defense diagnostics.");
+
+    const std::filesystem::path root = kBinaryRoot / "defense-diagnostic";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture run = run_command_capture(
+        shell_quote(binary.string()) + " defend diag cpu --memory-root " +
+        shell_quote((root / "memory").string()) + " --verbose");
+    require(run.exit_code == 0, "Expected defense diagnostic command to succeed.");
+    require(run.output.find("Defense diagnostic: defense_diagnostic_complete") != std::string::npos ||
+                run.output.find("Defense diagnostic: defense_diagnostic_empty") != std::string::npos,
+            "Expected defense diagnostic status in output.");
+    require(run.output.find("Diagnostic-only mode") != std::string::npos,
+            "Expected defense diagnostic to declare non-destructive behavior.");
 }
 
 void test_preflight_validates_recipe_overrides() {
@@ -1035,6 +1427,14 @@ void test_intent_resolver_and_definition_engine() {
     require(build.intent == tze::RequestIntent::BuildProject, "Expected Build NMAP to resolve to a build intent.");
     require(build.primary_target == "NMAP", "Expected Build NMAP to preserve the project token.");
 
+    const tze::IntentResolution greeting = resolver.resolve("Hello");
+    require(greeting.intent == tze::RequestIntent::Conversation,
+            "Expected Hello to resolve to the conversational intent.");
+
+    const tze::IntentResolution identity = resolver.resolve("Who are you");
+    require(identity.intent == tze::RequestIntent::Conversation,
+            "Expected identity questions to resolve to the conversational intent.");
+
     const tze::MemoryStore store;
     const std::filesystem::path memory_root = kBinaryRoot / "definition-engine-memory";
     safe_remove_all(memory_root);
@@ -1081,6 +1481,75 @@ void test_memory_store_persists_and_renders_history() {
             "Expected memory history rendering to include the stored interaction.");
 }
 
+void test_memory_store_compacts_definition_history_summary() {
+    const std::filesystem::path memory_root = kBinaryRoot / "memory-store-definition-history";
+    safe_remove_all(memory_root);
+
+    tze::MemoryStore store;
+    tze::MemorySnapshot snapshot = store.load(memory_root);
+    tze::ProcessingReport report;
+    report.raw_prompt = "What is the Sun";
+    report.resolved_intent = "general_definition_query";
+    report.answer_status = "defined";
+    report.answer_explanation =
+        "The Sun is the star at the center of the Solar System.\n"
+        "Definition source: local_glossary\n"
+        "Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.\n"
+        "Suggestions: What is sun?";
+
+    tze::DefinitionAnswer answer;
+    answer.query = "sun";
+    answer.found = true;
+    answer.summary = "The Sun is the star at the center of the Solar System.";
+    answer.selected_source_type = "local_glossary";
+    report.definition_answer = answer;
+
+    store.record_interaction(snapshot, report);
+    store.persist_snapshot(snapshot);
+
+    const tze::MemorySnapshot reloaded = store.load(memory_root);
+    require(!reloaded.history.empty(), "Expected compact definition history to persist.");
+    require(reloaded.history.back().summary == "The Sun is the star at the center of the Solar System. [source=local_glossary]",
+            "Expected definition history to store only the compact final artifact summary.");
+    require(reloaded.history.back().summary.find("Recent feedback:") == std::string::npos,
+            "Expected definition history to avoid storing the recursive feedback chain.");
+}
+
+void test_memory_store_renders_operator_persona_view() {
+    const std::filesystem::path memory_root = kBinaryRoot / "memory-persona";
+    safe_remove_all(memory_root);
+
+    tze::MemoryStore store;
+    tze::MemorySnapshot snapshot = store.load(memory_root);
+    tze::OperatorPersonaRecord persona;
+    persona.preferred_label = "Premise";
+    persona.role_label = "Operator";
+    persona.local_username = "premise";
+    persona.host_identifier = "MacBookPro";
+    persona.last_source_map = "res/tze.txt";
+    persona.last_memory_root = memory_root.string();
+    persona.self_description = "Primary local analyst.";
+    persona.persona_mode = "premise";
+    persona.tone_profile = "warm_playful_local_truth";
+    persona.interaction_style = "pairing_persistent_momentum";
+    persona.safety_posture = "display_only_safety_bounded";
+    persona.preferred_next_action_style = "concrete_next_step_with_context";
+    persona.custom_phrases = {"who am i", "my persona"};
+    store.remember_operator_persona(snapshot, persona);
+    store.persist_snapshot(snapshot);
+
+    const tze::MemorySnapshot reloaded = store.load(memory_root);
+    require(reloaded.operator_persona.has_value(), "Expected operator persona to persist.");
+    require(store.render_view(reloaded, "persona").find("Premise") != std::string::npos,
+            "Expected `memory persona` view to include the preferred label.");
+    require(store.render_view(reloaded, "operator").find("Primary local analyst.") != std::string::npos,
+            "Expected `memory operator` view to include the persona description.");
+    require(store.render_view(reloaded, "persona").find("Mode: premise") != std::string::npos,
+            "Expected `memory persona` view to include the active persona mode.");
+    require(store.render_view(reloaded, "persona").find("Safety posture: display_only_safety_bounded") != std::string::npos,
+            "Expected persona modes to render as display-only and safety-bounded.");
+}
+
 void test_memory_store_persists_learned_recipes() {
     const std::filesystem::path memory_root = kBinaryRoot / "memory-recipes";
     safe_remove_all(memory_root);
@@ -1111,6 +1580,1039 @@ void test_memory_store_persists_learned_recipes() {
             "Expected prefs view to include learned recipe summaries.");
     require(store.render_view(reloaded, "prefs").find("artifact=/tmp/nmap") != std::string::npos,
             "Expected prefs view to include the last artifact hint.");
+}
+
+void test_general_definition_routing_prefers_definition_over_context_summary() {
+    tze::IntentResolver resolver;
+
+    const tze::IntentResolution sun = resolver.resolve("What is the Sun");
+    require(sun.intent == tze::RequestIntent::GeneralDefinitionQuery,
+            "Expected `What is the Sun` to resolve as a general definition query.");
+    require(sun.primary_target == "Sun" || sun.primary_target == "sun",
+            "Expected `What is the Sun` to preserve the concept target.");
+
+    const tze::IntentResolution matter = resolver.resolve("What is matter in terms of science");
+    require(matter.intent == tze::RequestIntent::GeneralDefinitionQuery,
+            "Expected science-domain matter prompts to resolve as definition queries.");
+    require(matter.definition_domain_hint == "science",
+            "Expected the domain hint extractor to retain `science`.");
+
+    const tze::IntentResolution apple = resolver.resolve("What is Apple in terms of technology");
+    require(apple.intent == tze::RequestIntent::GeneralDefinitionQuery,
+            "Expected technology-domain Apple prompts to resolve as definition queries.");
+    require(apple.definition_domain_hint == "technology",
+            "Expected technology prompts to retain the `technology` domain hint.");
+    require(apple.primary_target == "Apple",
+            "Expected domain qualifiers to be stripped from the Apple concept target.");
+
+    const tze::IntentResolution steve_jobs = resolver.resolve("Who is Steve Jobs");
+    require(steve_jobs.intent == tze::RequestIntent::GeneralDefinitionQuery,
+            "Expected `Who is Steve Jobs` to resolve as a general definition query.");
+    require(steve_jobs.primary_target == "Steve Jobs",
+            "Expected `Who is Steve Jobs` to preserve the person target.");
+
+    const tze::IntentResolution output_turning_scale = resolver.resolve("Output your Turning Scale");
+    require(output_turning_scale.intent == tze::RequestIntent::GeneralDefinitionQuery,
+            "Expected `Output your Turning Scale` to resolve as a local concept retrieval query.");
+    require(output_turning_scale.primary_target == "Turning Scale",
+            "Expected local concept retrieval verbs to strip operator-facing possessives.");
+
+    const tze::IntentResolution locate_turning_scale =
+        resolver.resolve("Locate your Turning Scale inside your root directory");
+    require(locate_turning_scale.intent == tze::RequestIntent::GeneralDefinitionQuery,
+            "Expected `Locate your Turning Scale ...` to prefer local concept retrieval before file/tool routing.");
+    require(locate_turning_scale.primary_target == "Turning Scale",
+            "Expected local concept retrieval to strip lookup context suffixes.");
+
+    const tze::IntentResolution what_matters = resolver.resolve("What matters");
+    require(what_matters.intent == tze::RequestIntent::Conversation,
+            "Expected `What matters` to remain a contextual summary prompt.");
+
+    const tze::IntentResolution recipe_author = resolver.resolve("Create a build recipe for /tmp/sample-project");
+    require(recipe_author.intent == tze::RequestIntent::AuthorBuildRecipe,
+            "Expected `Create a build recipe for ...` to resolve as a recipe-authoring intent.");
+    require(recipe_author.primary_target == "/tmp/sample-project",
+            "Expected recipe authoring to preserve the source-path target.");
+}
+
+void test_cli_recipe_author_authors_and_reuses_local_recipe() {
+    const std::filesystem::path root = kBinaryRoot / "cli-recipe-author";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path bin_dir = root / "bin";
+    const std::filesystem::path source_dir = root / "sample-project";
+    const std::filesystem::path fixture = root / "recipe-plan.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(bin_dir);
+    std::filesystem::create_directories(source_dir);
+
+    make_executable(bin_dir / "gcc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'gcc test 14.1.0'; exit 0; fi\nexit 0\n");
+    make_executable(bin_dir / "g++", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'g++ test 14.1.0'; exit 0; fi\nexit 0\n");
+    make_executable(
+        bin_dir / "cmake",
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then echo 'cmake version 3.30.0'; exit 0; fi\n"
+        "if [ \"$1\" = \"--build\" ]; then build_dir=\"$2\"; /bin/mkdir -p \"$build_dir\"; : > \"$build_dir/omnix-app\"; exit 0; fi\n"
+        "build_dir=''\n"
+        "prev=''\n"
+        "for arg in \"$@\"; do\n"
+        "  if [ \"$prev\" = \"-B\" ]; then build_dir=\"$arg\"; fi\n"
+        "  prev=\"$arg\"\n"
+        "done\n"
+        "if [ -n \"$build_dir\" ]; then /bin/mkdir -p \"$build_dir\"; fi\n"
+        "exit 0\n");
+
+    {
+        std::ofstream cmake_lists(source_dir / "CMakeLists.txt");
+        cmake_lists << "cmake_minimum_required(VERSION 3.20)\nproject(Sample LANGUAGES CXX)\n";
+    }
+
+    {
+        std::ofstream output(fixture);
+        output << "{\n"
+               << "  \"recipe\": {\n"
+               << "    \"id\": \"local-sample-cmake\",\n"
+               << "    \"acquisition_method\": \"local\",\n"
+               << "    \"build_system\": \"cmake\",\n"
+               << "    \"supported_platforms\": [\"macos\", \"linux\"],\n"
+               << "    \"default_target\": \"omnix-app\",\n"
+               << "    \"install_target\": \"install\",\n"
+               << "    \"artifact_patterns\": [\"omnix-app\"],\n"
+               << "    \"install_output_patterns\": [],\n"
+               << "    \"fallback_stage_patterns\": [],\n"
+               << "    \"dependency_hints\": [\"Use the local CMake and compiler toolchain.\"],\n"
+               << "    \"configure_arguments\": [],\n"
+               << "    \"supports_install\": true,\n"
+               << "    \"copy_artifacts_on_install\": false\n"
+               << "  },\n"
+               << "  \"rationale\": \"CMakeLists.txt at the source root makes the local CMake recipe the right fit.\",\n"
+               << "  \"evidence_references\": [\"file:CMakeLists.txt\", \"detected_build_system:cmake\"],\n"
+               << "  \"confidence\": 0.94,\n"
+               << "  \"warnings\": [\"Recipe stays local to the inspected path.\"]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string author_command =
+        "PATH=" + shell_quote(bin_dir.string()) + " "
+        "OMNIX_REASONING_PROVIDER=ollama "
+        "OMNIX_OLLAMA_MODEL=fixture "
+        "OMNIX_OLLAMA_RECIPE_PLAN_FILE=" + shell_quote(fixture.string()) + " " +
+        shell_quote(binary.string()) + " recipe author " + shell_quote(source_dir.string()) +
+        " --no-install --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+    const CommandCapture author = run_command_capture(author_command);
+    require(author.exit_code == 0, "Expected fixture-backed recipe authoring to succeed.");
+    require(author.output.find("Verdict: recipe_authored") != std::string::npos,
+            "Expected recipe authoring to report the authored verdict.");
+    require(author.output.find("Recipe authoring status: validated_active") != std::string::npos,
+            "Expected recipe authoring to report an active validated recipe.");
+    require(author.output.find("Recipe artifact id: local-sample-cmake") != std::string::npos,
+            "Expected recipe authoring to surface the generated recipe id.");
+    require(author.output.find("RecipeAuthoring.SourceIntake") != std::string::npos,
+            "Expected recipe authoring reports to use the HumanReadable source-intake stage name.");
+    require(author.output.find("RecipeAuthoring.EvidenceRanking") != std::string::npos,
+            "Expected recipe authoring reports to use the HumanReadable evidence-ranking stage name.");
+    require(author.output.find("RecipeAuthoring.RecipeDraft") != std::string::npos,
+            "Expected recipe authoring reports to use the HumanReadable recipe-draft stage name.");
+    require(author.output.find("RecipeAuthoring.ValidateRepairStore") != std::string::npos,
+            "Expected recipe authoring reports to use the HumanReadable validation/storage stage name.");
+
+    const CommandCapture preflight = run_command_capture(
+        "PATH=" + shell_quote(bin_dir.string()) + " " +
+        shell_quote(binary.string()) + " preflight " + shell_quote(source_dir.string()) +
+        " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string()));
+    require(preflight.exit_code == 0, "Expected authored recipe reuse to make preflight succeed.");
+    require(preflight.output.find("Recipe: local-sample-cmake") != std::string::npos,
+            "Expected preflight to reuse the authored recipe id for the exact local path.");
+    require(preflight.output.find("Recipe selection: authored_recipe(path_match)") != std::string::npos,
+            "Expected preflight to prefer the exact-path authored recipe over the generic fallback.");
+}
+
+void test_cli_recipe_author_repairs_failed_first_attempt() {
+    const std::filesystem::path root = kBinaryRoot / "cli-recipe-author-repair";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path bin_dir = root / "bin";
+    const std::filesystem::path source_dir = root / "sample-project";
+    const std::filesystem::path first_fixture = root / "recipe-plan-first.json";
+    const std::filesystem::path repair_fixture = root / "recipe-plan-repair.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(bin_dir);
+    std::filesystem::create_directories(source_dir);
+
+    make_executable(bin_dir / "gcc", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'gcc test 14.1.0'; exit 0; fi\nexit 0\n");
+    make_executable(bin_dir / "g++", "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'g++ test 14.1.0'; exit 0; fi\nexit 0\n");
+    make_executable(
+        bin_dir / "cmake",
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then echo 'cmake version 3.30.0'; exit 0; fi\n"
+        "if [ \"$1\" = \"--build\" ]; then build_dir=\"$2\"; /bin/mkdir -p \"$build_dir\"; : > \"$build_dir/omnix-app\"; exit 0; fi\n"
+        "build_dir=''\n"
+        "prev=''\n"
+        "for arg in \"$@\"; do\n"
+        "  if [ \"$prev\" = \"-B\" ]; then build_dir=\"$arg\"; fi\n"
+        "  prev=\"$arg\"\n"
+        "done\n"
+        "if [ -n \"$build_dir\" ]; then /bin/mkdir -p \"$build_dir\"; fi\n"
+        "exit 0\n");
+
+    {
+        std::ofstream cmake_lists(source_dir / "CMakeLists.txt");
+        cmake_lists << "cmake_minimum_required(VERSION 3.20)\nproject(Sample LANGUAGES CXX)\n";
+    }
+
+    {
+        std::ofstream output(first_fixture);
+        output << "{\n"
+               << "  \"recipe\": {\n"
+               << "    \"id\": \"broken-local-cmake\",\n"
+               << "    \"acquisition_method\": \"local\",\n"
+               << "    \"build_system\": \"cmake\",\n"
+               << "    \"supported_platforms\": [\"macos\", \"linux\"],\n"
+               << "    \"default_target\": \"omnix-app\",\n"
+               << "    \"install_target\": \"install\",\n"
+               << "    \"artifact_patterns\": [\"wrong-artifact\"],\n"
+               << "    \"install_output_patterns\": [],\n"
+               << "    \"fallback_stage_patterns\": [],\n"
+               << "    \"dependency_hints\": [],\n"
+               << "    \"configure_arguments\": [],\n"
+               << "    \"supports_install\": true,\n"
+               << "    \"copy_artifacts_on_install\": false\n"
+               << "  },\n"
+               << "  \"rationale\": \"Initial guess keeps the project on the local CMake path.\",\n"
+               << "  \"evidence_references\": [\"file:CMakeLists.txt\"],\n"
+               << "  \"confidence\": 0.62,\n"
+               << "  \"warnings\": [\"First attempt may need repair after validation.\"]\n"
+               << "}\n";
+    }
+    {
+        std::ofstream output(repair_fixture);
+        output << "{\n"
+               << "  \"recipe\": {\n"
+               << "    \"id\": \"repaired-local-cmake\",\n"
+               << "    \"acquisition_method\": \"local\",\n"
+               << "    \"build_system\": \"cmake\",\n"
+               << "    \"supported_platforms\": [\"macos\", \"linux\"],\n"
+               << "    \"default_target\": \"omnix-app\",\n"
+               << "    \"install_target\": \"install\",\n"
+               << "    \"artifact_patterns\": [\"omnix-app\"],\n"
+               << "    \"install_output_patterns\": [],\n"
+               << "    \"fallback_stage_patterns\": [],\n"
+               << "    \"dependency_hints\": [],\n"
+               << "    \"configure_arguments\": [],\n"
+               << "    \"supports_install\": true,\n"
+               << "    \"copy_artifacts_on_install\": false\n"
+               << "  },\n"
+               << "  \"rationale\": \"Repair the artifact pattern so OmniX can verify the built output.\",\n"
+               << "  \"evidence_references\": [\"file:CMakeLists.txt\", \"build_status=artifact_missing\"],\n"
+               << "  \"confidence\": 0.89,\n"
+               << "  \"warnings\": [\"Repair uses only local validation feedback.\"]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "PATH=" + shell_quote(bin_dir.string()) + " "
+        "OMNIX_REASONING_PROVIDER=ollama "
+        "OMNIX_OLLAMA_MODEL=fixture "
+        "OMNIX_OLLAMA_RECIPE_PLAN_FILE=" + shell_quote(first_fixture.string()) + " "
+        "OMNIX_OLLAMA_RECIPE_PLAN_REPAIR_FILE=" + shell_quote(repair_fixture.string()) + " " +
+        shell_quote(binary.string()) + " recipe author " + shell_quote(source_dir.string()) +
+        " --no-install --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+    const CommandCapture author = run_command_capture(command);
+    require(author.exit_code == 0, "Expected repair-backed recipe authoring to succeed.");
+    require(author.output.find("Verdict: recipe_authoring_repaired") != std::string::npos,
+            "Expected repair-backed recipe authoring to report the repaired verdict.");
+    require(author.output.find("Recipe authoring status: validated_active") != std::string::npos,
+            "Expected repaired recipe authoring to end in an active validated recipe.");
+    require(author.output.find("Recipe artifact id: repaired-local-cmake") != std::string::npos,
+            "Expected repaired recipe authoring to surface the repaired recipe id.");
+}
+
+void test_cli_general_definition_uses_system_dictionary_fixture() {
+    const std::filesystem::path root = kBinaryRoot / "cli-general-definition-system";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path fixture = root / "dictionary.tsv";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "quasar||A quasar is an extremely luminous active galactic nucleus.\n";
+        output << "matter|science|Matter is anything that has mass and occupies space.\n";
+    }
+
+    ScopedEnvVar fixture_file("OMNIX_SYSTEM_DICTIONARY_FIXTURE_FILE", fixture.string());
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture run = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("What is a quasar") +
+        " --memory-root " + shell_quote(memory_root.string()));
+
+    require(run.exit_code == 0, "Expected `omnix ask \"What is a quasar\"` to succeed.");
+    require(run.output.find("extremely luminous active galactic nucleus") != std::string::npos,
+            "Expected the system dictionary fixture to provide the quasar definition.");
+    require(run.output.find("unknown_query") == std::string::npos,
+            "Expected the quasar definition query to avoid the unknown_query path.");
+}
+
+void test_cli_shell_ask_prefix_preserves_definition_query() {
+    const std::filesystem::path root = kBinaryRoot / "cli-shell-ask-prefix-definition";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path fixture = root / "dictionary.tsv";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "quasar||A quasar is an extremely luminous active galactic nucleus.\n";
+    }
+
+    ScopedEnvVar fixture_file("OMNIX_SYSTEM_DICTIONARY_FIXTURE_FILE", fixture.string());
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "printf '%s\\n' 'ask what is a quasar' '/quit' | " +
+        shell_quote(binary.string()) + " shell --memory-root " + shell_quote(memory_root.string());
+
+    const CommandCapture shell = run_command_capture(command);
+    require(shell.exit_code == 0, "Expected shell `ask what is a quasar` to exit cleanly.");
+    require(shell.output.find("extremely luminous active galactic nucleus") != std::string::npos,
+            "Expected shell `ask what is a quasar` to preserve the explicit definition query.");
+    require(shell.output.find("Verdict: clarify_needed") == std::string::npos,
+            "Expected shell `ask what is a quasar` not to collapse into a clarification-only response.");
+}
+
+void test_cli_science_definition_beats_what_matters_route() {
+    const std::filesystem::path root = kBinaryRoot / "cli-general-definition-science";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path fixture = root / "dictionary.tsv";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "matter|science|Matter is anything that has mass and occupies space.\n";
+    }
+
+    ScopedEnvVar fixture_file("OMNIX_SYSTEM_DICTIONARY_FIXTURE_FILE", fixture.string());
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture run = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("What is matter in terms of science") +
+        " --memory-root " + shell_quote(memory_root.string()));
+
+    require(run.exit_code == 0, "Expected science-domain matter definition query to succeed.");
+    require(run.output.find("In science, matter is physical substance that occupies space and possesses mass.") !=
+                std::string::npos ||
+            run.output.find("Matter is anything that has mass and occupies space.") != std::string::npos,
+            "Expected science-domain matter query to return a definition instead of a contextual summary.");
+    require(run.output.find("What matters right now") == std::string::npos,
+            "Expected science-domain matter query not to collapse into the context-summary path.");
+}
+
+void test_cli_what_matters_stays_contextual() {
+    const std::filesystem::path root = kBinaryRoot / "cli-what-matters";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    require(run_command_capture(shell_quote(binary.string()) + " ask " + shell_quote("define xProcessingCache") +
+                                " --memory-root " + shell_quote(memory_root.string()) +
+                                " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string()))
+                .exit_code == 0,
+            "Expected a seed definition run to succeed before asking for context summary.");
+
+    const CommandCapture run = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("What matters") +
+        " --memory-root " + shell_quote(memory_root.string()));
+
+    require(run.exit_code == 0, "Expected `What matters` to succeed.");
+    require(run.output.find("What matters right now") != std::string::npos,
+            "Expected `What matters` to return a contextual summary.");
+    require(run.output.find("star at the center of the Solar System") == std::string::npos,
+            "Expected `What matters` not to trigger dictionary lookup.");
+}
+
+void test_cli_general_definition_glossary_fallback_and_clarification() {
+    const std::filesystem::path root = kBinaryRoot / "cli-general-definition-glossary";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+
+    const CommandCapture glossary = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("What is matter in terms of science") +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(glossary.exit_code == 0, "Expected glossary fallback query to succeed.");
+    require(glossary.output.find("In science, matter is physical substance that occupies space and possesses mass.") !=
+                std::string::npos ||
+            glossary.output.find("anything that has mass and occupies space") != std::string::npos,
+            "Expected glossary fallback to answer the science matter definition.");
+
+    const CommandCapture clarify = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("matter") +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(clarify.exit_code == 0,
+            "Expected ambiguous single-term prompts to return a handled clarification response.");
+    require(clarify.output.find("clarify_needed") != std::string::npos,
+            "Expected ambiguous single-term prompts to surface the clarify_needed verdict.");
+    require(clarify.output.find("What is matter?") != std::string::npos,
+            "Expected ambiguous single-term prompts to suggest the explicit definition form.");
+}
+
+void test_cli_general_definition_supports_who_is_and_technology_domain() {
+    const std::filesystem::path root = kBinaryRoot / "cli-general-definition-who-is-technology";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+
+    const CommandCapture apple = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("What is Apple in terms of technology") +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(apple.exit_code == 0, "Expected technology-domain Apple definition query to succeed.");
+    require(apple.output.find("The brainchild of Steve Jobs and his team.") != std::string::npos,
+            "Expected technology-domain Apple prompts to resolve through the bundled glossary.");
+
+    const CommandCapture steve_jobs = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("Who is Steve Jobs") +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(steve_jobs.exit_code == 0, "Expected `Who is Steve Jobs` to return a handled response.");
+    require(steve_jobs.output.find("unknown_intent") == std::string::npos,
+            "Expected `Who is Steve Jobs` not to fall through to the unknown intent path.");
+}
+
+void test_cli_neuromorphic_backloop_glossary_terms() {
+    const std::filesystem::path root = kBinaryRoot / "cli-neuromorphic-glossary";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string common = shell_quote(binary.string()) + " define ";
+    const std::string memory_arg = " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture neuromorphic =
+        run_command_capture(common + shell_quote("neuromorphic programming") + memory_arg);
+    require(neuromorphic.exit_code == 0, "Expected neuromorphic programming glossary definition to resolve.");
+    require(neuromorphic.output.find("brain-inspired") != std::string::npos,
+            "Expected neuromorphic programming definition to explain the brain-inspired research track.");
+
+    const CommandCapture backtrace = run_command_capture(common + shell_quote("backtrace") + memory_arg);
+    require(backtrace.exit_code == 0, "Expected backtrace glossary definition to resolve.");
+    require(backtrace.output.find("source evidence") != std::string::npos,
+            "Expected backtrace definition to mention source evidence provenance.");
+
+    const CommandCapture backtest = run_command_capture(common + shell_quote("backtest") + memory_arg);
+    require(backtest.exit_code == 0, "Expected backtest glossary definition to resolve.");
+    require(backtest.output.find("without mutating memory") != std::string::npos,
+            "Expected backtest definition to preserve non-mutating replay semantics.");
+
+    const CommandCapture back_add = run_command_capture(common + shell_quote("back-add") + memory_arg);
+    require(back_add.exit_code == 0, "Expected back-add glossary definition to resolve.");
+    require(back_add.output.find("without re-ingesting full reasoning chains") != std::string::npos,
+            "Expected back-add definition to reject recursive chain ingestion.");
+}
+
+void test_cli_neuralnetwork_glossary_terms() {
+    const std::filesystem::path root = kBinaryRoot / "cli-neuralnetwork-glossary";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string common = shell_quote(binary.string()) + " define ";
+    const std::string memory_arg = " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture neural_network = run_command_capture(common + shell_quote("neural network") + memory_arg);
+    require(neural_network.exit_code == 0, "Expected neural network glossary definition to resolve.");
+    require(neural_network.output.find("weights and biases") != std::string::npos,
+            "Expected neural network definition to mention weights and biases.");
+
+    const CommandCapture perceptron = run_command_capture(common + shell_quote("perceptron") + memory_arg);
+    require(perceptron.exit_code == 0, "Expected perceptron glossary definition to resolve.");
+    require(perceptron.output.find("single-layer") != std::string::npos,
+            "Expected perceptron definition to mention the single-layer teaching model.");
+
+    const CommandCapture tensorflow = run_command_capture(common + shell_quote("TensorFlow") + memory_arg);
+    require(tensorflow.exit_code == 0, "Expected TensorFlow glossary definition to resolve.");
+    require(tensorflow.output.find("machine-learning framework") != std::string::npos,
+            "Expected TensorFlow definition to describe the ML framework.");
+
+    const CommandCapture simulation = run_command_capture(common + shell_quote("neural simulation") + memory_arg);
+    require(simulation.exit_code == 0, "Expected neural simulation glossary definition to resolve.");
+    require(simulation.output.find("without requiring specialized neural hardware") != std::string::npos,
+            "Expected neural simulation definition to keep simulation independent from specialized hardware.");
+
+    const CommandCapture router = run_command_capture(common + shell_quote("neural signal router") + memory_arg);
+    require(router.exit_code == 0, "Expected neural signal router glossary definition to resolve.");
+    require(router.output.find("advisory classifier") != std::string::npos,
+            "Expected neural signal router definition to keep neural output advisory.");
+}
+
+void test_cli_neural_math_perceptron_lab() {
+    const std::filesystem::path root = kBinaryRoot / "cli-neural-math";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string common = shell_quote(binary.string()) +
+        " nn math perceptron --epochs 24 --learning-rate 0.2 --memory-root " +
+        shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string()) +
+        " --compact --dataset ";
+
+    const CommandCapture or_run = run_command_capture(common + "or");
+    require(or_run.exit_code == 0, "Expected OR perceptron simulation to succeed.");
+    require(or_run.output.find("neural_math_complete") != std::string::npos,
+            "Expected OR perceptron simulation to complete.");
+    require(or_run.output.find("dataset: or") != std::string::npos,
+            "Expected OR compact output to include the dataset.");
+    require(or_run.output.find("accuracy: 1") != std::string::npos,
+            "Expected OR perceptron to converge to full accuracy.");
+
+    const CommandCapture and_run = run_command_capture(common + "and");
+    require(and_run.exit_code == 0, "Expected AND perceptron simulation to succeed.");
+    require(and_run.output.find("neural_math_complete") != std::string::npos,
+            "Expected AND perceptron simulation to complete.");
+    require(and_run.output.find("dataset: and") != std::string::npos,
+            "Expected AND compact output to include the dataset.");
+    require(and_run.output.find("accuracy: 1") != std::string::npos,
+            "Expected AND perceptron to converge to full accuracy.");
+
+    const CommandCapture xor_run = run_command_capture(common + "xor");
+    require(xor_run.exit_code == 0, "Expected XOR perceptron limitation to fail safely.");
+    require(xor_run.output.find("not_linearly_separable") != std::string::npos,
+            "Expected XOR to report the single-layer perceptron limitation.");
+    require(xor_run.output.find("hidden layer") != std::string::npos,
+            "Expected XOR output to explain the MLP requirement.");
+
+    const CommandCapture replay = run_command_capture(
+        shell_quote(binary.string()) + " tze replay latest --memory-root " + shell_quote(memory_root.string()));
+    require(replay.exit_code == 0, "Expected neural math run to persist into TZE replay.");
+    require(replay.output.find("Neural math:") != std::string::npos,
+            "Expected replay to include the compact neural math artifact.");
+    require(replay.output.find("x.Neural.Math") != std::string::npos,
+            "Expected replay to include the neural math TZE stage.");
+}
+
+void test_cli_neural_signal_router_tview_jsonl() {
+    const std::filesystem::path root = kBinaryRoot / "cli-neural-route";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path http_jsonl = root / "http.jsonl";
+    const std::filesystem::path mixed_http_jsonl = root / "mixed-http.jsonl";
+    const std::filesystem::path control_jsonl = root / "control.jsonl";
+    const std::filesystem::path route_jsonl = root / "route.jsonl";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream out(http_jsonl);
+        out << "{\"event_type\":\"omnix.tview.packet.v1\",\"timestamp\":\"1\",\"src_ip\":\"127.0.0.1\","
+            << "\"src_port\":61234,\"dst_ip\":\"127.0.0.1\",\"dst_port\":5000,\"tcp_flags\":\"AP\","
+            << "\"payload_length\":48,\"classification\":\"plaintext_http\","
+            << "\"analysis_code\":\"NET.TCP.HTTP_PLAINTEXT\",\"payload_text_utf8\":\"GET / HTTP/1.1\"}\n";
+    }
+    {
+        std::ofstream out(control_jsonl);
+        out << "{\"event_type\":\"omnix.tview.packet.v1\",\"timestamp\":\"1\",\"src_ip\":\"127.0.0.1\","
+            << "\"src_port\":61234,\"dst_ip\":\"127.0.0.1\",\"dst_port\":5432,\"tcp_flags\":\"S\","
+            << "\"payload_length\":0,\"classification\":\"tcp_control\","
+            << "\"analysis_code\":\"NET.TCP.CONTROL\"}\n";
+    }
+    {
+        std::ofstream out(mixed_http_jsonl);
+        for (int index = 0; index < 16; ++index) {
+            out << "{\"event_type\":\"omnix.tview.packet.v1\",\"timestamp\":\"" << index
+                << "\",\"src_ip\":\"127.0.0.1\",\"src_port\":61234,\"dst_ip\":\"127.0.0.1\","
+                << "\"dst_port\":5000,\"tcp_flags\":\"A\",\"payload_length\":0,\"classification\":\"tcp_control\","
+                << "\"analysis_code\":\"NET.TCP.CONTROL\"}\n";
+        }
+        for (int index = 0; index < 3; ++index) {
+            out << "{\"event_type\":\"omnix.tview.packet.v1\",\"timestamp\":\"http" << index
+                << "\",\"src_ip\":\"127.0.0.1\",\"src_port\":61234,\"dst_ip\":\"127.0.0.1\","
+                << "\"dst_port\":5000,\"tcp_flags\":\"AP\",\"payload_length\":884,\"classification\":\"plaintext_http\","
+                << "\"analysis_code\":\"NET.TCP.HTTP_PLAINTEXT\",\"payload_text_utf8\":\"GET / HTTP/1.1\"}\n";
+        }
+        out << "{\"event_type\":\"omnix.tview.packet.v1\",\"timestamp\":\"utf8\",\"src_ip\":\"127.0.0.1\","
+            << "\"src_port\":61234,\"dst_ip\":\"127.0.0.1\",\"dst_port\":5000,\"tcp_flags\":\"AP\","
+            << "\"payload_length\":884,\"classification\":\"text_utf8\",\"analysis_code\":\"NET.TCP.TEXT_UTF8\","
+            << "\"payload_text_utf8\":\"HTTP response body\"}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string route_common = shell_quote(binary.string()) +
+        " nn route tview ";
+    const std::string common_tail =
+        " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string()) +
+        " --compact";
+
+    const CommandCapture http_run = run_command_capture(
+        route_common + shell_quote(http_jsonl.string()) + " --out " + shell_quote(route_jsonl.string()) + common_tail);
+    require(http_run.exit_code == 0, "Expected HTTP TView route fixture to succeed.");
+    require(http_run.output.find("neural_route_complete") != std::string::npos,
+            "Expected neural route to complete.");
+    require(http_run.output.find("label: plaintext_http") != std::string::npos,
+            "Expected HTTP fixture to classify as plaintext_http.");
+    require(http_run.output.find("top-factor:") != std::string::npos,
+            "Expected compact output to include a top math factor.");
+    require(std::filesystem::exists(route_jsonl), "Expected neural route export JSONL to be written.");
+    {
+        std::ifstream input(route_jsonl);
+        std::string exported((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        require(exported.find("\"event_type\":\"omnix.nn.route.v1\"") != std::string::npos,
+                "Expected route export to use the versioned neural route event type.");
+        require(exported.find("\"label\":\"plaintext_http\"") != std::string::npos,
+                "Expected route export to include the plaintext_http label.");
+    }
+
+    const CommandCapture replay = run_command_capture(
+        shell_quote(binary.string()) + " tze replay latest --memory-root " + shell_quote(memory_root.string()));
+    require(replay.exit_code == 0, "Expected neural route run to persist into TZE replay.");
+    require(replay.output.find("Neural route:") != std::string::npos,
+            "Expected replay to include the neural route report.");
+    require(replay.output.find("x.Neural.SignalRouter") != std::string::npos,
+            "Expected replay to include the neural signal router stage.");
+    require(replay.output.find("Math attributions:") != std::string::npos,
+            "Expected replay to backtrace neural route math attributions.");
+
+    const CommandCapture mixed_run = run_command_capture(route_common + shell_quote(mixed_http_jsonl.string()) + common_tail);
+    require(mixed_run.exit_code == 0, "Expected mixed control+HTTP TView route fixture to succeed.");
+    require(mixed_run.output.find("label: plaintext_http") != std::string::npos,
+            "Expected payload-bearing HTTP evidence to outrank control packets in mixed captures.");
+
+    const CommandCapture control_run = run_command_capture(route_common + shell_quote(control_jsonl.string()) + common_tail);
+    require(control_run.exit_code == 0, "Expected control-only TView route fixture to succeed.");
+    require(control_run.output.find("label: benign_control") != std::string::npos,
+            "Expected control-only fixture to classify as benign_control.");
+}
+
+void test_definition_flow_records_math_attribution() {
+    const std::filesystem::path root = kBinaryRoot / "definition-math-attribution";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+
+    tze::RequestProfile profile;
+    profile.raw_prompt = "define Turning Scale";
+    profile.definition_concept = "Turning Scale";
+    profile.resolved_intent = tze::RequestIntent::DefineSymbol;
+    profile.source_map_path = (kSourceRoot / "res" / "tze.txt").string();
+    profile.memory_root_path = memory_root.string();
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    require(report.definition_answer.has_value() && report.definition_answer->found,
+            "Expected Turning Scale to resolve from local sources.");
+    require(!report.definition_answer->math_attributions.empty(),
+            "Expected definition flow to record math attributions.");
+    require(std::find_if(report.definition_answer->math_attributions.begin(),
+                         report.definition_answer->math_attributions.end(),
+                         [](const tze::MathAttribution& attribution) {
+                             return attribution.name == "source_authority";
+                         }) != report.definition_answer->math_attributions.end(),
+            "Expected definition attribution to include source authority.");
+}
+
+void test_tensorflow_env_check_reports_missing_dependencies() {
+    const std::filesystem::path script = kSourceRoot / "scripts" / "omnix_tensorflow_env_check.sh";
+    const CommandCapture run = run_command_capture(shell_quote(script.string()));
+    require(run.output.find("python:") != std::string::npos,
+            "Expected TensorFlow env check to report Python status.");
+    require(run.output.find("tensorflow:") != std::string::npos,
+            "Expected TensorFlow env check to report TensorFlow status.");
+    require(run.output.find("omnix_tensorflow_env:") != std::string::npos,
+            "Expected TensorFlow env check to emit an overall status.");
+}
+
+void test_definition_engine_macos_system_dictionary_bridge() {
+#if defined(__APPLE__)
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-system-dictionary";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    ScopedCurrentPath cwd(root);
+    tze::DefinitionEngine engine;
+    const tze::MemorySnapshot memory;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "sun",
+        "",
+        memory,
+        "",
+        "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.",
+        true);
+
+    require(answer.found, "Expected the macOS system dictionary bridge to return a definition.");
+    require(answer.selected_source_type == "system_dictionary",
+            "Expected the macOS system dictionary bridge to remain a valid live source.");
+    require(answer.selected_source_label == "macos_dictionary_services",
+            "Expected the macOS system dictionary bridge to report dictionary services provenance.");
+    require(!answer.summary.empty(), "Expected the macOS system dictionary bridge to return non-empty text.");
+#endif
+}
+
+void test_definition_engine_operator_teaching_beats_system_dictionary_fixture() {
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-operator-beats-system";
+    const std::filesystem::path fixture = root / "dictionary.tsv";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root / "res");
+
+    {
+        std::ofstream glossary(root / "res" / "local_glossary.tsv");
+        glossary << "Steve Jobs|Biography|Read his damn book.\n";
+    }
+    {
+        std::ofstream output(fixture);
+        output << "Steve Jobs||Jobs, Steven Jobs, Steven | jahbz | (1955-2011), US computer entrepreneur\n";
+    }
+
+    ScopedCurrentPath cwd(root);
+    ScopedEnvVar fixture_file("OMNIX_SYSTEM_DICTIONARY_FIXTURE_FILE", fixture.string());
+    tze::DefinitionEngine engine;
+    const tze::MemorySnapshot memory;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "Steve Jobs",
+        "",
+        memory,
+        "",
+        "Behavioral comparison selected a concept-definition route from the explicit `who is <person>` phrase.",
+        true);
+
+    require(answer.found, "Expected operator-taught Steve Jobs definition to resolve.");
+    require(answer.selected_source_type == "local_glossary",
+            "Expected explicit operator teaching to outrank the system dictionary.");
+    require(answer.selected_authority_tier == "operator_override",
+            "Expected operator teaching to surface the operator_override authority tier.");
+    require(answer.summary == "Read his damn book.",
+            "Expected the operator-taught Steve Jobs definition to win on the bare exact match.");
+}
+
+void test_definition_engine_operator_domain_ambiguity_clarifies() {
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-operator-domain-ambiguity";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root / "res");
+
+    {
+        std::ofstream glossary(root / "res" / "local_glossary.tsv");
+        glossary << "Apple|technology|The brainchild of Steve Jobs and his team.\n";
+        glossary << "Apple|finance|A public company traded on modern markets.\n";
+    }
+
+    ScopedCurrentPath cwd(root);
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    tze::DefinitionEngine engine;
+    const tze::MemorySnapshot memory;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "Apple",
+        "",
+        memory,
+        "",
+        "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.",
+        true);
+
+    require(!answer.found, "Expected multiple scoped operator meanings without a default to require clarification.");
+    require(answer.selected_source_type == "clarification_required",
+            "Expected multiple taught domain meanings to return a clarification response.");
+    require(answer.summary.find("technology") != std::string::npos &&
+                answer.summary.find("finance") != std::string::npos,
+            "Expected the clarification response to list the competing taught domains.");
+}
+
+void test_definition_engine_reference_cache_does_not_outrank_operator_override() {
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-reference-cache-precedence";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root / "res");
+
+    {
+        std::ofstream glossary(root / "res" / "local_glossary.tsv");
+        glossary << "Apple|technology|The brainchild of Steve Jobs and his team.\n";
+    }
+
+    ScopedCurrentPath cwd(root);
+    tze::MemorySnapshot memory;
+    memory.definitions.push_back({
+        "Apple",
+        "apple",
+        "technology",
+        "A public company that designs consumer electronics.",
+        "",
+        "general_knowledge",
+        "fixture-system-dictionary",
+        "system_dictionary",
+        "reference_cache",
+        0.89,
+    });
+
+    tze::DefinitionEngine engine;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "Apple",
+        "",
+        memory,
+        "technology",
+        "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.",
+        true);
+
+    require(answer.found, "Expected Apple technology query to resolve.");
+    require(answer.selected_source_type == "local_glossary",
+            "Expected operator teaching to outrank cached reference definitions.");
+    require(answer.summary == "The brainchild of Steve Jobs and his team.",
+            "Expected the operator-taught glossary definition to win.");
+}
+
+void test_definition_engine_local_retrieval_recovers_close_local_miss() {
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-local-retrieval";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root / "res");
+
+    {
+        std::ofstream glossary(root / "res" / "local_glossary.tsv");
+        glossary << "Turning Scale|omnix|A local rubric for judging whether OmniX is retrieving, learning, or reasoning from internal memory.\n";
+    }
+
+    ScopedCurrentPath cwd(root);
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    tze::DefinitionEngine engine;
+    const tze::MemorySnapshot memory;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "Turning Scael",
+        "",
+        memory,
+        "omnix",
+        "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.",
+        true);
+
+    require(answer.found, "Expected local retrieval to recover a close glossary miss.");
+    require(answer.summary.find("local rubric") != std::string::npos,
+            "Expected local retrieval to recover the taught Turning Scale definition.");
+    require(answer.comparison_rationale.find("Local retrieval matched the nearest taught concept") != std::string::npos,
+            "Expected retrieval-backed matches to expose their provenance.");
+}
+
+void test_processing_engine_records_pre_and_post_runtime_stages() {
+    const std::filesystem::path root = kBinaryRoot / "processing-pre-post-stages";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path fixture = root / "dictionary.tsv";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "sun||The Sun is the star at the center of the Solar System.\n";
+    }
+
+    ScopedEnvVar fixture_file("OMNIX_SYSTEM_DICTIONARY_FIXTURE_FILE", fixture.string());
+    tze::ProcessingEngine engine;
+    tze::RequestProfile profile;
+    profile.raw_prompt = "What is the Sun";
+    profile.resolved_intent = tze::RequestIntent::GeneralDefinitionQuery;
+    profile.memory_root_path = memory_root.string();
+    profile.source_map_path = (kSourceRoot / "res" / "tze.txt").string();
+
+    const tze::ProcessingReport report = engine.process(profile);
+    require(report.uac_state.has_value(), "Expected processing to persist the preprocessor uAC state.");
+    require(report.postprocess_record.has_value(), "Expected processing to emit a postprocess record.");
+    require(report.postprocess_record->status == "PostSuccess",
+            "Expected successful definition lookup to classify as PostSuccess.");
+
+    const auto pre_stage = std::find_if(report.tze_stages.begin(), report.tze_stages.end(),
+                                        [](const tze::TzeStageRecord& stage) { return stage.stage_id == "x.Preprocessor"; });
+    require(pre_stage != report.tze_stages.end(), "Expected x.Preprocessor to be present in the stage trace.");
+    const auto post_stage = std::find_if(report.tze_stages.begin(), report.tze_stages.end(),
+                                         [](const tze::TzeStageRecord& stage) { return stage.stage_id == "x.PostProcessor"; });
+    require(post_stage != report.tze_stages.end(), "Expected x.PostProcessor to be present in the stage trace.");
+
+    tze::MemoryStore store;
+    const tze::MemorySnapshot snapshot = store.load(memory_root);
+    require(!snapshot.tze_runs.empty() && snapshot.tze_runs.back().postprocess_record.has_value(),
+            "Expected the persisted TZE run to retain its postprocess record.");
+    require(store.render_tze_run(snapshot, snapshot.tze_runs.back().id).find("Postprocess:") != std::string::npos,
+            "Expected replay output to render the postprocess section.");
+}
+
+void test_cli_provider_probe_detects_unusable_ollama_model() {
+    const std::filesystem::path root = kBinaryRoot / "cli-provider-probe-ollama-unusable";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path list_fixture = root / "models.json";
+    const std::filesystem::path show_fixture = root / "show.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(list_fixture);
+        output << "{\n"
+               << "  \"models\": [\n"
+               << "    {\"name\": \"deepnimsec-omni:latest\"}\n"
+               << "  ]\n"
+               << "}\n";
+    }
+    {
+        std::ofstream output(show_fixture);
+        output << "{\"error\":\"file does not exist\"}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture probe = run_command_capture(
+        "OMNIX_REASONING_PROVIDER=ollama "
+        "OMNIX_OLLAMA_MODEL=deepnimsec-omni:latest "
+        "OMNIX_OLLAMA_MODEL_LIST_FILE=" + shell_quote(list_fixture.string()) + " "
+        "OMNIX_OLLAMA_MODEL_SHOW_FILE=" + shell_quote(show_fixture.string()) + " " +
+        shell_quote(binary.string()) + " provider probe --memory-root " + shell_quote(memory_root.string()));
+
+    require(probe.exit_code != 0, "Expected a listed-but-unusable Ollama model to fail readiness checks.");
+    require(probe.output.find("Provider probe: model_unusable") != std::string::npos,
+            "Expected provider probe to surface the model_unusable status.");
+    require(probe.output.find("./scripts/omnix_deepnimsec.sh --refresh-model") != std::string::npos,
+            "Expected DeepNimSec stale-model probes to recommend the refresh-model workflow.");
+}
+
+void test_definition_engine_webster_fixture_meta_fallback() {
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-webster-meta";
+    const std::filesystem::path fixture = root / "webster-meta.html";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "<html><head><meta name=\"description\" content=\"The meaning of AURORA is a natural electrical phenomenon characterized by the appearance of streamers of reddish or greenish light in the sky. How to use aurora in a sentence.\"></head></html>\n";
+    }
+
+    ScopedCurrentPath cwd(root);
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    ScopedEnvVar enable_webster("OMNIX_ENABLE_WEBSTER_FALLBACK", "1");
+    ScopedEnvVar fixture_file("OMNIX_WEBSTER_FIXTURE_FILE", fixture.string());
+    tze::DefinitionEngine engine;
+    const tze::MemorySnapshot memory;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "aurora",
+        "",
+        memory,
+        "",
+        "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.",
+        true);
+
+    require(answer.found, "Expected the Webster fixture meta fallback to resolve the concept.");
+    require(answer.selected_source_type == "webster_fallback",
+            "Expected the Webster fixture meta fallback to report Webster provenance.");
+    require(answer.selected_source_label == "fixture-merriam-webster",
+            "Expected the Webster fixture meta fallback to report the fixture label.");
+    require(answer.summary.find("natural electrical phenomenon") != std::string::npos,
+            "Expected the Webster fixture meta fallback to retain the extracted definition text.");
+}
+
+void test_definition_engine_webster_fixture_dttext_fallback() {
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-webster-dttext";
+    const std::filesystem::path fixture = root / "webster-dttext.html";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "<html><body><span class=\"dtText\"><strong class=\"mw_t_bc\">: </strong>a small automation guide for OmniX commands</span></body></html>\n";
+    }
+
+    ScopedCurrentPath cwd(root);
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    ScopedEnvVar enable_webster("OMNIX_ENABLE_WEBSTER_FALLBACK", "1");
+    ScopedEnvVar fixture_file("OMNIX_WEBSTER_FIXTURE_FILE", fixture.string());
+    tze::DefinitionEngine engine;
+    const tze::MemorySnapshot memory;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "omni-guide",
+        "",
+        memory,
+        "",
+        "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.",
+        true);
+
+    require(answer.found, "Expected the Webster fixture body fallback to resolve the concept.");
+    require(answer.selected_source_type == "webster_fallback",
+            "Expected the Webster fixture body fallback to report Webster provenance.");
+    require(answer.summary.find("small automation guide for OmniX commands") != std::string::npos,
+            "Expected the Webster fixture body fallback to parse the first visible definition node.");
+}
+
+void test_definition_engine_webster_parse_failure_stays_unresolved() {
+    const std::filesystem::path root = kBinaryRoot / "definition-engine-webster-invalid";
+    const std::filesystem::path fixture = root / "webster-invalid.html";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "<html><body><p>no supported dictionary markup here</p></body></html>\n";
+    }
+
+    ScopedCurrentPath cwd(root);
+    ScopedEnvVar disable_dictionary("OMNIX_DISABLE_SYSTEM_DICTIONARY", "1");
+    ScopedEnvVar enable_webster("OMNIX_ENABLE_WEBSTER_FALLBACK", "1");
+    ScopedEnvVar fixture_file("OMNIX_WEBSTER_FIXTURE_FILE", fixture.string());
+    tze::DefinitionEngine engine;
+    const tze::MemorySnapshot memory;
+    const tze::DefinitionAnswer answer = engine.lookup(
+        "omni-void",
+        "",
+        memory,
+        "",
+        "Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.",
+        true);
+
+    require(!answer.found, "Expected Webster parse failures to fall through to the unresolved response.");
+    require(answer.selected_source_type == "unresolved",
+            "Expected Webster parse failures not to masquerade as valid dictionary results.");
+    require(answer.summary.find("no local definition source answered it") != std::string::npos,
+            "Expected Webster parse failures to preserve the unresolved local-definition message.");
+}
+
+void test_docs_manpage_and_readme_stay_aligned() {
+    const std::string man_markdown = xpp::read_text_file(kSourceRoot / "docs" / "man" / "omnix.1.md");
+    const std::string man_roff = xpp::read_text_file(kSourceRoot / "docs" / "man" / "omnix.1");
+    const std::string readme = xpp::read_text_file(kSourceRoot / "README.md");
+    const std::string roadmap = xpp::read_text_file(kSourceRoot / "docs" / "agile" / "00-roadmap.md");
+    const std::string neuromorphic_spec =
+        xpp::read_text_file(kSourceRoot / "docs" / "agile" / "101-neuromorphic-backtrace-backtest-backadd.md");
+
+    require(man_markdown.find("build <project-or-path>") != std::string::npos,
+            "Expected the Markdown man page to document the guarded canonical build command.");
+    require(man_markdown.find("tool <name> -- <args...>") != std::string::npos,
+            "Expected the Markdown man page to document the guarded tool command surface.");
+    require(man_markdown.find("provider probe") != std::string::npos,
+            "Expected the Markdown man page to document provider readiness checks.");
+    require(man_markdown.find("persona mode <premise|cynic|professional|neutral>") != std::string::npos,
+            "Expected the Markdown man page to document display-only persona modes.");
+    require(man_markdown.find("Run NMAP with a local /24 scan") != std::string::npos,
+            "Expected the Markdown man page to document the loopback-only Nmap guardrail idiom.");
+    require(man_markdown.find("OMNIX_ENABLE_WEBSTER_FALLBACK=1") != std::string::npos,
+            "Expected the Markdown man page to document the opt-in Webster fallback flag.");
+    require(man_markdown.find("res/local_glossary.tsv") != std::string::npos,
+            "Expected the Markdown man page to document glossary authoring in the bundled TSV.");
+    require(roadmap.find("101-neuromorphic-backtrace-backtest-backadd.md") != std::string::npos,
+            "Expected the roadmap to link the neuromorphic Backtrace/Backtest/Back-add research track.");
+    require(neuromorphic_spec.find("Backtrace") != std::string::npos &&
+                neuromorphic_spec.find("Backtest") != std::string::npos &&
+                neuromorphic_spec.find("Back-add") != std::string::npos,
+            "Expected the neuromorphic research spec to define the three back-loop concepts.");
+
+    require(man_roff.find(".TH OMNIX 1") != std::string::npos,
+            "Expected the roff man page to declare the OmniX manual header.");
+    require(man_roff.find(".SH COMMAND DICTIONARY") != std::string::npos,
+            "Expected the roff man page to expose the canonical command dictionary section.");
+
+    require(readme.find("docs/man/omnix.1.md") != std::string::npos,
+            "Expected README to link to the Markdown man page mirror.");
+    require(readme.find("man -l docs/man/omnix.1") != std::string::npos,
+            "Expected README to show how to open the roff man page locally.");
+    require(readme.find("command dictionary") != std::string::npos,
+            "Expected README to position the man page as the authoritative command dictionary.");
 }
 
 void test_unix_evidence_parser_parses_json_logs() {
@@ -1442,6 +2944,22 @@ void test_runtime_backbone_conforms_to_source_stage_graph() {
         require(runtime_stage->graph_origin.find("build_cmake_stage_graph") != std::string::npos,
                 "Expected runtime stage graph origin to stay tied to the parsed Build CMake stage graph.");
     }
+
+    const tze::MemoryStore store;
+    const tze::MemorySnapshot snapshot = store.load(profile.memory_root_path);
+    const std::string rendered = store.render_tze_run(snapshot, report.tze_run_id);
+    require(rendered.find("Cache.PrepareWorkspace (legacy=xProcessingCache)") != std::string::npos,
+            "Expected replay rendering to lead with the HumanReadable cache stage name.");
+    require(rendered.find("Intent.DecodeInstruction (legacy=x.Define.Low)") != std::string::npos,
+            "Expected replay rendering to lead with the HumanReadable intent stage name.");
+    require(rendered.find("Knowledge.EvidenceRanking (legacy=x.DisplayPriorityProcessingGate)") != std::string::npos,
+            "Expected replay rendering to lead with the HumanReadable knowledge stage name.");
+    require(rendered.find("Memory.FeedbackReview (legacy=x.DisplayFeedBackLoop)") != std::string::npos,
+            "Expected replay rendering to lead with the HumanReadable memory feedback stage name.");
+    require(rendered.find("Memory.StoreArtifact (legacy=x.Store)") != std::string::npos,
+            "Expected replay rendering to lead with the HumanReadable storage stage name.");
+    require(rendered.find("Storage.Permanent") != std::string::npos,
+            "Expected replay rendering to translate storage namespace vocabulary for operators.");
 }
 
 void test_processing_engine_executes_build_flow() {
@@ -1815,8 +3333,8 @@ void test_processing_engine_keeps_ollama_dormant_when_configured() {
             "Expected the deterministic define flow to remain functional with a dormant Ollama provider.");
     const tze::TzeStageRecord* provider_stage = find_runtime_stage(report, "x.Assist.Provider");
     require(provider_stage != nullptr, "Expected the runtime to retain the provider gate stage.");
-    require(provider_stage->status == "configured_dormant",
-            "Expected the provider gate to remain probe-only and dormant.");
+    require(provider_stage->status == "configured_idle",
+            "Expected the provider gate to show that Ollama is selected but assist is off for this request.");
 }
 
 void test_processing_engine_runs_analyst_case_flow() {
@@ -1895,6 +3413,8 @@ void test_processing_engine_runs_analyst_case_flow() {
             "Expected the planner to emit validity checks for the top action.");
     require(!decided.decision_candidates.front().score_trace.empty(),
             "Expected the planner to emit a scoring trace for the top action.");
+    require(!decided.decision_candidates.front().math_attributions.empty(),
+            "Expected the planner to emit weighted math attributions for the top action.");
     require(decided.decision_candidates.front().recommended_command.find("omnix tool") != std::string::npos ||
                 decided.decision_candidates.front().recommended_command.find("omnix doctor") != std::string::npos ||
                 decided.decision_candidates.front().recommended_command.find("omnix preflight") != std::string::npos,
@@ -2398,6 +3918,38 @@ void test_cli_provider_probe_modes() {
             "Expected unreachable probe output to echo the requested model.");
 }
 
+void test_cli_provider_probe_openai_fixture() {
+    const std::filesystem::path root = kBinaryRoot / "cli-provider-probe-openai";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path fixture = root / "models.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "{\n"
+               << "  \"object\": \"list\",\n"
+               << "  \"data\": [\n"
+               << "    {\"id\": \"gpt-4.1-mini\"},\n"
+               << "    {\"id\": \"gpt-4.1\"}\n"
+               << "  ]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture probe = run_command_capture(
+        "OMNIX_REASONING_PROVIDER=openai "
+        "OMNIX_OPENAI_API_KEY=dummy-key "
+        "OMNIX_OPENAI_MODEL=gpt-4.1-mini "
+        "OMNIX_OPENAI_MODEL_LIST_FILE=" + shell_quote(fixture.string()) + " " +
+        shell_quote(binary.string()) + " provider probe --memory-root " + shell_quote(memory_root.string()));
+    require(probe.exit_code == 0, "Expected fixture-backed OpenAI provider probe to succeed.");
+    require(probe.output.find("Reasoning provider: openai") != std::string::npos,
+            "Expected OpenAI provider probe output to report the selected provider.");
+    require(probe.output.find("Provider probe: ready") != std::string::npos,
+            "Expected fixture-backed OpenAI provider probe to report the ready status.");
+}
+
 void test_cli_guarded_assist_falls_back_deterministically() {
     const std::filesystem::path root = kBinaryRoot / "cli-guarded-assist";
     const std::filesystem::path memory_root = root / "memory";
@@ -2677,6 +4229,302 @@ void test_cli_assist_command_plan_routes_ask_to_tool_nmap() {
             "Expected assist-backed Nmap routing to succeed through the guarded tool flow.");
 }
 
+void test_cli_assist_scan_request_rejects_explicit_external_target() {
+    const std::filesystem::path root = kBinaryRoot / "cli-assist-command-tool-nmap-external-target";
+    const std::filesystem::path bin_dir = root / "bin";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path search_root = root / "search";
+    safe_remove_all(root);
+    std::filesystem::create_directories(bin_dir);
+    std::filesystem::create_directories(memory_root);
+    std::filesystem::create_directories(search_root);
+
+    make_executable(bin_dir / "nmap",
+                    "#!/bin/sh\n"
+                    "echo 'unexpected nmap execution'\n"
+                    "exit 0\n");
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string prompt = "Run NMAP against 192.168.1.1-254 and output results of the portscan";
+    const std::string command =
+        "PATH=" + shell_quote(bin_dir.string()) + " " +
+        "OMNIX_HOME=" + shell_quote(memory_root.string()) + " " +
+        "OMNIX_NATIVE_SEARCH_ROOTS=" + shell_quote(search_root.string()) + " " +
+        shell_quote(binary.string()) + " ask --assist " + shell_quote(prompt) +
+        " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture ask = run_command_capture(command);
+    require(ask.exit_code == 0, "Expected guarded external-target Nmap request to return a diagnostic response.");
+    require(ask.output.find("Verdict: guardrail_blocked") != std::string::npos,
+            "Expected explicit external-target Nmap requests to be blocked by guardrails.");
+    require(ask.output.find("192.168.1.1-254") != std::string::npos,
+            "Expected the blocked response to surface the requested external target.");
+    require(ask.output.find("Command line:") == std::string::npos,
+            "Expected blocked external-target Nmap requests not to execute a guarded localhost command.");
+    require(ask.output.find("Tool invocation: ok") == std::string::npos,
+            "Expected blocked external-target Nmap requests not to report a successful tool execution.");
+    require(ask.output.find("unexpected nmap execution") == std::string::npos,
+            "Expected blocked external-target Nmap requests not to invoke the nmap binary at all.");
+}
+
+void test_cli_assist_command_plan_routes_ask_to_tool_nmap_openai_fixture() {
+    const std::filesystem::path root = kBinaryRoot / "cli-assist-command-tool-nmap-openai";
+    const std::filesystem::path bin_dir = root / "bin";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path search_root = root / "search";
+    const std::filesystem::path models_fixture = root / "models.json";
+    const std::filesystem::path plan_fixture = root / "command-plan.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(bin_dir);
+    std::filesystem::create_directories(memory_root);
+    std::filesystem::create_directories(search_root);
+
+    make_executable(bin_dir / "nmap",
+                    "#!/bin/sh\n"
+                    "if [ \"$1\" = \"-V\" ] || [ \"$1\" = \"--version\" ]; then echo 'Nmap 7.95'; exit 0; fi\n"
+                    "exit 1\n");
+
+    {
+        std::ofstream output(models_fixture);
+        output << "{\n"
+               << "  \"object\": \"list\",\n"
+               << "  \"data\": [\n"
+               << "    {\"id\": \"gpt-4.1-mini\"}\n"
+               << "  ]\n"
+               << "}\n";
+    }
+    {
+        std::ofstream output(plan_fixture);
+        output << "{\n"
+               << "  \"canonical_command\": \"tool nmap -- -V\",\n"
+               << "  \"command_family\": \"tool_action\",\n"
+               << "  \"rationale\": \"The request is asking to run a safe Nmap probe, which maps to the guarded tool flow.\",\n"
+               << "  \"confidence\": 0.93,\n"
+               << "  \"requires_confirmation\": false,\n"
+               << "  \"safety_notes\": [\"Only guarded tool runs are allowed.\", \"Nmap is constrained to the version probe.\"]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string prompt = "please verify the network mapper tool";
+    const std::string command =
+        "PATH=" + shell_quote(bin_dir.string()) + " " +
+        "OMNIX_HOME=" + shell_quote(memory_root.string()) + " " +
+        "OMNIX_NATIVE_SEARCH_ROOTS=" + shell_quote(search_root.string()) + " " +
+        "OMNIX_REASONING_PROVIDER=openai "
+        "OMNIX_OPENAI_API_KEY=dummy-key "
+        "OMNIX_OPENAI_MODEL=gpt-4.1-mini "
+        "OMNIX_OPENAI_MODEL_LIST_FILE=" + shell_quote(models_fixture.string()) + " "
+        "OMNIX_OPENAI_COMMAND_PLAN_FILE=" + shell_quote(plan_fixture.string()) + " " +
+        shell_quote(binary.string()) + " ask --assist " + shell_quote(prompt) +
+        " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture ask = run_command_capture(command);
+    require(ask.exit_code == 0, "Expected OpenAI fixture-backed guarded Nmap routing to succeed.");
+    require(ask.output.find("Reasoning provider: openai") != std::string::npos,
+            "Expected OpenAI fixture-backed Nmap routing to report the OpenAI provider.");
+    require(ask.output.find("Assist: assist_used") != std::string::npos,
+            "Expected OpenAI fixture-backed Nmap routing to report assist_used.");
+    require(ask.output.find("Assist command plan: tool nmap -- -V") != std::string::npos,
+            "Expected OpenAI fixture-backed Nmap routing to expose the validated tool command plan.");
+    require(ask.output.find("Tool invocation: ok") != std::string::npos,
+            "Expected OpenAI fixture-backed Nmap routing to succeed through the guarded tool flow.");
+}
+
+void test_cli_openai_freeform_answers_after_local_miss() {
+    const std::filesystem::path root = kBinaryRoot / "cli-openai-freeform-math";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path models_fixture = root / "models.json";
+    const std::filesystem::path empty_plan = root / "empty-plan.json";
+    const std::filesystem::path freeform_fixture = root / "freeform.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(models_fixture);
+        output << "{\"data\":[{\"id\":\"gpt-4.1-mini\"}]}\n";
+    }
+    {
+        std::ofstream output(empty_plan);
+        output << "{}\n";
+    }
+    {
+        std::ofstream output(freeform_fixture);
+        output << "{\n"
+               << "  \"answer\": \"For a right triangle with legs 7 in and 7 in, the hypotenuse is \\u221a98 \\u2248 9.90 inches.\",\n"
+               << "  \"rationale\": \"Apply the Pythagorean theorem after local OmniX sources miss.\",\n"
+               << "  \"confidence\": 0.99,\n"
+               << "  \"suggested_commands\": [],\n"
+               << "  \"safety_warnings\": [],\n"
+               << "  \"used_context\": [\"openai_freeform\", \"math\"]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "OMNIX_REASONING_PROVIDER=openai "
+        "OMNIX_OPENAI_API_KEY=dummy-key "
+        "OMNIX_OPENAI_MODEL=gpt-4.1-mini "
+        "OMNIX_OPENAI_MODEL_LIST_FILE=" + shell_quote(models_fixture.string()) + " "
+        "OMNIX_OPENAI_COMMAND_PLAN_FILE=" + shell_quote(empty_plan.string()) + " "
+        "OMNIX_OPENAI_TOOL_PLAN_FILE=" + shell_quote(empty_plan.string()) + " "
+        "OMNIX_OPENAI_FREEFORM_FILE=" + shell_quote(freeform_fixture.string()) + " " +
+        shell_quote(binary.string()) + " ask --assist " +
+        shell_quote("calculate hypotenuse of triangle whose sides are 7in and 7in") +
+        " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture ask = run_command_capture(command);
+    require(ask.exit_code == 0, "Expected OpenAI freeform fallback to return successfully.");
+    require(ask.output.find("Verdict: assist_freeform") != std::string::npos,
+            "Expected freeform fallback to use the assist_freeform verdict.");
+    require(ask.output.find("9.90 inches") != std::string::npos,
+            "Expected freeform fallback to print the math answer.");
+    require(ask.output.find("u221a") == std::string::npos,
+            "Expected freeform fallback to decode JSON unicode escapes instead of printing `u221a`.");
+    require(ask.output.find("x.Assist.Freeform") != std::string::npos,
+            "Expected freeform fallback to record a TZE freeform stage.");
+
+    const CommandCapture definition_shaped = run_command_capture(
+        "OMNIX_REASONING_PROVIDER=openai "
+        "OMNIX_OPENAI_API_KEY=dummy-key "
+        "OMNIX_OPENAI_MODEL=gpt-4.1-mini "
+        "OMNIX_OPENAI_MODEL_LIST_FILE=" + shell_quote(models_fixture.string()) + " "
+        "OMNIX_OPENAI_COMMAND_PLAN_FILE=" + shell_quote(empty_plan.string()) + " "
+        "OMNIX_OPENAI_TOOL_PLAN_FILE=" + shell_quote(empty_plan.string()) + " "
+        "OMNIX_OPENAI_FREEFORM_FILE=" + shell_quote(freeform_fixture.string()) + " " +
+        shell_quote(binary.string()) + " ask --assist " + shell_quote("what is 1+1") +
+        " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string()));
+    require(definition_shaped.exit_code == 0,
+            "Expected OpenAI freeform fallback to cover unresolved definition-shaped asks.");
+    require(definition_shaped.output.find("Verdict: assist_freeform") != std::string::npos,
+            "Expected unresolved definition-shaped asks to use the assist_freeform verdict.");
+
+    const CommandCapture replay = run_command_capture(
+        shell_quote(binary.string()) + " tze replay latest --memory-root " + shell_quote(memory_root.string()));
+    require(replay.exit_code == 0, "Expected freeform run to persist into the TZE ledger.");
+    require(replay.output.find("Freeform assist answer:") != std::string::npos,
+            "Expected replay output to include the persisted freeform answer.");
+}
+
+void test_cli_openai_freeform_security_guidance_is_non_executing() {
+    const std::filesystem::path root = kBinaryRoot / "cli-openai-freeform-security";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path models_fixture = root / "models.json";
+    const std::filesystem::path command_plan = root / "command-plan.json";
+    const std::filesystem::path empty_plan = root / "empty-plan.json";
+    const std::filesystem::path freeform_fixture = root / "freeform-security.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(models_fixture);
+        output << "{\"data\":[{\"id\":\"gpt-4.1-mini\"}]}\n";
+    }
+    {
+        std::ofstream output(command_plan);
+        output << "{\n"
+               << "  \"canonical_command\": \"doctor .\",\n"
+               << "  \"command_family\": \"doctor_project\",\n"
+               << "  \"rationale\": \"A deliberately bad fixture: broad security guidance must not route to build doctor.\",\n"
+               << "  \"confidence\": 0.95,\n"
+               << "  \"requires_confirmation\": false,\n"
+               << "  \"safety_notes\": []\n"
+               << "}\n";
+    }
+    {
+        std::ofstream output(empty_plan);
+        output << "{}\n";
+    }
+    {
+        std::ofstream output(freeform_fixture);
+        output << "{\n"
+               << "  \"answer\": \"I cannot say whether you are secure without current local evidence. Start with read-only diagnostics, then inspect concrete ports before drawing a conclusion.\",\n"
+               << "  \"rationale\": \"Security claims require deterministic evidence; this phase proposes commands only.\",\n"
+               << "  \"confidence\": 0.88,\n"
+               << "  \"suggested_commands\": [\"omnix defend diag cpu\", \"omnix defend diag memory\", \"omnix defend diag port 5000\", \"omnix ask --assist run NMAP against 127.0.0.1 verbose\", \"omnix tview port 5000\"],\n"
+               << "  \"safety_warnings\": [\"No scan or packet capture was executed by this answer.\", \"Do not kill PIDs or close ports until evidence is validated.\"],\n"
+               << "  \"used_context\": [\"openai_freeform\", \"security_guidance\"]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "OMNIX_REASONING_PROVIDER=openai "
+        "OMNIX_OPENAI_API_KEY=dummy-key "
+        "OMNIX_OPENAI_MODEL=gpt-4.1-mini "
+        "OMNIX_OPENAI_MODEL_LIST_FILE=" + shell_quote(models_fixture.string()) + " "
+        "OMNIX_OPENAI_COMMAND_PLAN_FILE=" + shell_quote(command_plan.string()) + " "
+        "OMNIX_OPENAI_TOOL_PLAN_FILE=" + shell_quote(empty_plan.string()) + " "
+        "OMNIX_OPENAI_FREEFORM_FILE=" + shell_quote(freeform_fixture.string()) + " " +
+        shell_quote(binary.string()) + " ask --assist " + shell_quote("am I secure") +
+        " --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture ask = run_command_capture(command);
+    require(ask.exit_code == 0, "Expected OpenAI security guidance fallback to return successfully.");
+    require(ask.output.find("Verdict: assist_freeform") != std::string::npos,
+            "Expected security guidance to use the assist_freeform verdict.");
+    require(ask.output.find("I cannot say whether you are secure") != std::string::npos,
+            "Expected security guidance to avoid unsupported secure/insecure claims.");
+    require(ask.output.find("Tool invocation: ok") == std::string::npos,
+            "Expected broad security guidance not to execute local tools automatically.");
+    require(ask.output.find("Command line:") == std::string::npos,
+            "Expected broad security guidance not to execute Nmap or packet capture automatically.");
+    require(ask.output.find("doctor .") == std::string::npos,
+            "Expected broad security guidance not to accept a build-doctor command plan.");
+    require(ask.output.find("omnix tview port 5000") != std::string::npos,
+            "Expected security guidance to propose TView only as an explicit next command.");
+}
+
+void test_cli_openai_freeform_does_not_override_command_route() {
+    const std::filesystem::path root = kBinaryRoot / "cli-openai-freeform-command-route";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path models_fixture = root / "models.json";
+    const std::filesystem::path freeform_fixture = root / "freeform.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(models_fixture);
+        output << "{\"data\":[{\"id\":\"gpt-4.1-mini\"}]}\n";
+    }
+    {
+        std::ofstream output(freeform_fixture);
+        output << "{\n"
+               << "  \"answer\": \"This fixture should not be used for command-shaped prompts.\",\n"
+               << "  \"rationale\": \"Command routes must outrank freeform fallback.\",\n"
+               << "  \"confidence\": 0.5,\n"
+               << "  \"suggested_commands\": [],\n"
+               << "  \"safety_warnings\": [],\n"
+               << "  \"used_context\": [\"openai_freeform\"]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "OMNIX_REASONING_PROVIDER=openai "
+        "OMNIX_OPENAI_API_KEY=dummy-key "
+        "OMNIX_OPENAI_MODEL=gpt-4.1-mini "
+        "OMNIX_OPENAI_MODEL_LIST_FILE=" + shell_quote(models_fixture.string()) + " "
+        "OMNIX_OPENAI_FREEFORM_FILE=" + shell_quote(freeform_fixture.string()) + " " +
+        shell_quote(binary.string()) + " ask --assist " + shell_quote("omnix tview port 5000") +
+        " --memory-root " + shell_quote(memory_root.string());
+
+    const CommandCapture ask = run_command_capture(command);
+    require(ask.exit_code == 0, "Expected command-shaped ask to route deterministically.");
+    require(ask.output.find("OmniXTView") != std::string::npos ||
+                ask.output.find("capture_") != std::string::npos,
+            "Expected command-shaped ask to route to TView rather than freeform.");
+    require(ask.output.find("This fixture should not be used") == std::string::npos,
+            "Expected command-shaped ask not to consume the freeform fixture.");
+    require(ask.output.find("x.Assist.Freeform") == std::string::npos,
+            "Expected command-shaped ask not to record a freeform assist stage.");
+}
+
 void test_cli_shell_provider_and_context() {
     const std::filesystem::path root = kBinaryRoot / "cli-shell";
     const std::filesystem::path memory_root = root / "memory";
@@ -2794,6 +4642,296 @@ void test_cli_shell_local_slash24_routes_to_safe_nmap_discovery() {
             "Expected `where are my nmap results` to print the cached last results block.");
 }
 
+void test_cli_shell_handles_greeting_and_identity() {
+    const std::filesystem::path root = kBinaryRoot / "cli-shell-conversation";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(memory_root);
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "printf '%s\\n' 'Hello' 'Who are you' '/quit' | " +
+        shell_quote(binary.string()) + " shell --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture shell = run_command_capture(command);
+    require(shell.exit_code == 0, "Expected conversational shell prompts to exit cleanly.");
+    require(shell.output.find("Hello. I’m OmniX") != std::string::npos,
+            "Expected Hello to return a conversational OmniX greeting.");
+    require(shell.output.find("I’m OmniX: a deterministic analyst") != std::string::npos,
+            "Expected `Who are you` to return an identity response.");
+}
+
+void test_cli_shell_broad_aliases_and_persona_identity() {
+    const std::filesystem::path root = kBinaryRoot / "cli-shell-aliases";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(memory_root);
+
+    tze::MemoryStore store;
+    tze::MemorySnapshot snapshot = store.load(memory_root);
+    tze::OperatorPersonaRecord persona;
+    persona.preferred_label = "Premise";
+    persona.role_label = "Local Operator";
+    persona.local_username = "premise";
+    persona.host_identifier = "MacBookPro";
+    persona.self_description = "Trusted local analyst.";
+    store.remember_operator_persona(snapshot, persona);
+    store.persist_snapshot(snapshot);
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "printf '%s\\n' 'commands' 'history' 'Who am I?' 'quit' | " +
+        shell_quote(binary.string()) + " shell --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture shell = run_command_capture(command);
+    require(shell.exit_code == 0, "Expected broad alias shell prompts to exit cleanly.");
+    require(shell.output.find("OmniX shell commands:") != std::string::npos,
+            "Expected `commands` to normalize to shell help.");
+    require(shell.output.find("History:") != std::string::npos,
+            "Expected `history` to normalize to `memory history`.");
+    require(shell.output.find("You are Premise, acting as Local Operator.") != std::string::npos,
+            "Expected `Who am I?` to prefer the stored persona.");
+    require(shell.output.find("Closing OmniX shell.") != std::string::npos,
+            "Expected `quit` to close the shell through the natural alias.");
+}
+
+void test_cli_persona_modes_are_display_only() {
+    const std::filesystem::path root = kBinaryRoot / "cli-persona-modes";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const CommandCapture set_mode = run_command_capture(
+        shell_quote(binary.string()) + " persona mode cynic --memory-root " + shell_quote(memory_root.string()));
+    require(set_mode.exit_code == 0, "Expected persona mode CLI command to succeed.");
+    require(set_mode.output.find("Cynic Mode") != std::string::npos,
+            "Expected persona mode command to acknowledge Cynic Mode.");
+    require(set_mode.output.find("Safety remains bounded") != std::string::npos,
+            "Expected persona mode output to state the safety boundary.");
+
+    const CommandCapture memory = run_command_capture(
+        shell_quote(binary.string()) + " memory persona --memory-root " + shell_quote(memory_root.string()));
+    require(memory.exit_code == 0, "Expected memory persona view to succeed.");
+    require(memory.output.find("Mode: cynic") != std::string::npos,
+            "Expected memory persona view to render the active mode.");
+    require(memory.output.find("Safety posture: display_only_safety_bounded") != std::string::npos,
+            "Expected persona mode to stay display-only in memory.");
+
+    const CommandCapture identity = run_command_capture(
+        shell_quote(binary.string()) + " ask " + shell_quote("Who am I?") +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(identity.exit_code == 0, "Expected persona-backed identity prompt to succeed.");
+    require(identity.output.find("Active mode: cynic") != std::string::npos,
+            "Expected operator identity to include the active persona mode.");
+}
+
+void test_cli_shell_persona_mode_shortcut() {
+    const std::filesystem::path root = kBinaryRoot / "cli-shell-persona-mode";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "printf '%s\\n' 'professional mode' 'Who am I?' 'quit' | " +
+        shell_quote(binary.string()) + " shell --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture shell = run_command_capture(command);
+    require(shell.exit_code == 0, "Expected shell persona mode shortcut to exit cleanly.");
+    require(shell.output.find("Professional Mode") != std::string::npos,
+            "Expected shell shortcut to set Professional Mode.");
+    require(shell.output.find("Active mode: professional") != std::string::npos,
+            "Expected shell identity to include Professional Mode.");
+}
+
+void test_cli_shell_next_step_assist_persists_memory() {
+    const std::filesystem::path root = kBinaryRoot / "cli-shell-next-step-assist";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path fixture = root / "next-step.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "{\n"
+               << "  \"suggested_next_step\": \"Run nmap results\",\n"
+               << "  \"confidence\": 0.88,\n"
+               << "  \"rationale\": \"Review the most recent scan output before narrowing scope.\",\n"
+               << "  \"safer_alternative\": \"Create a case from the last scan if you want to preserve evidence.\",\n"
+               << "  \"warnings\": [\"Keep scans scoped to the local loopback range.\"]\n"
+               << "}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "printf '%s\\n' 'Run NMAP with a local /24 scan' 'Next?' '/quit' | "
+        "OMNIX_REASONING_PROVIDER=ollama "
+        "OMNIX_OLLAMA_MODEL=fixture "
+        "OMNIX_OLLAMA_NEXT_STEP_PLAN_FILE=" + shell_quote(fixture.string()) + " " +
+        shell_quote(binary.string()) + " shell --assist --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture shell = run_command_capture(command);
+    require(shell.exit_code == 0, "Expected assisted shell next-step flow to exit cleanly.");
+    require(shell.output.find("Assist next: Run nmap results") != std::string::npos,
+            "Expected shell `Next?` to surface the validated assist next-step suggestion.");
+    require(shell.output.find("Assist safer alternative: Create a case from the last scan if you want to preserve evidence.") != std::string::npos,
+            "Expected shell `Next?` to surface the validated safer alternative.");
+
+    const CommandCapture memory = run_command_capture(
+        shell_quote(binary.string()) + " memory assist --memory-root " + shell_quote(memory_root.string()));
+    require(memory.exit_code == 0, "Expected `memory assist` to succeed after shell next-step assist.");
+    require(memory.output.find("Outcomes: 1") != std::string::npos,
+            "Expected assist memory to record the shell next-step outcome.");
+    require(memory.output.find("[assist_used] next_step :: Run nmap results") != std::string::npos,
+            "Expected assist memory to render the persisted next-step outcome.");
+}
+
+void test_cli_shell_tolerates_nmap_typos_and_full_results() {
+    const std::filesystem::path root = kBinaryRoot / "cli-shell-nmap-lexicon";
+    const std::filesystem::path bin_dir = root / "bin";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path search_root = root / "search";
+    safe_remove_all(root);
+    std::filesystem::create_directories(bin_dir);
+    std::filesystem::create_directories(memory_root);
+    std::filesystem::create_directories(search_root);
+
+    make_executable(bin_dir / "nmap",
+                    "#!/bin/sh\n"
+                    "if [ \"$1\" = \"-sn\" ] && [ \"$2\" = \"127.0.0.0/24\" ]; then echo 'Starting Nmap'; echo 'Nmap scan report for localhost (127.0.0.1)'; echo 'Host is up.'; echo 'Nmap done: 256 IP addresses (1 host up) scanned in 0.10 seconds'; exit 0; fi\n"
+                    "if [ \"$1\" = \"-F\" ] && [ \"$2\" = \"127.0.0.1\" ]; then echo 'Starting Nmap'; echo 'Fast scan complete'; exit 0; fi\n"
+                    "if [ \"$1\" = \"-V\" ] || [ \"$1\" = \"--version\" ]; then echo 'Nmap 7.95'; exit 0; fi\n"
+                    "exit 1\n");
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string command =
+        "printf '%s\\n' 'always -v' 'use namp locally 127.0.0.1' 'run nmap /24 locally with a -v and output results' '/quit' | "
+        "PATH=" + shell_quote(bin_dir.string()) + " " +
+        "OMNIX_HOME=" + shell_quote(memory_root.string()) + " " +
+        "OMNIX_NATIVE_SEARCH_ROOTS=" + shell_quote(search_root.string()) + " " +
+        shell_quote(binary.string()) + " shell --assist --memory-root " + shell_quote(memory_root.string()) +
+        " --source-map " + shell_quote((kSourceRoot / "res" / "tze.txt").string());
+
+    const CommandCapture shell = run_command_capture(command);
+    require(shell.exit_code == 0, "Expected lexicon-driven Nmap prompts to exit cleanly.");
+    require(shell.output.find("Full shell tool results enabled.") != std::string::npos,
+            "Expected `always -v` to update shell result visibility.");
+    require(shell.output.find("'-F' '127.0.0.1'") != std::string::npos,
+            "Expected `use namp locally 127.0.0.1` to correct the typo and run the safe local target scan.");
+    require(shell.output.find("'-sn' '127.0.0.0/24'") != std::string::npos,
+            "Expected `/24` local phrasing to normalize into the guarded loopback subnet scan.");
+    require(shell.output.find("output:\n - Starting Nmap\n - Nmap scan report for localhost (127.0.0.1)") != std::string::npos,
+            "Expected full shell output mode to print the multi-line scan results.");
+}
+
+void test_cli_review_and_patch_proposal_round_trip() {
+    const std::filesystem::path root = kBinaryRoot / "cli-review-and-patch";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string review_target = (kSourceRoot / "src" / "session_coordinator.cpp").string();
+
+    const CommandCapture review = run_command_capture(
+        shell_quote(binary.string()) + " review " + shell_quote(review_target) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(review.exit_code == 0, "Expected `omnix review` to succeed.");
+    require(review.output.find("Verdict: review_ready") != std::string::npos,
+            "Expected review output to expose the review_ready verdict.");
+    const std::string review_artifact = extract_line_value(review.output, "Produced artifact: ");
+    require(!review_artifact.empty() && std::filesystem::exists(review_artifact),
+            "Expected `omnix review` to write a persisted review artifact.");
+
+    const CommandCapture patch = run_command_capture(
+        shell_quote(binary.string()) + " patch-proposal " + shell_quote(review_target) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(patch.exit_code == 0, "Expected `omnix patch-proposal` to succeed.");
+    require(patch.output.find("Verdict: patch_proposal_ready") != std::string::npos,
+            "Expected patch proposal output to expose the patch_proposal_ready verdict.");
+    const std::string patch_artifact = extract_line_value(patch.output, "Produced artifact: ");
+    require(!patch_artifact.empty() && std::filesystem::exists(patch_artifact),
+            "Expected `omnix patch-proposal` to write a persisted patch artifact.");
+
+    const CommandCapture replay = run_command_capture(
+        shell_quote(binary.string()) + " tze replay latest --memory-root " + shell_quote(memory_root.string()));
+    require(replay.exit_code == 0, "Expected replay after patch proposal to succeed.");
+    require(replay.output.find("Review artifact:") != std::string::npos,
+            "Expected TZE replay to include the persisted review artifact.");
+    require(replay.output.find("Patch proposal artifact:") != std::string::npos,
+            "Expected TZE replay to include the persisted patch proposal artifact.");
+}
+
+void test_cli_incident_report_assist_summary() {
+    const std::filesystem::path root = kBinaryRoot / "cli-incident-assist-summary";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path fixture = root / "case-summary.json";
+    const std::filesystem::path sample_one = root / "a.log";
+    const std::filesystem::path sample_two = root / "b.log";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(fixture);
+        output << "{\n"
+               << "  \"summary_title\": \"Incident executive summary\",\n"
+               << "  \"executive_summary\": \"The incident clusters repeated SSH authentication failures and recommends preserving the evidence trail.\",\n"
+               << "  \"highlights\": [\"SSH auth failures repeated across the local host.\", \"Preserve the case bundle before remediation.\"],\n"
+               << "  \"rationale\": \"Summarize the correlated incident so the operator can move into preservation or containment.\",\n"
+               << "  \"confidence\": 0.86,\n"
+               << "  \"recommended_followup\": \"Run another incident report export after triage notes are added.\",\n"
+               << "  \"warnings\": [\"Summary is advisory only; execution remains deterministic.\"]\n"
+               << "}\n";
+    }
+    {
+        std::ofstream output(sample_one);
+        output << "Failed password for root from 10.0.0.8\n";
+    }
+    {
+        std::ofstream output(sample_two);
+        output << "Failed password for admin from 10.0.0.9\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    require(run_command_capture(shell_quote(binary.string()) + " ingest " + shell_quote(sample_one.string()) +
+                                " --memory-root " + shell_quote(memory_root.string())).exit_code == 0,
+            "Expected first assist-summary ingest to succeed.");
+    require(run_command_capture(shell_quote(binary.string()) + " ingest " + shell_quote(sample_two.string()) +
+                                " --memory-root " + shell_quote(memory_root.string())).exit_code == 0,
+            "Expected second assist-summary ingest to succeed.");
+
+    const CommandCapture incident_list =
+        run_command_capture(shell_quote(binary.string()) + " incident list --memory-root " + shell_quote(memory_root.string()));
+    require(incident_list.exit_code == 0, "Expected incident list to succeed before assist-summary reporting.");
+    const std::string incident_line = extract_line_value(incident_list.output, " - ");
+    require(incident_line.find("incident-") != std::string::npos,
+            "Expected incident list output to include an incident id.");
+    const std::string incident_id = incident_line.substr(0, incident_line.find(" | "));
+
+    const std::string report_command =
+        "OMNIX_REASONING_PROVIDER=ollama "
+        "OMNIX_OLLAMA_MODEL=fixture "
+        "OMNIX_OLLAMA_CASE_SUMMARY_PLAN_FILE=" + shell_quote(fixture.string()) + " " +
+        shell_quote(binary.string()) + " incident report " + shell_quote(incident_id) +
+        " --assist --memory-root " + shell_quote(memory_root.string());
+    const CommandCapture report = run_command_capture(report_command);
+    require(report.exit_code == 0, "Expected assist-backed incident report generation to succeed.");
+    require(report.output.find("Assist: assist_used") != std::string::npos,
+            "Expected incident report summary to report assist_used.");
+    require(report.output.find("Assist summary title: Incident executive summary") != std::string::npos,
+            "Expected incident report summary to expose the validated title.");
+    const std::string report_artifact = extract_line_value(report.output, "Produced artifact: ");
+    require(!report_artifact.empty() && std::filesystem::exists(report_artifact),
+            "Expected assist-backed incident report to write a persisted artifact.");
+    require(xpp::read_text_file(report_artifact).find("## Guarded Assist Summary") != std::string::npos,
+            "Expected persisted incident report artifact to include the guarded assist summary block.");
+}
+
 void test_cli_doctor_and_recipe_override_output() {
     const std::filesystem::path memory_root = kBinaryRoot / "cli-memory-doctor";
     safe_remove_all(memory_root);
@@ -2842,6 +4980,8 @@ void test_cli_tze_replay_and_diff() {
         shell_quote(binary.string()) + " define xProcessingCache " + source_map +
         " --memory-root " + shell_quote(memory_root.string()));
     require(define.exit_code == 0, "Expected first TZE-producing define run to succeed.");
+    require(define.output.find("Cache.PrepareWorkspace (legacy=xProcessingCache)") != std::string::npos,
+            "Expected live CLI output to lead with HumanReadable stage names and preserve legacy provenance.");
     const std::string define_run = extract_line_value(define.output, "TZE run: ");
     require(!define_run.empty(), "Expected define output to expose a TZE run id.");
 
@@ -2931,6 +5071,11 @@ void test_cli_tze_latest_prune_report_and_feedback() {
             "Expected explain-change output to include the explanation header.");
     require(explain_change.output.find("Stage interpretation:") != std::string::npos,
             "Expected explain-change output to include the stage interpretation section.");
+    require(explain_change.output.find("Memory.FeedbackReview") != std::string::npos ||
+                explain_change.output.find("Knowledge.EvidenceRanking") != std::string::npos ||
+                explain_change.output.find("Memory.StoreArtifact") != std::string::npos ||
+                explain_change.output.find("Cache.PrepareWorkspace") != std::string::npos,
+            "Expected explain-change output to use HumanReadable stage interpretation labels.");
 
     const std::filesystem::path report_path = report_root / "latest-run.txt";
     const CommandCapture report = run_command_capture(
@@ -2944,6 +5089,8 @@ void test_cli_tze_latest_prune_report_and_feedback() {
         text << input.rdbuf();
         require(text.str().find("# OmniX TZE Run Report") != std::string::npos,
                 "Expected the TZE run report artifact to include the report header.");
+        require(text.str().find("Memory.StoreArtifact (legacy=x.Store)") != std::string::npos,
+                "Expected the TZE run report artifact to include HumanReadable storage stage labels.");
     }
 
     const std::filesystem::path diff_report_path = report_root / "latest-diff.txt";
@@ -3138,6 +5285,10 @@ void test_cli_tool_namespace_commands() {
                     "#!/bin/sh\n"
                     "if [ \"$1\" = \"-V\" ] || [ \"$1\" = \"--version\" ]; then echo 'Nmap cli 7.95'; exit 0; fi\n"
                     "echo 'nmap cli'\n");
+    make_executable(search_root / "systemctl",
+                    "#!/bin/sh\n"
+                    "echo \"fake systemctl $@\"\n"
+                    "exit 0\n");
 
     {
         std::ofstream sample(sample_dir / "notes.txt");
@@ -3223,12 +5374,357 @@ void test_cli_tool_namespace_commands() {
     require(locate.output.find("Tool resolution: found") != std::string::npos,
             "Expected locate output to show a found tool resolution.");
 
+    const CommandCapture locate_mlp = run_command_capture(
+        command_prefix + " tool locate mlp-lens --memory-root " + shell_quote(memory_root.string()));
+    require(locate_mlp.exit_code == 0, "Expected `tool locate mlp-lens` to resolve the built-in module.");
+    require(locate_mlp.output.find("Tool: mlp-lens") != std::string::npos,
+            "Expected mlp-lens locate output to name the built-in tool.");
+    require(locate_mlp.output.find("Provider: analyst_module") != std::string::npos,
+            "Expected mlp-lens to resolve as an analyst module.");
+
+    const CommandCapture doctor_mlp = run_command_capture(
+        command_prefix + " tool doctor mlp-lens --memory-root " + shell_quote(memory_root.string()));
+    require(doctor_mlp.exit_code == 0, "Expected `tool doctor mlp-lens` to succeed.");
+    require(doctor_mlp.output.find("Tool doctor: builtin_ready") != std::string::npos,
+            "Expected mlp-lens doctor output to report builtin readiness.");
+    require(doctor_mlp.output.find("demo weights") != std::string::npos,
+            "Expected mlp-lens doctor output to call out educational demo weights.");
+
+    const CommandCapture mlp = run_command_capture(
+        command_prefix + " tool mlp-lens --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- " + shell_quote("Michael Jordan plays basketball"));
+    require(mlp.exit_code == 0, "Expected `tool mlp-lens` to succeed.");
+    require(mlp.output.rfind("{\"tool\":\"mlp-lens\"", 0) == 0,
+            "Expected compact mlp-lens output to be raw JSON.");
+    require(mlp.output.find("\"inputVector\"") != std::string::npos,
+            "Expected mlp-lens JSON to include the input vector.");
+    require(mlp.output.find("\"z1PreActivations\"") != std::string::npos,
+            "Expected mlp-lens JSON to include pre-activations.");
+    require(mlp.output.find("\"hiddenActivations\"") != std::string::npos,
+            "Expected mlp-lens JSON to include hidden activations.");
+    require(mlp.output.find("\"outputVector\"") != std::string::npos,
+            "Expected mlp-lens JSON to include the output vector.");
+    require(mlp.output.find("\"softmaxProbabilities\"") != std::string::npos,
+            "Expected mlp-lens JSON to include softmax probabilities.");
+    require(mlp.output.find("\"topActivatedNeurons\"") != std::string::npos,
+            "Expected mlp-lens JSON to include top activated neurons.");
+    require(mlp.output.find("not a real LLM") != std::string::npos,
+            "Expected mlp-lens output to avoid real-LLM claims.");
+
+    const CommandCapture mlp_verbose = run_command_capture(
+        command_prefix + " tool mlp-lens --verbose --memory-root " + shell_quote(memory_root.string()) +
+        " -- " + shell_quote("hello"));
+    require(mlp_verbose.exit_code == 0, "Expected verbose `tool mlp-lens` to succeed.");
+    require(mlp_verbose.output.find("\"trace\"") != std::string::npos,
+            "Expected verbose mlp-lens output to include trace fields.");
+    require(mlp_verbose.output.find("\"matrixShapes\"") != std::string::npos,
+            "Expected verbose mlp-lens output to include matrix shapes.");
+
+    const std::filesystem::path tensor_bundle = kSourceRoot / "res" / "mlp_lens" / "tiny_mlp_bundle.json";
+    const CommandCapture mlp_loaded = run_command_capture(
+        command_prefix + " tool mlp-lens --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- --tensor-bundle " + shell_quote(tensor_bundle.string()) + " " +
+        shell_quote("Michael Jordan plays basketball"));
+    require(mlp_loaded.exit_code == 0, "Expected loaded tensor bundle `tool mlp-lens` to succeed.");
+    require(mlp_loaded.output.rfind("{\"tool\":\"mlp-lens\"", 0) == 0,
+            "Expected compact loaded tensor bundle output to be raw JSON.");
+    require(mlp_loaded.output.find("\"modelSource\":\"loaded_tensor_bundle\"") != std::string::npos,
+            "Expected loaded tensor bundle output to identify loaded tensor mode.");
+    require(mlp_loaded.output.find("\"tensorBundlePath\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include the tensor bundle path.");
+    require(mlp_loaded.output.find("\"tokenizerSource\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include tokenizer source.");
+    require(mlp_loaded.output.find("\"tokens\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include tokens.");
+    require(mlp_loaded.output.find("\"tokenIds\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include token ids.");
+    require(mlp_loaded.output.find("\"embeddingVectors\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include loaded embedding vectors.");
+    require(mlp_loaded.output.find("\"z1PreActivations\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include pre-activations.");
+    require(mlp_loaded.output.find("\"hiddenActivations\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include hidden activations.");
+    require(mlp_loaded.output.find("\"outputVector\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include the output vector.");
+    require(mlp_loaded.output.find("\"softmaxProbabilities\"") != std::string::npos,
+            "Expected loaded tensor bundle output to include softmax probabilities.");
+    require(mlp_loaded.output.find("not a full LLM") != std::string::npos,
+            "Expected loaded tensor bundle output to avoid full-LLM claims.");
+
+    const CommandCapture mlp_loaded_verbose = run_command_capture(
+        command_prefix + " tool mlp-lens --verbose --memory-root " + shell_quote(memory_root.string()) +
+        " -- --tensor-bundle " + shell_quote(tensor_bundle.string()) + " " + shell_quote("blorple"));
+    require(mlp_loaded_verbose.exit_code == 0,
+            "Expected verbose loaded tensor bundle `tool mlp-lens` to handle unknown tokens.");
+    require(mlp_loaded_verbose.output.find("\"trace\"") != std::string::npos,
+            "Expected verbose loaded tensor bundle output to include trace fields.");
+    require(mlp_loaded_verbose.output.find("\"tokenizer\"") != std::string::npos,
+            "Expected verbose loaded tensor bundle output to include tokenizer metadata.");
+    require(mlp_loaded_verbose.output.find("\"layer\"") != std::string::npos,
+            "Expected verbose loaded tensor bundle output to include layer metadata.");
+    require(mlp_loaded_verbose.output.find("\"tokenIds\":[0]") != std::string::npos,
+            "Expected unknown tokens to route through the <unk> token id.");
+
+    const CommandCapture mlp_missing_bundle = run_command_capture(
+        command_prefix + " tool mlp-lens --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- --tensor-bundle " + shell_quote((root / "missing-bundle.json").string()) + " " + shell_quote("hello"));
+    require(mlp_missing_bundle.exit_code != 0, "Expected missing tensor bundle to fail.");
+    require(mlp_missing_bundle.output.find("tensor_bundle_invalid") != std::string::npos,
+            "Expected missing tensor bundle to return tensor_bundle_invalid.");
+
+    const std::filesystem::path invalid_bundle = root / "bad-mlp-bundle.json";
+    {
+        std::ofstream out(invalid_bundle);
+        out << "{\"format\":\"omnix.mlp_lens.tensor_bundle.v1\",\"modelName\":\"bad\","
+            << "\"modelSource\":\"test\",\"tokenizer\":{\"source\":\"test\",\"unknownToken\":\"<unk>\","
+            << "\"vocabulary\":[\"<unk>\"],\"embeddings\":[[0.1,0.2]]},"
+            << "\"mlp\":{\"activation\":\"gelu\",\"W1\":[[0.1]],\"b1\":[0.0],"
+            << "\"W2\":[[0.1]],\"b2\":[0.0]},\"outputLabels\":[\"bad\"]}";
+    }
+    const CommandCapture mlp_bad_bundle = run_command_capture(
+        command_prefix + " tool mlp-lens --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- --tensor-bundle " + shell_quote(invalid_bundle.string()) + " " + shell_quote("hello"));
+    require(mlp_bad_bundle.exit_code != 0, "Expected invalid tensor dimensions to fail.");
+    require(mlp_bad_bundle.output.find("tensor_bundle_invalid") != std::string::npos,
+            "Expected invalid tensor dimensions to return tensor_bundle_invalid.");
+    require(mlp_bad_bundle.output.find("\"modelSource\":\"demo_weights\"") == std::string::npos,
+            "Expected invalid tensor bundle to avoid silent demo-weight fallback.");
+
+    const CommandCapture mlp_empty = run_command_capture(
+        command_prefix + " tool mlp-lens --compact --memory-root " + shell_quote(memory_root.string()) + " --");
+    require(mlp_empty.exit_code != 0, "Expected empty `tool mlp-lens` input to fail.");
+    require(mlp_empty.output.find("invalid_arguments") != std::string::npos,
+            "Expected empty mlp-lens input to return invalid_arguments.");
+
+    const std::filesystem::path ghostline_audit_fixture =
+        kSourceRoot / "res" / "ghostline" / "ghostline_audit_fixture.jsonl";
+    const std::filesystem::path ghostline_actions_fixture =
+        kSourceRoot / "res" / "ghostline" / "ghostline_actions_fixture.jsonl";
+    const std::filesystem::path gg_tview_out = root / "gg-tview.jsonl";
+
+    const CommandCapture locate_gg = run_command_capture(
+        command_prefix + " tool locate gg --memory-root " + shell_quote(memory_root.string()));
+    require(locate_gg.exit_code == 0, "Expected `tool locate gg` to resolve the built-in module.");
+    require(locate_gg.output.find("Tool: gg") != std::string::npos,
+            "Expected gg locate output to name the built-in tool.");
+    require(locate_gg.output.find("Provider: analyst_module") != std::string::npos,
+            "Expected gg to resolve as an analyst module.");
+
+    const CommandCapture doctor_gg = run_command_capture(
+        command_prefix + " gg doctor --compact --memory-root " + shell_quote(memory_root.string()));
+    require(doctor_gg.exit_code == 0, "Expected top-level `gg doctor` to succeed.");
+    require(doctor_gg.output.find("Ghostline Gate") != std::string::npos,
+            "Expected gg doctor to describe Ghostline Gate.");
+
+    const CommandCapture tool_doctor_gg = run_command_capture(
+        command_prefix + " tool doctor gg --memory-root " + shell_quote(memory_root.string()));
+    require(tool_doctor_gg.exit_code == 0, "Expected `tool doctor gg` to succeed.");
+    require(tool_doctor_gg.output.find("Safe Original Priority") != std::string::npos,
+            "Expected gg tool doctor to preserve Ghostline safety wording.");
+
+    const CommandCapture gg_search = run_command_capture(
+        command_prefix + " gg search --port 1883 --listen-only --compact --memory-root " +
+        shell_quote(memory_root.string()));
+    require(gg_search.exit_code == 0, "Expected `gg search --port 1883 --listen-only` to invoke Ghostline search safely.");
+    require(gg_search.output.find("Executed Ghostline search command") != std::string::npos ||
+                gg_search.output.find("No TCP PID matches found") != std::string::npos,
+            "Expected gg search output to show Ghostline search execution.");
+
+    const CommandCapture gg_audit = run_command_capture(
+        command_prefix + " gg audit " + shell_quote(ghostline_audit_fixture.string()) +
+        " --out " + shell_quote(gg_tview_out.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(gg_audit.exit_code == 0, "Expected `gg audit` to convert Ghostline audit JSONL.");
+    require(gg_audit.output.find("gg_audit_converted") != std::string::npos,
+            "Expected gg audit output to report conversion.");
+    require(std::filesystem::exists(gg_tview_out), "Expected gg audit bridge to write a TView JSONL artifact.");
+    {
+        const std::string converted = xpp::read_text_file(gg_tview_out);
+        require(converted.find("\"event_type\":\"omnix.tview.packet.v1\"") != std::string::npos,
+                "Expected converted Ghostline evidence to use TView event type.");
+        require(converted.find("NET.GHOSTLINE.MODIFIED_RELEASED") != std::string::npos,
+                "Expected converted Ghostline evidence to include modified-release code.");
+        require(converted.find("NET.GHOSTLINE.FALLBACK_ORIGINAL") != std::string::npos,
+                "Expected converted Ghostline evidence to include fallback-original code.");
+    }
+
+    const CommandCapture gg_actions = run_command_capture(
+        command_prefix + " gg actions " + shell_quote(ghostline_actions_fixture.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(gg_actions.exit_code == 0, "Expected `gg actions` to summarize Ghostline actions JSONL.");
+    require(gg_actions.output.find("\"event_type\":\"omnix.gg.actions.v1\"") != std::string::npos,
+            "Expected gg actions output to use its summary event type.");
+
+    const CommandCapture gg_route = run_command_capture(
+        command_prefix + " nn route tview " + shell_quote(gg_tview_out.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(gg_route.exit_code == 0, "Expected converted Ghostline TView JSONL to route through neural signal router.");
+    require(gg_route.output.find("neural_route_complete") != std::string::npos,
+            "Expected neural router to complete on Ghostline-converted evidence.");
+
+    const std::filesystem::path thresholds_scenario = kSourceRoot / "res" / "thresholds" / "rabbitmq-xxb-incident.json";
+    const std::filesystem::path thresholds_seasonal =
+        kSourceRoot / "res" / "thresholds" / "rabbitmq-xxb-seasonal-tolerated.json";
+    const std::filesystem::path thresholds_unknown =
+        kSourceRoot / "res" / "thresholds" / "rabbitmq-xxb-unknown-error.json";
+    const std::filesystem::path gsmg_rabbit =
+        kSourceRoot / "res" / "thresholds" / "gsmg-rabbitmq-xxb.json";
+    const std::filesystem::path gsmg_outage =
+        kSourceRoot / "res" / "thresholds" / "gsmg-outage-window-db-guard.json";
+    const std::filesystem::path evidence_out = root / "threshold-evidence.json";
+    const std::filesystem::path jira_out = root / "threshold-escalation.md";
+    const std::filesystem::path gsmg_evidence_out = root / "gsmg-evidence.json";
+    const std::filesystem::path gsmg_jira_out = root / "gsmg-escalation.md";
+    const std::string thresholds_prefix =
+        "OMNIX_THRESHOLDS_SYSTEMCTL=" + shell_quote((search_root / "systemctl").string()) + " " + command_prefix;
+
+    const CommandCapture locate_thresholds = run_command_capture(
+        command_prefix + " tool locate thresholds --memory-root " + shell_quote(memory_root.string()));
+    require(locate_thresholds.exit_code == 0, "Expected `tool locate thresholds` to resolve the built-in module.");
+    require(locate_thresholds.output.find("Tool: thresholds") != std::string::npos,
+            "Expected thresholds locate output to name the built-in tool.");
+
+    const CommandCapture doctor_thresholds = run_command_capture(
+        command_prefix + " tool doctor thresholds --memory-root " + shell_quote(memory_root.string()));
+    require(doctor_thresholds.exit_code == 0, "Expected `tool doctor thresholds` to succeed.");
+    require(doctor_thresholds.output.find("Proactive Infrastructure Thresholds") != std::string::npos,
+            "Expected thresholds doctor output to describe proactive threshold evaluation.");
+    require(doctor_thresholds.output.find("Jira-ready Markdown") != std::string::npos,
+            "Expected thresholds doctor output to mention Jira-ready Markdown output.");
+    require(doctor_thresholds.output.find("GSMg mode") != std::string::npos,
+            "Expected thresholds doctor output to mention generic signal mode.");
+
+    const CommandCapture thresholds = run_command_capture(
+        command_prefix + " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- evaluate " + shell_quote(thresholds_scenario.string()) +
+        " --out " + shell_quote(evidence_out.string()) +
+        " --jira-out " + shell_quote(jira_out.string()));
+    require(thresholds.exit_code == 0, "Expected thresholds evaluation to succeed.");
+    require(thresholds.output.find("thresholds_evaluated") != std::string::npos,
+            "Expected thresholds output to report evaluation.");
+    require(thresholds.output.find("app_worker_memory_exhaustion") != std::string::npos,
+            "Expected Queue XXB fixture to identify app-worker memory exhaustion.");
+    require(thresholds.output.find("recommend_runbook") != std::string::npos,
+            "Expected Queue XXB fixture to recommend the runbook.");
+    require(std::filesystem::exists(evidence_out), "Expected thresholds evidence JSON artifact to be written.");
+    require(std::filesystem::exists(jira_out), "Expected thresholds Jira Markdown artifact to be written.");
+    {
+        const std::string evidence = xpp::read_text_file(evidence_out);
+        require(evidence.find("\"event_type\":\"omnix.threshold.evidence.v1\"") != std::string::npos,
+                "Expected threshold evidence to use the versioned event type.");
+        require(evidence.find("\"matchedSignatures\":[\"EYZ-47281\"]") != std::string::npos,
+                "Expected threshold evidence to include the heap error signature.");
+        require(evidence.find("\"restartRecommended\":true") != std::string::npos,
+                "Expected threshold evidence to recommend restart.");
+    }
+    {
+        const std::string jira = xpp::read_text_file(jira_out);
+        require(jira.find("P1-RMQ-2B-XXB-STOPPED-REPORTING") != std::string::npos,
+                "Expected Jira packet to include the alarm id.");
+        require(jira.find("abc-worker.service") != std::string::npos,
+                "Expected Jira packet to include the service name.");
+        require(jira.find("EYZ-47281") != std::string::npos,
+                "Expected Jira packet to include the matched error signature.");
+    }
+
+    const CommandCapture seasonal = run_command_capture(
+        command_prefix + " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- evaluate " + shell_quote(thresholds_seasonal.string()));
+    require(seasonal.exit_code == 0, "Expected seasonal threshold fixture to evaluate.");
+    require(seasonal.output.find("\"severity\":\"normal\"") != std::string::npos,
+            "Expected active seasonal override to tolerate Queue XXB depth in the 200-400 range.");
+    require(seasonal.output.find("\"applied\":true") != std::string::npos,
+            "Expected seasonal override to be marked as applied.");
+
+    const CommandCapture unknown = run_command_capture(
+        command_prefix + " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- evaluate " + shell_quote(thresholds_unknown.string()));
+    require(unknown.exit_code == 0, "Expected unknown threshold fixture to evaluate.");
+    require(unknown.output.find("escalate_to_developer_or_infra_owner") != std::string::npos,
+            "Expected unknown error signature to escalate instead of recommending remediation.");
+    require(unknown.output.find("\"restartRecommended\":true") == std::string::npos,
+            "Expected unknown error signature not to recommend blind restart.");
+
+    const CommandCapture gsmg_rabbit_result = run_command_capture(
+        command_prefix + " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- gsmg " + shell_quote(gsmg_rabbit.string()));
+    require(gsmg_rabbit_result.exit_code == 0, "Expected GSMg RabbitMQ fixture to evaluate.");
+    require(gsmg_rabbit_result.output.find("\"event_type\":\"omnix.threshold.gsmg.v1\"") != std::string::npos,
+            "Expected GSMg output to use its versioned event type.");
+    require(gsmg_rabbit_result.output.find("app_worker_memory_exhaustion") != std::string::npos,
+            "Expected GSMg RabbitMQ fixture to identify app-worker memory exhaustion.");
+    require(gsmg_rabbit_result.output.find("\"queue.depth\"") != std::string::npos,
+            "Expected GSMg output to preserve generic queue.depth signal evidence.");
+    require(gsmg_rabbit_result.output.find("\"memory.usage\"") != std::string::npos,
+            "Expected GSMg output to preserve generic memory.usage signal evidence.");
+    require(gsmg_rabbit_result.output.find("\"consumer.count\"") != std::string::npos,
+            "Expected GSMg output to preserve generic consumer.count signal evidence.");
+
+    const CommandCapture gsmg_outage_result = run_command_capture(
+        command_prefix + " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- gsmg " + shell_quote(gsmg_outage.string()) +
+        " --out " + shell_quote(gsmg_evidence_out.string()) +
+        " --jira-out " + shell_quote(gsmg_jira_out.string()));
+    require(gsmg_outage_result.exit_code == 0, "Expected GSMg outage-window fixture to evaluate.");
+    require(gsmg_outage_result.output.find("block_unsafe_action") != std::string::npos,
+            "Expected GSMg outage-window fixture to block unsafe DB shutdown.");
+    require(gsmg_outage_result.output.find("unsafe_database_shutdown_path") != std::string::npos,
+            "Expected GSMg outage-window fixture to identify unsafe shutdown path.");
+    require(std::filesystem::exists(gsmg_evidence_out), "Expected GSMg evidence JSON artifact to be written.");
+    require(std::filesystem::exists(gsmg_jira_out), "Expected GSMg Markdown artifact to be written.");
+    {
+        const std::string evidence = xpp::read_text_file(gsmg_evidence_out);
+        require(evidence.find("\"event_type\":\"omnix.threshold.gsmg.v1\"") != std::string::npos,
+                "Expected GSMg evidence to use the versioned event type.");
+        require(evidence.find("\"connection_pool.open\"") != std::string::npos,
+                "Expected GSMg evidence to include connection-pool signal.");
+        require(evidence.find("\"database.active_writers\"") != std::string::npos,
+                "Expected GSMg evidence to include database active-writer signal.");
+    }
+
+    const CommandCapture gsmg_execute = run_command_capture(
+        command_prefix + " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- gsmg " + shell_quote(gsmg_rabbit.string()) + " --execute");
+    require(gsmg_execute.exit_code != 0, "Expected GSMg --execute to be rejected in this phase.");
+    require(gsmg_execute.output.find("action_not_allowed") != std::string::npos,
+            "Expected GSMg --execute to report action_not_allowed.");
+
+    const CommandCapture execute_declined = run_command_capture(
+        thresholds_prefix + " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- evaluate " + shell_quote(thresholds_scenario.string()) + " --execute");
+    require(execute_declined.exit_code != 0, "Expected --execute without exact confirmation not to run.");
+    require(execute_declined.output.find("action_not_executed") != std::string::npos,
+            "Expected declined threshold execution to report action_not_executed.");
+
+    const std::filesystem::path execute_evidence = root / "threshold-execute-evidence.json";
+    const CommandCapture execute_confirmed = run_command_capture(
+        "printf 'EXECUTE restart-abc-worker\\n' | " + thresholds_prefix +
+        " tool thresholds --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- evaluate " + shell_quote(thresholds_scenario.string()) +
+        " --execute --out " + shell_quote(execute_evidence.string()));
+    require(execute_confirmed.exit_code == 0, "Expected exact confirmation to run fake systemctl.");
+    require(execute_confirmed.output.find("remediation_unvalidated") != std::string::npos,
+            "Expected post-execution state to remain remediation_unvalidated until validation evidence exists.");
+    require(std::filesystem::exists(execute_evidence), "Expected execution evidence artifact to be written.");
+    {
+        const std::string evidence = xpp::read_text_file(execute_evidence);
+        require(evidence.find("fake systemctl restart abc-worker.service") != std::string::npos,
+                "Expected execution evidence to capture fake systemctl output.");
+    }
+
     const CommandCapture regex = run_command_capture(
         command_prefix + " tool regex-search --memory-root " + shell_quote(memory_root.string()) +
         " -- " + shell_quote("Build") + " " + shell_quote((sample_dir / "notes.txt").string()));
     require(regex.exit_code == 0, "Expected `tool regex-search` to succeed.");
     require(regex.output.find("alpha Build beta") != std::string::npos,
             "Expected regex-search output to include the matching line.");
+
+    const CommandCapture regex_directory = run_command_capture(
+        command_prefix + " tool regex-search --compact --memory-root " + shell_quote(memory_root.string()) +
+        " -- " + shell_quote("Build") + " " + shell_quote(sample_dir.string()));
+    require(regex_directory.exit_code == 0, "Expected `tool regex-search` over a directory to succeed recursively.");
+    require(regex_directory.output.find("notes.txt:1") != std::string::npos,
+            "Expected directory regex-search output to include the recursive match.");
 
     const CommandCapture deep = run_command_capture(
         command_prefix + " tool deep-grep --memory-root " + shell_quote(memory_root.string()) +
@@ -3634,6 +6130,7 @@ int main() {
         test_parser_supports_python_like_fixture();
         test_query_runtime_tracks_stateful_session();
         test_language_engine_resolves_native_context();
+        test_language_engine_recovers_legacy_decompression_ladder();
         test_preprocessor_runtime_resolves_uac_state();
         test_build_executor_probes_modules();
         test_native_tool_registry_caches_path_hit();
@@ -3644,6 +6141,16 @@ int main() {
         test_build_executor_preflights_nmap_alias();
         test_build_executor_preflights_tshark_alias();
         test_build_executor_doctor_reports_package_guidance();
+        test_build_executor_doctor_reports_universal_cmake_guidance();
+        test_build_executor_doctor_guides_tshark_dependencies();
+        test_packet_capture_parser_decodes_http_payload();
+        test_packet_capture_parser_labels_tls_payload();
+        test_packet_capture_parser_classifies_plain_utf8_payload();
+        test_cli_tview_pcap_fixture_decodes_http();
+        test_cli_tview_pcap_fixture_exports_jsonl();
+        test_unix_evidence_parser_parses_tview_jsonl();
+        test_intent_resolver_routes_port_investigation_to_tview();
+        test_defense_diagnostic_routes_and_stays_non_destructive();
         test_preflight_validates_recipe_overrides();
         test_build_executor_stages_cmake_install();
         test_build_executor_stages_lua_recipe_install();
@@ -3653,7 +6160,10 @@ int main() {
         test_emitter_writes_manifest_and_section_files();
         test_generated_sections_meet_tze_conformance_thresholds();
         test_intent_resolver_and_definition_engine();
+        test_general_definition_routing_prefers_definition_over_context_summary();
         test_memory_store_persists_and_renders_history();
+        test_memory_store_compacts_definition_history_summary();
+        test_memory_store_renders_operator_persona_view();
         test_memory_store_persists_learned_recipes();
         test_unix_evidence_parser_parses_json_logs();
         test_unix_evidence_parser_parses_build_logs();
@@ -3682,17 +6192,57 @@ int main() {
         test_cli_language_resolution_and_memory_view();
         test_cli_uac_state_and_memory_view();
         test_cli_security_audit_and_memory_view();
+        test_cli_legacy_coverage_and_report();
         test_cli_provider_probe_modes();
+        test_cli_provider_probe_openai_fixture();
         test_cli_guarded_assist_falls_back_deterministically();
         test_cli_assist_tool_plan_executes_allowlisted_builtin();
         test_cli_assist_build_plan_selects_allowlisted_recipe();
+        test_cli_recipe_author_authors_and_reuses_local_recipe();
+        test_cli_recipe_author_repairs_failed_first_attempt();
         test_cli_assist_command_plan_routes_ask_to_preflight();
         test_cli_run_nmap_routes_to_safe_tool_flow();
         test_cli_assist_command_plan_routes_ask_to_tool_nmap();
+        test_cli_assist_scan_request_rejects_explicit_external_target();
+        test_cli_assist_command_plan_routes_ask_to_tool_nmap_openai_fixture();
+        test_cli_openai_freeform_answers_after_local_miss();
+        test_cli_openai_freeform_security_guidance_is_non_executing();
+        test_cli_openai_freeform_does_not_override_command_route();
         test_cli_shell_provider_and_context();
         test_cli_shell_nmap_results_alias();
         test_cli_shell_secure_my_system_routes_to_inspect_host();
         test_cli_shell_local_slash24_routes_to_safe_nmap_discovery();
+        test_cli_shell_handles_greeting_and_identity();
+        test_cli_shell_broad_aliases_and_persona_identity();
+        test_cli_persona_modes_are_display_only();
+        test_cli_shell_persona_mode_shortcut();
+        test_cli_shell_next_step_assist_persists_memory();
+        test_cli_shell_tolerates_nmap_typos_and_full_results();
+        test_cli_general_definition_uses_system_dictionary_fixture();
+        test_cli_shell_ask_prefix_preserves_definition_query();
+        test_cli_science_definition_beats_what_matters_route();
+        test_cli_what_matters_stays_contextual();
+        test_cli_general_definition_glossary_fallback_and_clarification();
+        test_cli_general_definition_supports_who_is_and_technology_domain();
+        test_cli_neuromorphic_backloop_glossary_terms();
+        test_cli_neuralnetwork_glossary_terms();
+        test_cli_neural_math_perceptron_lab();
+        test_cli_neural_signal_router_tview_jsonl();
+        test_definition_flow_records_math_attribution();
+        test_tensorflow_env_check_reports_missing_dependencies();
+        test_definition_engine_macos_system_dictionary_bridge();
+        test_definition_engine_operator_teaching_beats_system_dictionary_fixture();
+        test_definition_engine_operator_domain_ambiguity_clarifies();
+        test_definition_engine_reference_cache_does_not_outrank_operator_override();
+        test_definition_engine_local_retrieval_recovers_close_local_miss();
+        test_processing_engine_records_pre_and_post_runtime_stages();
+        test_cli_provider_probe_detects_unusable_ollama_model();
+        test_definition_engine_webster_fixture_meta_fallback();
+        test_definition_engine_webster_fixture_dttext_fallback();
+        test_definition_engine_webster_parse_failure_stays_unresolved();
+        test_docs_manpage_and_readme_stay_aligned();
+        test_cli_review_and_patch_proposal_round_trip();
+        test_cli_incident_report_assist_summary();
         test_cli_tze_replay_and_diff();
         test_cli_tze_latest_prune_report_and_feedback();
         test_cli_doctor_and_recipe_override_output();

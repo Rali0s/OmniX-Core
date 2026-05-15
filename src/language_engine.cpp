@@ -57,6 +57,12 @@ bool contains_token(const std::vector<std::string>& tokens, std::string_view nee
     return std::find(tokens.begin(), tokens.end(), needle) != tokens.end();
 }
 
+bool contains_any_token(const std::vector<std::string>& tokens, const std::vector<std::string_view>& needles) {
+    return std::any_of(needles.begin(), needles.end(), [&tokens](std::string_view needle) {
+        return contains_token(tokens, needle);
+    });
+}
+
 std::string env_value(const char* name) {
     const char* value = std::getenv(name);
     if (value == nullptr || *value == '\0') {
@@ -294,6 +300,79 @@ void apply_manual_confirmation(LanguageResolutionRecord& record, std::string_vie
     }
 }
 
+std::vector<DecompressionCandidate> build_decompression_candidates(const std::vector<std::string>& query_tokens,
+                                                                   std::string_view source_map_path,
+                                                                   std::vector<std::string>& research_notes,
+                                                                   std::vector<std::string>& trace) {
+    std::vector<DecompressionCandidate> candidates;
+    const bool wants_decompression =
+        contains_any_token(query_tokens,
+                           {"decompress",
+                            "decompression",
+                            "compression",
+                            "binarydecompresser",
+                            "ternarydecompression",
+                            "base4decompression",
+                            "coherence"});
+    if (!wants_decompression) {
+        return candidates;
+    }
+
+    DecompressionCandidate native_candidate;
+    native_candidate.label = "native-compression-algorithms";
+    native_candidate.status = "candidate";
+    native_candidate.confidence = 0.78;
+    native_candidate.notes = {
+        "Preferred deterministic decompression ladder using native or bounded algorithm families.",
+        "native-algorithms",
+        "deterministic-fallback",
+    };
+    candidates.push_back(std::move(native_candidate));
+
+    DecompressionCandidate binary_candidate;
+    binary_candidate.label = "binary-decompressor";
+    binary_candidate.status = "partial";
+    binary_candidate.confidence = 0.62;
+    binary_candidate.notes = {
+        "Legacy binary decompression is recovered as a bounded routing step.",
+        "binarydecompresser",
+        "legacy-route",
+    };
+    candidates.push_back(std::move(binary_candidate));
+
+    DecompressionCandidate ternary_candidate;
+    ternary_candidate.label = "ternary-decompression";
+    ternary_candidate.status = "research-only";
+    ternary_candidate.confidence = 0.31;
+    ternary_candidate.notes = {
+        "Ternary decompression remains preserved as a research state.",
+        "ternarydecompression",
+        "research-track",
+    };
+    candidates.push_back(std::move(ternary_candidate));
+
+    DecompressionCandidate base4_candidate;
+    base4_candidate.label = "base4-decompression";
+    base4_candidate.status = "research-only";
+    base4_candidate.confidence = 0.28;
+    base4_candidate.notes = {
+        "Base-4/base conversion semantics remain research hooks only.",
+        "base4decompression",
+        "base-conversion",
+    };
+    candidates.push_back(std::move(base4_candidate));
+
+    if (contains_token(query_tokens, "coherence")) {
+        research_notes.push_back("File coherence checks are treated as pre-decompression validation gates.");
+    }
+    if (!source_map_path.empty() && source_map_path.find("Tzu.cpp") != std::string::npos) {
+        research_notes.push_back("Legacy Tzu.cpp widens decompression handling with ternary/base-4 research branches.");
+    }
+    research_notes.push_back("Unsupported decompression branches are recorded explicitly rather than treated as silent no-ops.");
+    trace.push_back("decompression-candidates=" + std::to_string(candidates.size()));
+    return candidates;
+}
+
 }  // namespace
 
 LanguageResolutionRecord LanguageEngine::resolve_context(std::string_view query,
@@ -357,9 +436,20 @@ LanguageResolutionRecord LanguageEngine::resolve_context(std::string_view query,
         record.reasoning_trace.push_back("manual-confirmation=pending");
     }
 
+    record.decompression_candidates =
+        build_decompression_candidates(query_tokens, source_map_path, record.research_notes, record.reasoning_trace);
     record.combined_context = record.selected_os + ":" + record.selected_language;
     mark_candidate_statuses(record.os_candidates, record.selected_os);
     mark_candidate_statuses(record.language_candidates, record.selected_language);
+    if (query_session != nullptr && !record.decompression_candidates.empty()) {
+        QueryRuntime runtime;
+        std::vector<std::string> indexed_values;
+        indexed_values.reserve(record.decompression_candidates.size());
+        for (const DecompressionCandidate& candidate : record.decompression_candidates) {
+            indexed_values.push_back("decompression:" + candidate.label + ":" + candidate.status);
+        }
+        runtime.index_values(*query_session, "language-decompression", indexed_values);
+    }
     return record;
 }
 

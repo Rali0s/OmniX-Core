@@ -6,6 +6,9 @@
 /dist/
 /tmp/
 /temp/
+/.env
+/.env.*
+!/.env.example
 
 # macOS / editor noise
 .DS_Store
@@ -21,6 +24,10 @@
 *.tmp
 *.bak
 *.orig
+*.env
+.env
+.env.*
+.env*
 
 /WebApp/node_modules
 /WebApp/.next

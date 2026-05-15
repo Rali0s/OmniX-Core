@@ -1,0 +1,79 @@
+{
+  "id": "threshold-scenario-rabbitmq-xxb-seasonal-tolerated",
+  "evaluationTimestamp": "2026-01-14T01:30:00-05:00",
+  "alarm": {
+    "id": "INFO-RMQ-2B-XXB-SEASONAL-DEPTH",
+    "severity": "info",
+    "timestamp": "2026-01-14T01:20:00-05:00"
+  },
+  "assets": {
+    "server": "XYZ_CLASSC1_CUST8",
+    "serverClass": "ClassC.SensorQueueNode",
+    "customer": "CUST8",
+    "site": "NY_HOME_HEATING_OIL",
+    "queue": "XXB",
+    "rabbitmqNode": "RabbitMQ-2B",
+    "app": "ABC",
+    "serviceName": "abc-worker.service"
+  },
+  "ownership": {
+    "fedBy": "ABC producer",
+    "consumedBy": "ABC worker",
+    "devOwner": "Payments Platform Team",
+    "infraOwner": "Engineer Infra",
+    "logPaths": ["/var/log/abc/worker.log"]
+  },
+  "metrics": {
+    "cpuUsage": 31,
+    "ramUsage": 59,
+    "mountHealthy": true,
+    "storageUsage": 50,
+    "dataBrickHealthy": true,
+    "rabbitmqNodeHealthy": true,
+    "queueDepth": 300,
+    "previousQueueDepth": 260,
+    "consumerCount": 2,
+    "previousConsumerCount": 2,
+    "publishRate": 21,
+    "ackRate": 20,
+    "oldestMessageAgeSeconds": 160,
+    "appServiceStatus": "active",
+    "messagesPersistent": true,
+    "estimatedRestartLossPackets": 0
+  },
+  "baseline": {
+    "normalDepthMax": 40,
+    "warningDepth": 100,
+    "abnormalDepth": 200,
+    "criticalDepth": 500,
+    "p1Depth": 1000,
+    "normalConsumers": 2,
+    "maxOldestMessageAgeSeconds": 180
+  },
+  "seasonalOverride": {
+    "name": "NY home heating oil cold season",
+    "active": true,
+    "expectedDepthMax": 400,
+    "abnormalDepth": 500,
+    "criticalDepth": 900
+  },
+  "errorSignatures": [],
+  "decisionPolicy": {
+    "maxRestartLossPackets": 3,
+    "requireRabbitmqHealthy": true,
+    "requirePersistentMessages": true
+  },
+  "runbookAction": {
+    "id": "restart-abc-worker",
+    "type": "systemd_restart_service",
+    "serviceName": "abc-worker.service",
+    "displayCommand": "sudo systemctl restart abc-worker.service",
+    "validationChecks": ["service active", "consumers connected", "queue drains"]
+  },
+  "logs": [
+    {
+      "path": "/var/log/abc/worker.log",
+      "snippet": "2026-01-14T01:22:31Z INFO Queue XXB depth elevated but processing normally during cold season"
+    }
+  ]
+}

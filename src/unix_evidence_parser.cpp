@@ -95,6 +95,26 @@ void append_unique(std::vector<std::string>& values, std::string value) {
     }
 }
 
+std::string extract_json_string_field(std::string_view text, std::string_view key) {
+    const std::regex pattern("\"" + std::string(key) + "\"\\s*:\\s*\"([^\"]*)\"");
+    std::cmatch match;
+    const std::string copy(text);
+    if (std::regex_search(copy.c_str(), match, pattern) && match.size() > 1) {
+        return match[1].str();
+    }
+    return {};
+}
+
+std::string extract_json_number_field(std::string_view text, std::string_view key) {
+    const std::regex pattern("\"" + std::string(key) + "\"\\s*:\\s*([0-9]+)");
+    std::cmatch match;
+    const std::string copy(text);
+    if (std::regex_search(copy.c_str(), match, pattern) && match.size() > 1) {
+        return match[1].str();
+    }
+    return {};
+}
+
 bool looks_like_json(std::string_view text) {
     const std::string trimmed = trim(text);
     return !trimmed.empty() && (trimmed.front() == '{' || trimmed.front() == '[');
@@ -494,6 +514,82 @@ std::vector<NormalizedObject> parse_tool_output_objects(const ObservationRecord&
     return objects;
 }
 
+std::vector<NormalizedObject> parse_tview_packet_objects(const ObservationRecord& observation) {
+    std::vector<NormalizedObject> objects;
+    if (observation.raw_content.find("omnix.tview.packet.v1") == std::string::npos) {
+        return objects;
+    }
+
+    std::size_t packet_count = 0;
+    std::size_t payload_events = 0;
+    std::vector<std::string> flows;
+    std::vector<std::string> codes;
+    for (const std::string& line : split_lines(observation.raw_content, 512)) {
+        if (line.find("omnix.tview.packet.v1") == std::string::npos) {
+            continue;
+        }
+        ++packet_count;
+        const std::string src = extract_json_string_field(line, "src_ip");
+        const std::string dst = extract_json_string_field(line, "dst_ip");
+        const std::string src_port = extract_json_number_field(line, "src_port");
+        const std::string dst_port = extract_json_number_field(line, "dst_port");
+        const std::string payload_length = extract_json_number_field(line, "payload_length");
+        const std::string code = extract_json_string_field(line, "analysis_code");
+        if (!src.empty() && !dst.empty() && !src_port.empty() && !dst_port.empty()) {
+            append_unique(flows, src + ":" + src_port + "->" + dst + ":" + dst_port);
+        }
+        if (!code.empty()) {
+            append_unique(codes, code);
+        }
+        if (!payload_length.empty() && payload_length != "0") {
+            ++payload_events;
+        }
+    }
+
+    NormalizedObject summary;
+    summary.id = observation.id + "-tview-packet-summary";
+    summary.case_id = observation.case_id;
+    summary.observation_id = observation.id;
+    summary.object_type = "packet_capture_summary";
+    summary.title = "OmniXTView packet summary";
+    summary.summary = "Parsed " + std::to_string(packet_count) + " OmniXTView packet event(s).";
+    summary.attributes = {
+        "event_type=omnix.tview.packet.v1",
+        "packet_count=" + std::to_string(packet_count),
+        "payload_events=" + std::to_string(payload_events),
+    };
+    for (const std::string& code : codes) {
+        summary.attributes.push_back("analysis_code=" + code);
+    }
+    objects.push_back(std::move(summary));
+
+    for (const std::string& flow : flows) {
+        NormalizedObject flow_object;
+        flow_object.id = make_id(observation.id + "-tview-flow", flow);
+        flow_object.case_id = observation.case_id;
+        flow_object.observation_id = observation.id;
+        flow_object.object_type = "packet_flow_summary";
+        flow_object.title = "Packet flow";
+        flow_object.summary = "Observed packet flow `" + flow + "`.";
+        flow_object.attributes = {"flow=" + flow};
+        objects.push_back(std::move(flow_object));
+    }
+
+    if (payload_events > 0) {
+        NormalizedObject payload;
+        payload.id = observation.id + "-tview-payloads";
+        payload.case_id = observation.case_id;
+        payload.observation_id = observation.id;
+        payload.object_type = "packet_payload_observation";
+        payload.title = "Packet payload observation";
+        payload.summary = "Observed " + std::to_string(payload_events) + " packet event(s) with captured payload bytes.";
+        payload.attributes = {"payload_events=" + std::to_string(payload_events)};
+        objects.push_back(std::move(payload));
+    }
+
+    return objects;
+}
+
 std::vector<NormalizedObject> parse_host_inventory_objects(const ObservationRecord& observation) {
     std::vector<NormalizedObject> objects;
     if (observation.raw_content.find("OMNIX_HOST_REPORT") == std::string::npos) {
@@ -633,6 +729,8 @@ std::vector<std::string> UnixEvidenceParser::detect_signals(std::string_view tex
     append_if("port", "network");
     append_if("tcp", "network");
     append_if("packet", "network");
+    append_if("omnix.tview.packet.v1", "packet-capture");
+    append_if("net.tcp.", "packet-analysis");
     append_if("cmake", "build");
     append_if("make", "build");
     append_if("build", "build");
@@ -673,6 +771,7 @@ std::vector<NormalizedObject> UnixEvidenceParser::parse(const ObservationRecord&
     append_objects(parse_ssh_auth_objects(observation));
     append_objects(parse_shell_objects(observation));
     append_objects(parse_tool_output_objects(observation));
+    append_objects(parse_tview_packet_objects(observation));
     append_objects(parse_host_inventory_objects(observation));
 
     if (objects.size() > 24) {

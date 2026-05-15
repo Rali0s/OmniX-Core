@@ -6,6 +6,7 @@ REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 MODEL_NAME="${1:-deepnimsec-omni:latest}"
 MODELFILE="${OMNIX_DEEPNIMSEC_MODELFILE:-$REPO_ROOT/models/DeepNimSec-Omni.Modelfile}"
 OMNIX_BINARY="${OMNIX_DEEPNIMSEC_BINARY:-$REPO_ROOT/build/omnix}"
+BASE_MODEL=""
 
 rendered_modelfile=""
 command_reference_file=""
@@ -22,8 +23,40 @@ if ! command -v ollama >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! ollama list >/dev/null 2>&1; then
+  echo "Starting local Ollama server for model creation..." >&2
+  nohup ollama serve >/tmp/omnix-ollama-serve.log 2>&1 &
+
+  attempts=0
+  while [ "$attempts" -lt 15 ]; do
+    if ollama list >/dev/null 2>&1; then
+      break
+    fi
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+
+  if ! ollama list >/dev/null 2>&1; then
+    echo "Ollama server did not become ready. Check /tmp/omnix-ollama-serve.log." >&2
+    exit 1
+  fi
+fi
+
 if [ ! -f "$MODELFILE" ]; then
   echo "DeepNimSec Modelfile not found at $MODELFILE" >&2
+  exit 1
+fi
+
+BASE_MODEL="$(awk '/^FROM[[:space:]]+/ { print $2; exit }' "$MODELFILE")"
+if [ -z "$BASE_MODEL" ]; then
+  echo "Unable to determine the base model from $MODELFILE" >&2
+  exit 1
+fi
+
+if ! ollama show "$BASE_MODEL" >/dev/null 2>&1; then
+  echo "Base model $BASE_MODEL is not currently available in Ollama." >&2
+  echo "Recovery:" >&2
+  echo "  ollama pull $BASE_MODEL" >&2
   exit 1
 fi
 

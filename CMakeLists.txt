@@ -3,6 +3,12 @@ project(OmniXCore VERSION 0.2.0 LANGUAGES CXX)
 
 include(CTest)
 include(GNUInstallDirs)
+find_package(PkgConfig QUIET)
+
+set(GHOSTLINE_BUILD_QT OFF CACHE BOOL "Build Ghostline Qt operator shell from OmniX" FORCE)
+if(EXISTS "${CMAKE_SOURCE_DIR}/vendor/ghostline-gate/CMakeLists.txt")
+    add_subdirectory(vendor/ghostline-gate)
+endif()
 
 if(APPLE)
     set(OMNIX_PLATFORM_NAME "macos")
@@ -37,11 +43,18 @@ add_library(tze STATIC
     src/memory_store.cpp
     src/native_tool_registry.cpp
     src/namespace_registry.cpp
+    src/neural_math_engine.cpp
+    src/neural_signal_router.cpp
     src/omni_bridge.cpp
+    src/packet_capture_engine.cpp
     src/preprocessor_runtime.cpp
     src/project_alias_registry.cpp
     src/project_resolver.cpp
+    src/recipe_authoring_engine.cpp
     src/security_manager.cpp
+    src/self_review.cpp
+    src/shell_lexicon.cpp
+    src/sdk.cpp
     src/tool_flow_interpreter.cpp
     src/unix_evidence_parser.cpp
     src/processing_engine.cpp
@@ -56,7 +69,28 @@ add_library(tze STATIC
 target_include_directories(tze PUBLIC include)
 target_compile_features(tze PUBLIC cxx_std_20)
 target_link_libraries(tze PUBLIC xpp)
-target_compile_definitions(tze PUBLIC OMNIX_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(tze PUBLIC
+    OMNIX_VERSION="${PROJECT_VERSION}"
+    OMNIX_BUILD_DIR="${CMAKE_BINARY_DIR}"
+    OMNIX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+if(PkgConfig_FOUND)
+    pkg_check_modules(OMNIX_PCAP QUIET libpcap)
+endif()
+find_path(OMNIX_PCAP_INCLUDE_DIR
+    NAMES pcap/pcap.h pcap.h
+    HINTS ${OMNIX_PCAP_INCLUDE_DIRS} /opt/homebrew/opt/libpcap/include /usr/local/opt/libpcap/include
+)
+find_library(OMNIX_PCAP_LIBRARY
+    NAMES pcap
+    HINTS ${OMNIX_PCAP_LIBRARY_DIRS} /opt/homebrew/opt/libpcap/lib /usr/local/opt/libpcap/lib
+)
+if(OMNIX_PCAP_INCLUDE_DIR AND OMNIX_PCAP_LIBRARY)
+    target_include_directories(tze PUBLIC ${OMNIX_PCAP_INCLUDE_DIR})
+    target_link_libraries(tze PUBLIC ${OMNIX_PCAP_LIBRARY})
+    target_compile_definitions(tze PUBLIC OMNIX_HAS_LIBPCAP=1)
+endif()
 
 add_executable(omnix
     main.cpp

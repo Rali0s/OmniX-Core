@@ -83,10 +83,17 @@ public:
                           std::string_view status,
                           std::string_view upstream_url) const;
     void remember_recipe_result(MemorySnapshot& snapshot, const LearnedRecipeRecord& record) const;
+    void remember_authored_recipe(MemorySnapshot& snapshot, const AuthoredRecipeRecord& record) const;
     void remember_native_tool(MemorySnapshot& snapshot, const NativeToolRecord& record) const;
     void remember_security_audit(MemorySnapshot& snapshot, const SecurityAudit& record) const;
     void remember_language_context(MemorySnapshot& snapshot, const LanguageResolutionRecord& record) const;
     void remember_uac_state(MemorySnapshot& snapshot, const UacStateRecord& record) const;
+    void remember_legacy_source(MemorySnapshot& snapshot, const LegacySourceRecord& record) const;
+    void remember_operator_persona(MemorySnapshot& snapshot, const OperatorPersonaRecord& record) const;
+    void remember_assist_outcome(MemorySnapshot& snapshot, const AssistOutcomeRecord& record) const;
+    void remember_assist_correction(MemorySnapshot& snapshot, const AssistCorrectionRecord& record) const;
+    void remember_assist_learning(MemorySnapshot& snapshot, const AssistLearningRecord& record) const;
+    void remember_host_assist_preference(MemorySnapshot& snapshot, const HostAssistPreferenceRecord& record) const;
     void remember_observation(MemorySnapshot& snapshot, const ObservationRecord& record) const;
     void remember_normalized_object(MemorySnapshot& snapshot, const NormalizedObject& record) const;
     void remember_evidence_link(MemorySnapshot& snapshot, const EvidenceLink& record) const;

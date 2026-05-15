@@ -167,6 +167,7 @@ const std::vector<ProjectAlias>& ProjectAliasRegistry::aliases() const {
                         "-DBUILD_wireshark=OFF",
                         "-DBUILD_tshark=ON",
                         "-DBUILD_dumpcap=ON",
+                        "-DENABLE_APPLICATION_BUNDLE=OFF",
                     },
                     true,
                     false,

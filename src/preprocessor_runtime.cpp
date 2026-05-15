@@ -60,6 +60,25 @@ bool contains_token(const std::vector<std::string>& tokens, std::string_view nee
     return std::find(tokens.begin(), tokens.end(), needle) != tokens.end();
 }
 
+std::string instruction_family_hint_for(const std::vector<std::string>& tokens) {
+    if (contains_token(tokens, "build") || contains_token(tokens, "cmake") || contains_token(tokens, "make")) {
+        return "build";
+    }
+    if (contains_token(tokens, "define") || contains_token(tokens, "what") || contains_token(tokens, "who")) {
+        return "definition";
+    }
+    if (contains_token(tokens, "tool") || contains_token(tokens, "nmap") || contains_token(tokens, "tshark")) {
+        return "tool";
+    }
+    if (contains_token(tokens, "case") || contains_token(tokens, "incident") || contains_token(tokens, "analyze")) {
+        return "analyst";
+    }
+    if (contains_token(tokens, "provider") || contains_token(tokens, "assist") || contains_token(tokens, "ollama")) {
+        return "provider";
+    }
+    return "general";
+}
+
 std::string env_or(std::string_view name, std::string_view fallback = {}) {
     const char* value = std::getenv(std::string(name).c_str());
     if (value == nullptr || *value == '\0') {
@@ -123,11 +142,14 @@ UacStateRecord PreprocessorRuntime::resolve_uac_state(std::string_view query,
                                                       QuerySessionRecord* query_session) {
     UacStateRecord state;
     state.query = trim(query);
+    state.normalized_prompt = lowercase(state.query);
     state.epoch_marker = current_epoch_marker();
     state.machine_identifier = machine_identifier();
     state.chapter_reference = "ChapterIndex.uAC";
+    state.chapter_series_label = "Series::LegacyRecovery";
     state.store_namespace = "xMap_Perm_uAC";
     state.search_namespace = "x.index::uAC_Search";
+    state.epoch_tier_label = "epoch-tier::bounded-local";
     state.operational_usage_habit = "uAC::OperationalUsageHabit";
     state.genx_token_value = genx_token(state.query.empty() ? "GENx" : state.query);
     state.compression_label = compression_profile(state.query.empty() ? "GenXCompression" : state.query);
@@ -139,6 +161,8 @@ UacStateRecord PreprocessorRuntime::resolve_uac_state(std::string_view query,
         state.query + "|" + state.machine_identifier + "|" + state.epoch_marker));
 
     const std::vector<std::string> tokens = tokenize(state.query);
+    state.query_tokens = tokens;
+    state.instruction_family_hint = instruction_family_hint_for(tokens);
     add_trait(state.indexed_traits, "uAC_Traits", state.store_namespace, "static", 90, true);
     add_trait(state.indexed_traits, "Epoch", state.epoch_marker, "runtime", 88, true);
     add_trait(state.indexed_traits, "MachineIdentifier", state.machine_identifier, "runtime", 82, true);
@@ -175,7 +199,25 @@ UacStateRecord PreprocessorRuntime::resolve_uac_state(std::string_view query,
         "try::USB_Tail(uAC(systemRecovery ~~x))",
         "store(uAC(SystemRecovery))",
     };
+    state.deletion_discrepancies = {
+        "deleted-artifact::pending-correlation",
+        "autosave-shadow::review",
+    };
+    state.search_context_habits = {
+        "search(uAC_Traits)",
+        "compare(epoch -> priorEpoch)",
+        "reindex(recoveryEvidence)",
+    };
+    state.time_on_site_traits = {
+        "local-session-bounded",
+        "epoch-sensitive",
+        "operator-habit-aware",
+    };
     add_trace(state.reasoning_trace, "recovery-hints=" + std::to_string(state.recovery_hints.size()));
+    add_trace(state.reasoning_trace, "chapter-series=" + state.chapter_series_label);
+    add_trace(state.reasoning_trace, "epoch-tier=" + state.epoch_tier_label);
+    add_trace(state.reasoning_trace, "instruction-family=" + state.instruction_family_hint);
+    add_trace(state.reasoning_trace, "token-count=" + std::to_string(state.query_tokens.size()));
 
     const auto prior = std::find_if(memory.uac_states.rbegin(), memory.uac_states.rend(), [&state](const UacStateRecord& entry) {
         return entry.query == state.query || entry.machine_identifier == state.machine_identifier;
@@ -191,6 +233,8 @@ UacStateRecord PreprocessorRuntime::resolve_uac_state(std::string_view query,
                              "uac-evidence",
                              {state.store_namespace,
                               state.search_namespace,
+                              state.chapter_series_label,
+                              state.epoch_tier_label,
                               state.epoch_marker,
                               state.machine_identifier,
                               state.query,

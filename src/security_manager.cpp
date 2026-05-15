@@ -126,9 +126,9 @@ SecurityAudit SecurityManager::verify(const RequestProfile& profile) const {
     audit.status = "admin-gate";
     audit.behavior_mode = "abstracted";
     audit.phases.push_back("x.Security(" + profile.operator_handle + ")");
-    audit.phases.push_back("x.C_P.1()");
-    audit.phases.push_back("x.C_P.2()");
-    audit.phases.push_back("x.C_P.3()");
+    audit.phases.push_back("Security.SourceIntake");
+    audit.phases.push_back("Security.EvidenceRanking");
+    audit.phases.push_back("Security.FeedbackReview");
     audit.trace_paths.push_back("x.TraceBack(Index&Log)");
     audit.evidence.push_back("operator=" + profile.operator_handle);
     append_trace(audit, "admin-check");

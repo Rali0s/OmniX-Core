@@ -143,6 +143,42 @@ std::vector<std::string> learned_recipe_summaries(const MemorySnapshot& memory,
     return summaries;
 }
 
+const AuthoredRecipeRecord* exact_path_authored_recipe(const MemorySnapshot& memory,
+                                                       const std::filesystem::path& source_path,
+                                                       std::string_view requested_recipe_id) {
+    if (source_path.empty()) {
+        return nullptr;
+    }
+    std::error_code ec;
+    const std::filesystem::path resolved = std::filesystem::weakly_canonical(source_path, ec);
+    const std::string effective = (ec ? source_path : resolved).string();
+    const AuthoredRecipeRecord* best = nullptr;
+    for (const AuthoredRecipeRecord& record : memory.authored_recipes) {
+        std::error_code record_ec;
+        const std::filesystem::path record_path = std::filesystem::weakly_canonical(record.resolved_source_path, record_ec);
+        const std::string record_effective = (record_ec ? record.resolved_source_path : record_path.string());
+        if (!record.active || record_effective != effective) {
+            continue;
+        }
+        if (!requested_recipe_id.empty() && record.recipe.id != requested_recipe_id) {
+            continue;
+        }
+        if (best == nullptr || (!record.persisted_at.empty() && record.persisted_at > best->persisted_at)) {
+            best = &record;
+        }
+    }
+    return best;
+}
+
+ProjectAlias synthetic_alias_from_authored(const AuthoredRecipeRecord& record) {
+    ProjectAlias alias;
+    alias.canonical_name = record.canonical_name.empty() ? "local-project" : record.canonical_name;
+    alias.aliases = {alias.canonical_name};
+    alias.default_ref = "local";
+    alias.recipes = {record.recipe};
+    return alias;
+}
+
 std::string selection_reason_for_assist(const BuildAssistPlan& plan) {
     std::ostringstream out;
     out << "assist_selected(" << plan.selected_recipe_id;
@@ -268,6 +304,17 @@ void BuildFlowInterpreter::run(const RequestProfile& profile,
         : (!profile.raw_prompt.empty() ? profile.raw_prompt : profile.build_source_path);
 
     ProjectResolution project = projects.resolve(target, profile, memory, builder, aliases);
+    std::optional<ProjectAlias> authored_alias;
+    if (project.resolved) {
+        if (const AuthoredRecipeRecord* authored = exact_path_authored_recipe(memory,
+                                                                              project.source_path,
+                                                                              profile.selected_recipe_id);
+            authored != nullptr) {
+            authored_alias = synthetic_alias_from_authored(*authored);
+            project.alias = authored_alias;
+            project.canonical_name = authored_alias->canonical_name;
+        }
+    }
     if (project.alias.has_value()) {
         report.resolved_project = project.alias->canonical_name;
     } else if (!project.canonical_name.empty()) {
@@ -328,6 +375,10 @@ void BuildFlowInterpreter::run(const RequestProfile& profile,
     report.preflight_report = builder.preflight(effective_profile,
                                                 project.alias,
                                                 project.resolved ? project.source_path : std::filesystem::path{});
+
+    if (authored_alias.has_value() && profile.selected_recipe_id.empty()) {
+        report.preflight_report->recipe_selection_reason = "authored_recipe(path_match)";
+    }
 
     if (!profile.selected_recipe_id.empty()) {
         report.preflight_report->recipe_selection_reason = "manual_override(" + profile.selected_recipe_id + ")";
@@ -425,6 +476,8 @@ void BuildFlowInterpreter::run(const RequestProfile& profile,
                                                         project.alias,
                                                         project.resolved ? project.source_path : std::filesystem::path{});
             report.preflight_report->recipe_selection_reason = selection_reason_for_learned(*learned);
+        } else if (authored_alias.has_value()) {
+            report.preflight_report->recipe_selection_reason = "authored_recipe(path_match)";
         } else if (!report.preflight_report->recipe_id.empty()) {
             report.preflight_report->recipe_selection_reason =
                 "alias_default(" + report.preflight_report->recipe_id + ")";

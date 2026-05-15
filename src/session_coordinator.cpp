@@ -1,8 +1,11 @@
 #include "tze/session_coordinator.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -13,7 +16,10 @@
 #include <string>
 #include <vector>
 
+#include "tze/neural_math_engine.hpp"
+#include "tze/neural_signal_router.hpp"
 #include "tze/query_runtime.hpp"
+#include "tze/preprocessor_runtime.hpp"
 #include "xpp/index.hpp"
 #include "xpp/parser.hpp"
 
@@ -147,6 +153,26 @@ std::string command_label_for(RequestIntent intent, std::string_view decoded_ins
         return std::string(decoded_instruction);
     }
     switch (intent) {
+        case RequestIntent::Conversation:
+            return "Conversation";
+        case RequestIntent::GeneralDefinitionQuery:
+            return "Investigate";
+        case RequestIntent::PacketCapture:
+            return "OmniXTView";
+        case RequestIntent::DefenseDiagnostic:
+            return "DefenseDiagnostic";
+        case RequestIntent::NeuralMath:
+            return "NeuralMath";
+        case RequestIntent::NeuralRoute:
+            return "NeuralSignalRouter";
+        case RequestIntent::SetPersonaMode:
+            return "PersonaEngine";
+        case RequestIntent::AuthorBuildRecipe:
+            return "RecipeAuthoring";
+        case RequestIntent::ReviewModule:
+            return "Review";
+        case RequestIntent::PatchProposal:
+            return "PatchProposal";
         case RequestIntent::IngestData:
             return "Ingest";
         case RequestIntent::AnalyzeCase:
@@ -261,6 +287,52 @@ std::string join_lines(const std::vector<std::string>& lines) {
     return out.str();
 }
 
+std::string collapse_inline_whitespace(std::string_view value) {
+    std::string collapsed;
+    collapsed.reserve(value.size());
+    bool previous_space = false;
+    for (char c : value) {
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (!previous_space) {
+                collapsed.push_back(' ');
+            }
+            previous_space = true;
+            continue;
+        }
+        previous_space = false;
+        collapsed.push_back(c);
+    }
+    std::size_t start = 0;
+    while (start < collapsed.size() && std::isspace(static_cast<unsigned char>(collapsed[start]))) {
+        ++start;
+    }
+    std::size_t end = collapsed.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(collapsed[end - 1]))) {
+        --end;
+    }
+    return collapsed.substr(start, end - start);
+}
+
+std::string first_non_empty_line(std::string_view text) {
+    std::istringstream input{std::string(text)};
+    std::string line;
+    while (std::getline(input, line)) {
+        std::size_t start = 0;
+        while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start]))) {
+            ++start;
+        }
+        std::size_t end = line.size();
+        while (end > start && std::isspace(static_cast<unsigned char>(line[end - 1]))) {
+            --end;
+        }
+        line = line.substr(start, end - start);
+        if (!line.empty()) {
+            return line;
+        }
+    }
+    return {};
+}
+
 std::string trim_local(std::string_view value) {
     std::size_t start = 0;
     while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
@@ -271,6 +343,136 @@ std::string trim_local(std::string_view value) {
         --end;
     }
     return std::string(value.substr(start, end - start));
+}
+
+std::string instruction_family_hint_for(RequestIntent intent) {
+    switch (intent) {
+        case RequestIntent::BuildProject:
+        case RequestIntent::DoctorProject:
+        case RequestIntent::AuthorBuildRecipe:
+            return "build";
+        case RequestIntent::PacketCapture:
+            return "packet-capture";
+        case RequestIntent::DefenseDiagnostic:
+            return "defense";
+        case RequestIntent::NeuralMath:
+            return "neural-math";
+        case RequestIntent::NeuralRoute:
+            return "neural-route";
+        case RequestIntent::SetPersonaMode:
+            return "persona";
+        case RequestIntent::GeneralDefinitionQuery:
+        case RequestIntent::DefineSymbol:
+        case RequestIntent::ExplainCommand:
+            return "definition";
+        case RequestIntent::ToolAction:
+            return "tool";
+        case RequestIntent::ProbeProvider:
+            return "provider";
+        case RequestIntent::IngestData:
+        case RequestIntent::AnalyzeCase:
+        case RequestIntent::DecideAction:
+        case RequestIntent::InspectCase:
+        case RequestIntent::CaseTimeline:
+        case RequestIntent::ListIncidents:
+        case RequestIntent::InspectIncident:
+        case RequestIntent::ReportIncident:
+            return "analyst";
+        case RequestIntent::ReplayTzeRun:
+        case RequestIntent::ChainTzeRun:
+        case RequestIntent::DiffTzeRuns:
+        case RequestIntent::ExplainTzeChange:
+        case RequestIntent::ReportTzeRun:
+        case RequestIntent::DiffReportTzeRuns:
+        case RequestIntent::ExportTzeBundle:
+        case RequestIntent::ImportTzeBundle:
+        case RequestIntent::PruneTzeRuns:
+        case RequestIntent::PruneMemory:
+        case RequestIntent::MarkTzeRunOutcome:
+        case RequestIntent::MarkDecisionFeedback:
+        case RequestIntent::MarkDecisionOutcome:
+            return "tze";
+        case RequestIntent::ExportCaseBundle:
+        case RequestIntent::ImportCaseBundle:
+            return "case";
+        case RequestIntent::Conversation:
+            return "conversation";
+        case RequestIntent::ReviewModule:
+        case RequestIntent::PatchProposal:
+            return "self-review";
+        case RequestIntent::InspectToolchain:
+            return "toolchain";
+        case RequestIntent::ShowMemory:
+            return "memory";
+        case RequestIntent::Unknown:
+            return "general";
+    }
+    return "general";
+}
+
+PostProcessRecord build_postprocess_record(const ProcessingReport& report) {
+    PostProcessRecord record;
+    if (report.answer_status == "clarify_needed") {
+        record.status = "PostClarify";
+    } else if (report.answer_status.find("blocked") != std::string::npos ||
+               report.answer_status.find("rejected") != std::string::npos) {
+        record.status = "PostBlocked";
+    } else if (report.answer_status == "unknown_intent" ||
+               report.answer_status == "unknown_query" ||
+               report.answer_status == "provider_probe_failed") {
+        record.status = "PostFail";
+    } else {
+        record.status = "PostSuccess";
+    }
+
+    if (report.definition_answer.has_value() && report.definition_answer->found && !report.definition_answer->summary.empty()) {
+        record.final_artifact_summary = report.definition_answer->summary;
+        record.provenance = report.definition_answer->selected_source_type.empty()
+            ? "definition_answer"
+            : report.definition_answer->selected_source_type;
+    } else if (report.freeform_assist_answer.has_value() && !report.freeform_assist_answer->answer.empty()) {
+        record.final_artifact_summary = report.freeform_assist_answer->answer;
+        record.provenance = "openai_freeform";
+    } else if (!report.produced_artifact.empty()) {
+        record.final_artifact_summary = first_non_empty_line(report.answer_explanation);
+        if (record.final_artifact_summary.empty()) {
+            record.final_artifact_summary = "Artifact stored.";
+        }
+        record.provenance = "produced_artifact";
+    } else {
+        record.final_artifact_summary = first_non_empty_line(report.answer_explanation);
+        if (record.final_artifact_summary.empty()) {
+            record.final_artifact_summary = report.answer_status.empty() ? "Processing complete." : report.answer_status;
+        }
+        record.provenance = report.answer_status.empty() ? "runtime" : report.answer_status;
+    }
+    record.final_artifact_summary = collapse_inline_whitespace(record.final_artifact_summary);
+    record.dropped_transient_chain =
+        report.answer_explanation.find("Recent feedback:") != std::string::npos ||
+        report.answer_explanation.find("Suggestions:") != std::string::npos ||
+        report.answer_explanation.find('\n') != std::string::npos;
+    record.retention_decision = record.dropped_transient_chain
+        ? "retain.final_artifact_only"
+        : "retain.final_artifact";
+    record.retained_fields = {"answer_status", "final_artifact_summary", "provenance"};
+    if (!report.produced_artifact.empty()) {
+        record.retained_fields.push_back("produced_artifact");
+    }
+    if (record.dropped_transient_chain) {
+        record.discarded_fields = {"recent_feedback", "suggestions", "transient_chain_text"};
+    }
+    using clock = std::chrono::system_clock;
+    const std::time_t raw = clock::to_time_t(clock::now());
+    std::tm local{};
+#if defined(__APPLE__) || defined(__unix__)
+    localtime_r(&raw, &local);
+#else
+    local = *std::localtime(&raw);
+#endif
+    std::ostringstream timestamp;
+    timestamp << std::put_time(&local, "%Y-%m-%dT%H:%M:%S");
+    record.persisted_at = timestamp.str();
+    return record;
 }
 
 std::string run_timestamp() {
@@ -306,8 +508,167 @@ void push_unique(std::vector<std::string>& values, const std::string& value) {
     }
 }
 
+std::optional<int> parse_port_text(std::string_view value) {
+    std::string digits;
+    for (char c : value) {
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            digits.push_back(c);
+        } else if (!digits.empty()) {
+            break;
+        }
+    }
+    if (digits.empty()) {
+        return std::nullopt;
+    }
+    const int port = std::stoi(digits);
+    if (port <= 0 || port > 65535) {
+        return std::nullopt;
+    }
+    return port;
+}
+
+std::string lowercase_basic(std::string_view value) {
+    std::string lowered;
+    lowered.reserve(value.size());
+    for (char c : value) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return lowered;
+}
+
+std::optional<int> first_open_tcp_port(const ToolInvocationReport& invocation) {
+    for (const std::string& line : invocation.output_excerpt) {
+        const std::string lowered = lowercase_basic(line);
+        const std::size_t tcp_at = lowered.find("/tcp");
+        if (tcp_at == std::string::npos || lowered.find("open") == std::string::npos) {
+            continue;
+        }
+        std::size_t start = tcp_at;
+        while (start > 0 && std::isdigit(static_cast<unsigned char>(lowered[start - 1]))) {
+            --start;
+        }
+        if (start < tcp_at) {
+            return parse_port_text(lowered.substr(start, tcp_at - start));
+        }
+    }
+    return std::nullopt;
+}
+
+PacketCaptureRequest packet_request_from_profile(const RequestProfile& profile, const IntentResolution& resolution) {
+    PacketCaptureRequest request;
+    request.mode = !profile.packet_capture_mode.empty()
+        ? profile.packet_capture_mode
+        : (!resolution.memory_view.empty() ? resolution.memory_view : "live");
+    request.interface_name = profile.packet_interface;
+    request.pcap_path = profile.packet_pcap_path;
+    request.export_path = profile.packet_export_path;
+    request.host_filter = profile.packet_host_filter;
+    request.port = profile.packet_port;
+    if (request.port == 0 && !resolution.primary_target.empty()) {
+        if (const std::optional<int> parsed = parse_port_text(resolution.primary_target); parsed.has_value()) {
+            request.port = *parsed;
+        }
+    }
+    request.packet_count = profile.packet_count;
+    request.seconds = profile.packet_seconds;
+    request.payload_bytes = profile.packet_payload_bytes;
+    return request;
+}
+
+std::vector<std::string> command_lines(std::string_view command, std::size_t max_lines = 12) {
+    std::vector<std::string> lines;
+#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+    FILE* pipe = popen(std::string(command).c_str(), "r");
+    if (pipe == nullptr) {
+        lines.push_back("Unable to run diagnostic command.");
+        return lines;
+    }
+    std::array<char, 512> buffer{};
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr && lines.size() < max_lines) {
+        std::string line(buffer.data());
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+            line.pop_back();
+        }
+        if (!line.empty()) {
+            lines.push_back(line);
+        }
+    }
+    pclose(pipe);
+#else
+    lines.push_back("Local diagnostics are not specialized for this platform yet.");
+#endif
+    return lines;
+}
+
+DefenseDiagnosticRequest defense_request_from_profile(const RequestProfile& profile,
+                                                      const IntentResolution& resolution) {
+    DefenseDiagnosticRequest request;
+    request.mode = !profile.defense_mode.empty() ? profile.defense_mode : "summary";
+    request.target = !profile.defense_target.empty() ? profile.defense_target : resolution.primary_target;
+    request.port = profile.defense_port;
+    request.pid = profile.defense_pid;
+    if (request.port == 0 && (request.mode == "port" || request.target.find("port") != std::string::npos)) {
+        if (const std::optional<int> parsed = parse_port_text(request.target); parsed.has_value()) {
+            request.port = *parsed;
+        }
+    }
+    if (request.pid == 0 && request.mode == "pid") {
+        if (const std::optional<int> parsed = parse_port_text(request.target); parsed.has_value()) {
+            request.pid = *parsed;
+        }
+    }
+    return request;
+}
+
+DefenseDiagnosticReport run_defense_diagnostic(const DefenseDiagnosticRequest& request) {
+    DefenseDiagnosticReport report;
+    report.mode = request.mode.empty() ? "summary" : request.mode;
+    report.target = request.target;
+    report.status = "defense_diagnostic_complete";
+    report.summary = "Collected local defensive diagnostic evidence without taking destructive action.";
+    report.warnings.push_back("Diagnostic-only mode: OmniX did not kill processes, close ports, or change firewall state.");
+
+    if (report.mode == "cpu") {
+        report.evidence_lines = command_lines("ps -axo pid,pcpu,pmem,comm -r | head -n 10");
+        report.proposed_actions.push_back("Review the top CPU consumers before deciding whether to stop a process.");
+    } else if (report.mode == "memory") {
+        report.evidence_lines = command_lines("ps -axo pid,rss,pmem,comm -m | head -n 10");
+        report.proposed_actions.push_back("Review high-RSS processes and correlate with recent logs before action.");
+    } else if (report.mode == "pid" && request.pid > 0) {
+        report.evidence_lines = command_lines("ps -p " + std::to_string(request.pid) + " -o pid,ppid,pcpu,pmem,etime,comm");
+        report.proposed_actions.push_back("If confirmed malicious or runaway, manually run `kill " + std::to_string(request.pid) + "`.");
+        report.proposed_actions.push_back("Use `kill -TERM` before `kill -KILL` unless immediate containment is required.");
+    } else if (report.mode == "port" && request.port > 0) {
+        report.evidence_lines = command_lines("lsof -nP -iTCP:" + std::to_string(request.port) + " -sTCP:LISTEN");
+        report.proposed_actions.push_back("Investigate traffic with `omnix tview port " + std::to_string(request.port) + "`.");
+        report.proposed_actions.push_back("Identify the owning PID before manually stopping a service or closing a port.");
+    } else if (report.mode == "logs") {
+#if defined(__APPLE__)
+        report.evidence_lines.push_back("Suggested log command: log show --last 5m --style compact --predicate 'eventMessage CONTAINS[c] \"error\" OR eventMessage CONTAINS[c] \"fail\"'");
+#else
+        report.evidence_lines = command_lines("dmesg | tail -n 20");
+#endif
+        report.proposed_actions.push_back("Preserve relevant log excerpts into a case before changing system state.");
+    } else {
+        report.evidence_lines = command_lines("ps -axo pid,pcpu,pmem,comm -r | head -n 8");
+        report.proposed_actions.push_back("Run `omnix defend diag cpu`, `memory`, `logs`, `pid <pid>`, or `port <port>` for a focused diagnostic.");
+    }
+    if (report.evidence_lines.empty()) {
+        report.status = "defense_diagnostic_empty";
+        report.summary = "No local diagnostic evidence was returned for the requested target.";
+    }
+    return report;
+}
+
 std::string dispatch_module_for(RequestIntent intent) {
     switch (intent) {
+        case RequestIntent::Conversation:
+            return "ConversationFlow";
+        case RequestIntent::GeneralDefinitionQuery:
+            return "DefinitionFlowInterpreter";
+        case RequestIntent::ReviewModule:
+        case RequestIntent::PatchProposal:
+            return "SelfReviewEngine";
         case RequestIntent::IngestData:
         case RequestIntent::AnalyzeCase:
         case RequestIntent::DecideAction:
@@ -334,6 +695,16 @@ std::string dispatch_module_for(RequestIntent intent) {
             return "TzeRunLedger";
         case RequestIntent::PruneMemory:
             return "MemoryStore";
+        case RequestIntent::PacketCapture:
+            return "PacketCaptureEngine";
+        case RequestIntent::DefenseDiagnostic:
+            return "DefenseDiagnosticEngine";
+        case RequestIntent::NeuralMath:
+            return "NeuralMathEngine";
+        case RequestIntent::NeuralRoute:
+            return "NeuralSignalRouter";
+        case RequestIntent::SetPersonaMode:
+            return "PersonaEngine";
         case RequestIntent::DoctorProject:
             return "ProjectDoctor";
         case RequestIntent::ToolAction:
@@ -345,6 +716,8 @@ std::string dispatch_module_for(RequestIntent intent) {
             return "DefinitionFlowInterpreter";
         case RequestIntent::BuildProject:
             return "BuildFlowInterpreter";
+        case RequestIntent::AuthorBuildRecipe:
+            return "RecipeAuthoringEngine";
         case RequestIntent::InspectToolchain:
             return "BuildExecutor";
         case RequestIntent::ShowMemory:
@@ -378,6 +751,52 @@ std::string render_assist_annotation_markdown(const AssistAnnotation& assist) {
         out << "- Warnings:\n";
         for (const std::string& warning : assist.warnings) {
             out << "  - " << warning << "\n";
+        }
+    }
+    return out.str();
+}
+
+std::string render_next_step_annotation_text(const NextStepAssistPlan& plan) {
+    std::ostringstream out;
+    out << "\nAssist next step: " << plan.suggested_next_step
+        << " [" << std::fixed << std::setprecision(2) << plan.confidence << "]";
+    if (!plan.rationale.empty()) {
+        out << "\nAssist rationale: " << plan.rationale;
+    }
+    if (!plan.safer_alternative.empty()) {
+        out << "\nSafer alternative: " << plan.safer_alternative;
+    }
+    return out.str();
+}
+
+std::string render_case_summary_annotation_text(const CaseSummaryAssistPlan& plan) {
+    std::ostringstream out;
+    if (!plan.summary_title.empty()) {
+        out << "\nAssist summary title: " << plan.summary_title;
+    }
+    out << "\nAssist executive summary: " << plan.executive_summary;
+    if (!plan.highlights.empty()) {
+        out << "\nAssist highlights:";
+        for (const std::string& highlight : plan.highlights) {
+            out << "\n - " << highlight;
+        }
+    }
+    return out.str();
+}
+
+std::string render_freeform_assist_text(const FreeformAssistAnswer& answer) {
+    std::ostringstream out;
+    out << answer.answer;
+    if (!answer.suggested_commands.empty()) {
+        out << "\nSuggested commands:";
+        for (const std::string& command : answer.suggested_commands) {
+            out << "\n - " << command;
+        }
+    }
+    if (!answer.safety_warnings.empty()) {
+        out << "\nSafety notes:";
+        for (const std::string& warning : answer.safety_warnings) {
+            out << "\n - " << warning;
         }
     }
     return out.str();
@@ -529,9 +948,269 @@ bool starts_with_local(std::string_view value, std::string_view prefix) {
     return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
 }
 
+std::string lowercase(std::string_view value) {
+    std::string lowered;
+    lowered.reserve(value.size());
+    for (char c : value) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    return lowered;
+}
+
+bool is_legacy_source_path(std::string_view source_map_path) {
+    const std::string lowered = lowercase(source_map_path);
+    return lowered.find("tzu.cpp") != std::string::npos;
+}
+
+bool is_greeting_prompt(std::string_view prompt) {
+    const std::string lowered = lowercase(prompt);
+    return lowered == "hello" || lowered == "hi" || lowered == "hey" ||
+        lowered == "hello omnix" || lowered == "hi omnix" || lowered == "hey omnix";
+}
+
+bool is_identity_prompt(std::string_view prompt) {
+    const std::string lowered = lowercase(prompt);
+    return lowered == "who are you" || lowered == "what are you" ||
+        lowered == "what is omnix" || lowered == "who is omnix" ||
+        lowered == "tell me about yourself";
+}
+
+bool is_operator_identity_prompt(std::string_view prompt) {
+    const std::string lowered = lowercase(prompt);
+    return lowered == "who am i" || lowered == "who am i?" ||
+        lowered == "what is my persona" || lowered == "what's my persona";
+}
+
+bool is_context_summary_prompt(std::string_view prompt) {
+    const std::string lowered = lowercase(prompt);
+    return lowered == "what matters" || lowered == "what matters here" ||
+        lowered == "what should i care about" || lowered == "tell me what matters";
+}
+
+std::string env_or(std::string_view name, std::string_view fallback = {}) {
+    const char* value = std::getenv(std::string(name).c_str());
+    if (value == nullptr || *value == '\0') {
+        return std::string(fallback);
+    }
+    return value;
+}
+
+std::string local_operator_identity() {
+    return env_or("USER", "unknown-user");
+}
+
+std::string local_host_identity() {
+    return env_or("HOSTNAME", env_or("HOST", "unknown-host"));
+}
+
+std::string canonical_persona_mode(std::string_view value) {
+    const std::string lowered = lowercase_local(trim_local(value));
+    if (lowered == "premise" || lowered == "premise-mode" || lowered == "premise mode") {
+        return "premise";
+    }
+    if (lowered == "cynic" || lowered == "cynic-mode" || lowered == "cynic mode") {
+        return "cynic";
+    }
+    if (lowered == "professional" || lowered == "pro" || lowered == "professional-mode" ||
+        lowered == "professional mode") {
+        return "professional";
+    }
+    if (lowered == "neutral" || lowered == "default" || lowered == "plain") {
+        return "neutral";
+    }
+    return {};
+}
+
+void apply_persona_mode_defaults(OperatorPersonaRecord& persona, std::string_view mode) {
+    const std::string canonical = canonical_persona_mode(mode);
+    persona.persona_mode = canonical.empty() ? "neutral" : canonical;
+    persona.safety_posture = "display_only_safety_bounded";
+    if (persona.persona_mode == "premise") {
+        if (persona.preferred_label.empty()) {
+            persona.preferred_label = "Premise";
+        }
+        if (persona.role_label.empty()) {
+            persona.role_label = "Local Operator";
+        }
+        if (persona.self_description.empty()) {
+            persona.self_description = "Local truth-first builder; persistent, playful, and verification-heavy.";
+        }
+        persona.tone_profile = "warm_playful_local_truth";
+        persona.interaction_style = "pairing_persistent_momentum";
+        persona.preferred_next_action_style = "concrete_next_step_with_context";
+    } else if (persona.persona_mode == "cynic") {
+        persona.tone_profile = "skeptical_risk_first";
+        persona.interaction_style = "challenge_assumptions_and_find_edge_cases";
+        persona.preferred_next_action_style = "name_the_risk_then_offer_the_safe_move";
+    } else if (persona.persona_mode == "professional") {
+        persona.tone_profile = "concise_formal_operator_briefing";
+        persona.interaction_style = "direct_structured_execution";
+        persona.preferred_next_action_style = "brief_status_then_action";
+    } else {
+        persona.persona_mode = "neutral";
+        persona.tone_profile = "balanced_plain";
+        persona.interaction_style = "clear_helpful_default";
+        persona.preferred_next_action_style = "simple_next_step";
+    }
+}
+
+std::string persona_mode_readout(const OperatorPersonaRecord& persona) {
+    if (persona.persona_mode == "premise") {
+        return "Premise Mode: local truth, playful grit, and persistent verification. Safety remains bounded.";
+    }
+    if (persona.persona_mode == "cynic") {
+        return "Cynic Mode: skeptical, risk-first, and contradiction-hunting. Safety remains bounded.";
+    }
+    if (persona.persona_mode == "professional") {
+        return "Professional Mode: concise, formal, and execution-focused. Safety remains bounded.";
+    }
+    return "Neutral Mode: balanced, plain, and safety-bounded.";
+}
+
+std::string render_context_summary(const MemorySnapshot& memory) {
+    if (!memory.tze_runs.empty()) {
+        const TzeRunRecord& last = memory.tze_runs.back();
+        std::ostringstream out;
+        out << "What matters right now is the latest persisted run";
+        if (!last.prompt.empty()) {
+            out << " from `" << last.prompt << "`";
+        }
+        out << ": status `" << last.status << "`.";
+        if (last.definition_answer.has_value() && !last.definition_answer->summary.empty()) {
+            out << " " << last.definition_answer->summary;
+        } else if (!last.next_action.empty()) {
+            out << " " << last.next_action;
+        }
+        return out.str();
+    }
+    if (!memory.history.empty()) {
+        const MemoryHistoryEntry& last = memory.history.back();
+        std::ostringstream out;
+        out << "The most recent remembered interaction is `" << last.prompt << "`";
+        if (!last.status.empty()) {
+            out << " with status `" << last.status << "`";
+        }
+        out << ".";
+        if (!last.summary.empty()) {
+            out << " " << last.summary;
+        }
+        return out.str();
+    }
+    return "I do not have a recent run, case, or incident yet, so there is no active local context to summarize.";
+}
+
+LegacySourceRecord make_legacy_source_record(const xpp::MappingUnit& unit) {
+    const xpp::SymbolIndex index = xpp::build_symbol_index(unit);
+    LegacySourceRecord record;
+    record.source_path = unit.source_name;
+    record.source_label = is_legacy_source_path(unit.source_name) ? "Tzu.cpp" : "legacy-source";
+    record.source_kind = is_legacy_source_path(unit.source_name) ? "legacy_uncut_blueprint" : "legacy_source";
+    record.line_count = unit.lines.size();
+    record.section_count = unit.sections.size();
+    record.symbol_count = index.mappings.size();
+    record.source_hash = std::to_string(std::hash<std::string>{}(unit.source_name + "|" + std::to_string(record.line_count)));
+    record.id = "legacy-" + std::to_string(std::hash<std::string>{}(record.source_path + "|" + record.source_hash));
+    return record;
+}
+
+std::string recovery_status_for(const xpp::SymbolMapping& mapping) {
+    if (mapping.status == xpp::MappingStatus::Mapped) {
+        return "implemented";
+    }
+    if (mapping.status == xpp::MappingStatus::Abstracted || mapping.status == xpp::MappingStatus::Stubbed) {
+        return mapping.family == xpp::SemanticFamily::SecurityBlocked ? "research-only" : "partial";
+    }
+    if (mapping.status == xpp::MappingStatus::Unsupported) {
+        return mapping.family == xpp::SemanticFamily::SecurityBlocked ? "blocked" : "missing";
+    }
+    return "missing";
+}
+
+std::vector<LegacySymbolCoverage> build_legacy_symbol_coverage(const xpp::MappingUnit& unit) {
+    const xpp::SymbolIndex index = xpp::build_symbol_index(unit);
+    static const std::vector<std::string> kLegacySymbols = {
+        "xProcessingCache",
+        "x.Define.Low",
+        "x.DisplayPriorityProcessingGate",
+        "x.DisplayFeedBackLoop",
+        "xLanguageEngine",
+        "x.determineOSLanguage",
+        "x.checkFile",
+        "x.Decompress",
+        "TernaryDecompression",
+        "Base4Decompression",
+        "xXOmni::Premit",
+        "xXOmni::RequestSecureKeyTunnel",
+        "xXOmni::LegacyScan",
+        "xXOmni::Detection",
+        "xXOmni::ScopeDefense",
+        "uAC_Traits",
+        "x.reGENx",
+        "uAC::OperationalUsageHabit",
+        "uAC::DeletionDescrepancies",
+        "uAC::SearchKeyContext",
+    };
+
+    std::vector<LegacySymbolCoverage> coverage;
+    for (const std::string& symbol : kLegacySymbols) {
+        const xpp::SymbolMapping* mapping = xpp::find_mapping(index, symbol);
+        LegacySymbolCoverage entry;
+        entry.symbol = symbol;
+        entry.source_origin = unit.source_name;
+        if (mapping == nullptr) {
+            entry.recovery_status = "missing";
+            entry.notes.push_back("No indexed mapping found in the parsed legacy source.");
+            coverage.push_back(std::move(entry));
+            continue;
+        }
+        entry.semantic_family = std::string(xpp::to_string(mapping->family));
+        entry.mapped_cpp_target = mapping->mapped_cpp_target;
+        entry.occurrence_count = mapping->occurrences.size();
+        if (!mapping->occurrences.empty()) {
+            entry.section_title = mapping->occurrences.front().section_title;
+        }
+        entry.recovery_status = recovery_status_for(*mapping);
+        if (mapping->status == xpp::MappingStatus::Abstracted) {
+            entry.notes.push_back("Mapped into a bounded runtime abstraction.");
+        } else if (mapping->status == xpp::MappingStatus::Stubbed) {
+            entry.notes.push_back("Present in current runtime seams but still shallow.");
+        } else if (mapping->status == xpp::MappingStatus::Unsupported) {
+            entry.notes.push_back("Tracked as blocked or research-only semantics.");
+        }
+        coverage.push_back(std::move(entry));
+    }
+    return coverage;
+}
+
+LegacyRecoveryStatus summarize_legacy_recovery(std::string_view source_label,
+                                               const std::vector<LegacySymbolCoverage>& coverage) {
+    LegacyRecoveryStatus status;
+    status.source_label = std::string(source_label);
+    for (const LegacySymbolCoverage& entry : coverage) {
+        if (entry.recovery_status == "implemented") {
+            ++status.implemented_count;
+        } else if (entry.recovery_status == "partial") {
+            ++status.partial_count;
+        } else if (entry.recovery_status == "research-only") {
+            ++status.research_only_count;
+        } else if (entry.recovery_status == "blocked") {
+            ++status.blocked_count;
+        } else {
+            ++status.missing_count;
+        }
+    }
+    status.summary_lines.push_back("implemented=" + std::to_string(status.implemented_count));
+    status.summary_lines.push_back("partial=" + std::to_string(status.partial_count));
+    status.summary_lines.push_back("missing=" + std::to_string(status.missing_count));
+    status.summary_lines.push_back("research-only=" + std::to_string(status.research_only_count));
+    status.summary_lines.push_back("blocked=" + std::to_string(status.blocked_count));
+    return status;
+}
+
 std::vector<std::string> allowlisted_command_assist_patterns() {
     return {
         "build <project-or-path>",
+        "recipe author <source-path>",
         "preflight <project-or-path>",
         "doctor <project-or-path>",
         "ingest <path-or-command>",
@@ -546,8 +1225,11 @@ std::vector<std::string> allowlisted_command_assist_patterns() {
         "incident <id>",
         "define <symbol-or-term>",
         "explain <command-or-symbol>",
+        "review <path-or-module>",
+        "patch-proposal <path-or-module>",
         "provider probe",
-        "memory <history|prefs|definitions|language|security|uac|cases|runs|tze>",
+        "persona mode <premise|cynic|professional|neutral>",
+        "memory <history|prefs|definitions|language|security|uac|cases|runs|tze|legacy|persona|operator|assist>",
         "tze latest",
         "tze replay <run-id|latest>",
         "tze chain <run-id|latest>",
@@ -596,12 +1278,84 @@ std::optional<std::string> find_safe_scan_target(std::string_view prompt) {
     const std::string lowered = lowercase_local(prompt);
     if (lowered.find("local /24") != std::string::npos ||
         lowered.find("local/24") != std::string::npos ||
+        lowered.find("/24 local") != std::string::npos ||
+        lowered.find("/24 locally") != std::string::npos ||
+        lowered.find("locally /24") != std::string::npos ||
+        lowered.find("localhost /24") != std::string::npos ||
         lowered.find("loopback /24") != std::string::npos ||
         lowered.find("loopback/24") != std::string::npos) {
         return std::string("127.0.0.0/24");
     }
     for (const std::string& token : split_whitespace_local(prompt)) {
         if (is_loopback_target(token) || is_loopback_subnet_target(token)) {
+            return token;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string trim_scan_target_token(std::string_view value) {
+    std::size_t start = 0;
+    while (start < value.size()) {
+        const char c = value[start];
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '[') {
+            break;
+        }
+        ++start;
+    }
+
+    std::size_t end = value.size();
+    while (end > start) {
+        const char c = value[end - 1];
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == ']' || c == '/' || c == '-') {
+            break;
+        }
+        --end;
+    }
+    return std::string(value.substr(start, end - start));
+}
+
+bool looks_like_network_target(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+
+    bool saw_digit = false;
+    bool saw_alpha = false;
+    bool saw_dot = false;
+    for (char c : value) {
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            saw_digit = true;
+            continue;
+        }
+        if (std::isalpha(static_cast<unsigned char>(c))) {
+            saw_alpha = true;
+            continue;
+        }
+        if (c == '.' || c == ':' || c == '/' || c == '-' || c == '[' || c == ']') {
+            if (c == '.') {
+                saw_dot = true;
+            }
+            continue;
+        }
+        return false;
+    }
+
+    return (saw_digit && (saw_dot || value.find(':') != std::string_view::npos ||
+                          value.find('/') != std::string_view::npos || value.find('-') != std::string_view::npos)) ||
+        (saw_alpha && saw_dot);
+}
+
+std::optional<std::string> find_explicit_unsafe_scan_target(std::string_view prompt) {
+    for (const std::string& raw_token : split_whitespace_local(prompt)) {
+        const std::string token = trim_scan_target_token(raw_token);
+        if (token.empty()) {
+            continue;
+        }
+        if (is_loopback_target(token) || is_loopback_subnet_target(token)) {
+            continue;
+        }
+        if (looks_like_network_target(token)) {
             return token;
         }
     }
@@ -747,8 +1501,17 @@ bool infer_safe_tool_invocation_from_prompt(std::string_view prompt,
     if (tool_name == "nmap") {
         const bool wants_scan = lowered.find("scan") != std::string::npos ||
             lowered.find("/24") != std::string::npos ||
-            lowered.find("subnet") != std::string::npos;
+            lowered.find("subnet") != std::string::npos ||
+            lowered.find("portscan") != std::string::npos;
         if (wants_scan) {
+            if (const std::optional<std::string> unsafe_target = find_explicit_unsafe_scan_target(prompt);
+                unsafe_target.has_value()) {
+                if (reason != nullptr) {
+                    *reason = "Guarded `nmap` scan requests are limited to loopback. Requested target `" +
+                        *unsafe_target + "` is outside the allowlist; use `127.0.0.1` or `127.0.0.0/24` explicitly.";
+                }
+                return false;
+            }
             const std::string target = find_safe_scan_target(prompt).value_or("127.0.0.1");
             if (is_loopback_subnet_target(target)) {
                 arguments = {"-sn", target};
@@ -815,6 +1578,14 @@ bool validate_command_assist_plan(const CommandAssistPlan& proposed,
             routed.project_reference = target;
             routed.execute_build = true;
         }
+    } else if (starts_with_local(lowered, "recipe author ")) {
+        const std::string target = set_target(14);
+        matched = !target.empty();
+        if (matched) {
+            assign_simple(RequestIntent::AuthorBuildRecipe, target);
+            routed.project_reference = target;
+            routed.build_source_path = target;
+        }
     } else if (starts_with_local(lowered, "preflight ")) {
         const std::string target = set_target(10);
         matched = !target.empty();
@@ -851,6 +1622,33 @@ bool validate_command_assist_plan(const CommandAssistPlan& proposed,
         if (matched) {
             assign_simple(RequestIntent::DecideAction, target);
             routed.analyst_reference = target;
+        }
+    } else if (starts_with_local(lowered, "defend diag ")) {
+        const std::string target = set_target(12);
+        matched = !target.empty();
+        if (matched) {
+            const std::size_t split = target.find(' ');
+            const std::string mode = split == std::string::npos ? target : target.substr(0, split);
+            const std::string detail = split == std::string::npos ? std::string{} : trim_local(target.substr(split + 1));
+            assign_simple(RequestIntent::DefenseDiagnostic, target);
+            routed.defense_mode = mode;
+            routed.defense_target = detail.empty() ? target : detail;
+            if (mode == "port") {
+                if (const std::optional<int> port = parse_port_text(detail); port.has_value()) {
+                    routed.defense_port = *port;
+                }
+            } else if (mode == "pid") {
+                if (const std::optional<int> pid = parse_port_text(detail); pid.has_value()) {
+                    routed.defense_pid = *pid;
+                }
+            }
+        }
+    } else if (starts_with_local(lowered, "persona mode ")) {
+        const std::string target = set_target(13);
+        matched = !target.empty();
+        if (matched) {
+            assign_simple(RequestIntent::SetPersonaMode, target);
+            routed.persona_mode = target;
         }
     } else if (lowered == "case list") {
         matched = true;
@@ -906,13 +1704,27 @@ bool validate_command_assist_plan(const CommandAssistPlan& proposed,
         if (matched) {
             assign_simple(RequestIntent::ExplainCommand, target);
         }
+    } else if (starts_with_local(lowered, "review ")) {
+        const std::string target = set_target(7);
+        matched = !target.empty();
+        if (matched) {
+            assign_simple(RequestIntent::ReviewModule, target);
+            routed.review_target = target;
+        }
+    } else if (starts_with_local(lowered, "patch-proposal ")) {
+        const std::string target = set_target(15);
+        matched = !target.empty();
+        if (matched) {
+            assign_simple(RequestIntent::PatchProposal, target);
+            routed.review_target = target;
+        }
     } else if (lowered == "provider probe") {
         matched = true;
         assign_simple(RequestIntent::ProbeProvider);
     } else if (starts_with_local(lowered, "memory ")) {
         const std::string view = set_target(7);
         static const std::vector<std::string> views = {
-            "history", "prefs", "definitions", "language", "security", "uac", "cases", "runs", "tze"
+            "history", "prefs", "definitions", "language", "security", "uac", "cases", "runs", "tze", "legacy", "persona", "operator", "assist"
         };
         matched = std::find(views.begin(), views.end(), view) != views.end();
         if (matched) {
@@ -1076,6 +1888,76 @@ bool validate_command_assist_plan(const CommandAssistPlan& proposed,
     return true;
 }
 
+bool validate_next_step_assist_plan(const NextStepAssistPlan& proposed,
+                                    NextStepAssistPlan* validated_plan,
+                                    std::string* reason) {
+    if (proposed.suggested_next_step.empty()) {
+        if (reason != nullptr) {
+            *reason = "Next-step assist did not return a suggested next step.";
+        }
+        return false;
+    }
+    if (proposed.confidence < 0.0 || proposed.confidence > 1.0) {
+        if (reason != nullptr) {
+            *reason = "Next-step assist confidence must be between 0.0 and 1.0.";
+        }
+        return false;
+    }
+    if (validated_plan != nullptr) {
+        *validated_plan = proposed;
+        validated_plan->validated = true;
+        validated_plan->status = "assist_used";
+        validated_plan->metadata.status = "assist_used";
+    }
+    if (reason != nullptr) {
+        *reason = "Validated guarded next-step assist plan.";
+    }
+    return true;
+}
+
+bool validate_case_summary_assist_plan(const CaseSummaryAssistPlan& proposed,
+                                       CaseSummaryAssistPlan* validated_plan,
+                                       std::string* reason) {
+    if (proposed.executive_summary.empty()) {
+        if (reason != nullptr) {
+            *reason = "Case-summary assist did not return an executive summary.";
+        }
+        return false;
+    }
+    if (proposed.confidence < 0.0 || proposed.confidence > 1.0) {
+        if (reason != nullptr) {
+            *reason = "Case-summary assist confidence must be between 0.0 and 1.0.";
+        }
+        return false;
+    }
+    if (validated_plan != nullptr) {
+        *validated_plan = proposed;
+        validated_plan->validated = true;
+        validated_plan->status = "assist_used";
+        validated_plan->metadata.status = "assist_used";
+    }
+    if (reason != nullptr) {
+        *reason = "Validated guarded case-summary assist plan.";
+    }
+    return true;
+}
+
+bool is_security_guidance_only_prompt(std::string_view prompt) {
+    const std::string lowered = lowercase_local(trim_local(prompt));
+    if (lowered.empty()) {
+        return false;
+    }
+    return lowered.find("am i secure") != std::string::npos ||
+        lowered.find("am i safe") != std::string::npos ||
+        lowered.find("tell me if i am secure") != std::string::npos ||
+        lowered.find("tell me if this machine is secure") != std::string::npos ||
+        lowered.find("is this machine secure") != std::string::npos ||
+        lowered.find("is this system secure") != std::string::npos ||
+        lowered.find("is this machine safe") != std::string::npos ||
+        lowered.find("what should i check before saying this machine is secure") != std::string::npos ||
+        (lowered.find("without running tools") != std::string::npos && lowered.find("secure") != std::string::npos);
+}
+
 }  // namespace
 
 SessionCoordinator::SessionCoordinator()
@@ -1085,6 +1967,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     ProcessingReport report;
     report.version_string = OMNIX_VERSION;
     report.raw_prompt = profile.raw_prompt;
+    report.source_map_path = profile.source_map_path;
     report.reasoning_provider = provider_ != nullptr ? std::string(provider_->id()) : "null";
     RequestProfile routed_profile = profile;
 
@@ -1099,10 +1982,12 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         memory.paths.definitions_path.string(),
         memory.paths.preferences_path.string(),
         memory.paths.projects_path.string(),
+        memory.paths.authored_recipes_path.string(),
         memory.paths.native_tools_path.string(),
         memory.paths.security_audits_path.string(),
         memory.paths.language_contexts_path.string(),
         memory.paths.uac_states_path.string(),
+        memory.paths.legacy_sources_path.string(),
         memory.paths.cases_path.string(),
     };
     report.source_preference_path = memory.paths.preferences_path.string() + ":source_preference_order";
@@ -1114,6 +1999,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     if (routed_profile.resolved_intent != RequestIntent::Unknown) {
         resolution.intent = routed_profile.resolved_intent;
     }
+    std::string blocked_tool_route_detail;
     if (resolution.intent == RequestIntent::Unknown && routed_profile.execute_build) {
         resolution.intent = RequestIntent::BuildProject;
     }
@@ -1142,6 +2028,45 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         resolution.intent = RequestIntent::ToolAction;
         resolution.primary_target = routed_profile.requested_tool_name;
     }
+    if (!routed_profile.packet_capture_mode.empty() || routed_profile.packet_port > 0 ||
+        !routed_profile.packet_pcap_path.empty()) {
+        resolution.intent = RequestIntent::PacketCapture;
+        if (resolution.primary_target.empty() && routed_profile.packet_port > 0) {
+            resolution.primary_target = std::to_string(routed_profile.packet_port);
+        }
+        if (resolution.memory_view.empty()) {
+            resolution.memory_view = routed_profile.packet_capture_mode;
+        }
+    }
+    if (!routed_profile.defense_mode.empty() || routed_profile.defense_port > 0 || routed_profile.defense_pid > 0) {
+        resolution.intent = RequestIntent::DefenseDiagnostic;
+        if (resolution.primary_target.empty()) {
+            resolution.primary_target = routed_profile.defense_target;
+        }
+        if (resolution.memory_view.empty()) {
+            resolution.memory_view = routed_profile.defense_mode;
+        }
+    }
+    if (resolution.intent == RequestIntent::DefenseDiagnostic && routed_profile.defense_mode.empty()) {
+        routed_profile.defense_mode = resolution.memory_view.empty() ? "summary" : resolution.memory_view;
+        routed_profile.defense_target = resolution.primary_target;
+    }
+    if (!routed_profile.persona_mode.empty()) {
+        resolution.intent = RequestIntent::SetPersonaMode;
+        resolution.primary_target = routed_profile.persona_mode;
+    }
+    if (routed_profile.definition_concept.empty() &&
+        resolution.intent == RequestIntent::GeneralDefinitionQuery &&
+        !resolution.primary_target.empty()) {
+        routed_profile.definition_concept = resolution.primary_target;
+    }
+    if (routed_profile.definition_domain_hint.empty() && !resolution.definition_domain_hint.empty()) {
+        routed_profile.definition_domain_hint = resolution.definition_domain_hint;
+    }
+    if (routed_profile.definition_comparison_rationale.empty() && !resolution.comparison_rationale.empty()) {
+        routed_profile.definition_comparison_rationale = resolution.comparison_rationale;
+    }
+    routed_profile.resolved_intent = resolution.intent;
 
     if (resolution.intent == RequestIntent::ToolAction &&
         routed_profile.tool_mode == ToolCommandMode::None &&
@@ -1158,12 +2083,15 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
             routed_profile.requested_tool_name = tool_name;
             routed_profile.tool_arguments = tool_arguments;
             resolution.primary_target = tool_name;
+        } else if (!tool_route_detail.empty()) {
+            blocked_tool_route_detail = tool_route_detail;
         }
     }
 
     const bool command_assist_eligible =
         routed_profile.assist_requested &&
         (resolution.intent == RequestIntent::Unknown || resolution.confidence < 0.8) &&
+        !is_security_guidance_only_prompt(routed_profile.raw_prompt) &&
         routed_profile.tool_mode == ToolCommandMode::None &&
         routed_profile.requested_tool_name.empty() &&
         routed_profile.project_reference.empty() &&
@@ -1208,7 +2136,10 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
 
     std::string instruction_slot = routed_profile.instruction_slot;
     if (instruction_slot.empty()) {
-        instruction_slot = resolution.intent == RequestIntent::BuildProject ? "aZ::1" : "aZ::99";
+        instruction_slot =
+            (resolution.intent == RequestIntent::BuildProject || resolution.intent == RequestIntent::AuthorBuildRecipe)
+            ? "aZ::1"
+            : "aZ::99";
     }
     report.decoded_instruction = knowledge_.decode_instruction(instruction_slot);
     const std::string command_label = command_label_for(resolution.intent, report.decoded_instruction);
@@ -1250,6 +2181,27 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         {command_label, report.resolved_intent},
         source_stage_index));
 
+    report.uac_state = PreprocessorRuntime::resolve_uac_state(
+        routed_profile.raw_prompt.empty() ? command_label : routed_profile.raw_prompt,
+        memory,
+        report.query_session.has_value() ? &*report.query_session : nullptr);
+    report.uac_state->instruction_family_hint = instruction_family_hint_for(resolution.intent);
+    push_unique(report.memory_writes, memory.paths.uac_states_path.string());
+    report.storage_writes.push_back("x.Store(uac.epoch -> " + report.uac_state->epoch_marker + ")");
+    report.storage_writes.push_back("x.Store(uac.family -> " + report.uac_state->instruction_family_hint + ")");
+    report.tze_stages.push_back(make_stage_record(
+        "x.Preprocessor",
+        "Normalize the prompt and prepare bounded uAC preprocessor state",
+        "PreprocessorRuntime",
+        "ok",
+        "Prepared normalized prompt, token set, instruction-family hint, and bounded uAC recovery state.",
+        {report.uac_state->normalized_prompt},
+        {report.uac_state->instruction_family_hint,
+         "tokens=" + std::to_string(report.uac_state->query_tokens.size()),
+         report.uac_state->epoch_marker,
+         report.uac_state->key_budget_value},
+        source_stage_index));
+
     std::vector<std::string> prioritized_sources;
     for (const KnowledgeReference& reference : report.references) {
         prioritized_sources.push_back(reference.source + ":" + std::to_string(reference.priority));
@@ -1276,17 +2228,59 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         {command_label},
         report.feedback_loop,
         source_stage_index));
+    std::string provider_stage_status = "deterministic_only";
+    std::string provider_stage_detail =
+        "Provider `" + std::string(provider_->id()) + "` is inactive; OmniX remains deterministic-only.";
+    std::vector<std::string> provider_stage_outputs = {"assist_bypassed"};
+    std::optional<ProviderProbeReport> provider_gate_probe;
+    if (provider_->configured() && (routed_profile.assist_requested || resolution.intent == RequestIntent::ProbeProvider)) {
+        provider_gate_probe = provider_->probe();
+    }
+    if (provider_->configured()) {
+        if (routed_profile.assist_requested) {
+            if (provider_gate_probe.has_value() && provider_gate_probe->status == "ready") {
+                provider_stage_status = "assist_ready";
+                provider_stage_detail =
+                    "Provider `" + std::string(provider_->id()) +
+                    "` is reachable and guarded assist is enabled for this request.";
+                provider_stage_outputs = {"assist_ready"};
+            } else if (provider_gate_probe.has_value()) {
+                provider_stage_status = "assist_unavailable";
+                provider_stage_detail =
+                    "Provider `" + std::string(provider_->id()) + "` is selected, but guarded assist is unavailable for this request: " +
+                    provider_gate_probe->summary;
+                provider_stage_outputs = {"deterministic_fallback"};
+            } else {
+                provider_stage_status = "assist_unavailable";
+                provider_stage_detail =
+                    "Provider `" + std::string(provider_->id()) +
+                    "` is selected, but guarded assist is unavailable for this request.";
+                provider_stage_outputs = {"deterministic_fallback"};
+            }
+        } else if (resolution.intent == RequestIntent::ProbeProvider &&
+                   provider_gate_probe.has_value() &&
+                   provider_gate_probe->status == "ready") {
+            provider_stage_status = "assist_available";
+            provider_stage_detail =
+                "Provider `" + std::string(provider_->id()) +
+                "` is reachable and guarded assist is available when an assist-enabled command is used.";
+            provider_stage_outputs = {"assist_available"};
+        } else {
+            provider_stage_status = "configured_idle";
+            provider_stage_detail =
+                "Provider `" + std::string(provider_->id()) +
+                "` is selected, but assist is off for this request.";
+            provider_stage_outputs = {"assist_idle"};
+        }
+    }
     report.tze_stages.push_back({
         "x.Assist.Provider",
         "Reasoning provider gate",
         "ReasoningProvider",
-        provider_->configured() ? "configured_dormant" : "deterministic_only",
-        provider_->configured()
-            ? "Provider `" + std::string(provider_->id()) +
-                "` is configured for probe-only use; OmniX remains deterministic-only until assist is explicitly enabled."
-            : "Provider `" + std::string(provider_->id()) + "` is inactive; OmniX remains deterministic-only.",
+        provider_stage_status,
+        provider_stage_detail,
         {std::string(provider_->id())},
-        {provider_->configured() ? "assist_probe_only" : "assist_bypassed"},
+        provider_stage_outputs,
     });
     if (report.command_assist_plan.has_value()) {
         report.tze_stages.push_back({
@@ -1317,6 +2311,44 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     report.toolchain = builder_.probe_modules();
     report.security = security_.verify(routed_profile);
 
+    const auto try_openai_freeform = [&](const DefinitionAnswer& answer, std::string_view fallback_detail) {
+        if (answer.found || std::string(provider_->id()) != "openai" ||
+            !provider_gate_probe.has_value() || provider_gate_probe->status != "ready") {
+            return false;
+        }
+        std::optional<FreeformAssistAnswer> freeform =
+            provider_->resolve_freeform(routed_profile.raw_prompt.empty() ? resolution.primary_target : routed_profile.raw_prompt);
+        if (!freeform.has_value()) {
+            report.tze_stages.push_back({
+                "x.Assist.Freeform",
+                "Ask OpenAI for a guarded freeform answer after local resolution misses",
+                "ReasoningProvider",
+                "assist_freeform_unavailable",
+                "OpenAI freeform fallback did not return a validated answer.",
+                {routed_profile.raw_prompt},
+                {std::string(fallback_detail)},
+            });
+            return false;
+        }
+        report.assist_status = "assist_freeform_used";
+        report.freeform_assist_answer = freeform;
+        report.answer_status = "assist_freeform";
+        report.answer_explanation = render_freeform_assist_text(*freeform);
+        report.next_action = freeform->suggested_commands.empty()
+            ? "Review the answer and rerun with an explicit OmniX command if local evidence is needed."
+            : "Run one suggested OmniX command explicitly if you want local evidence.";
+        report.tze_stages.push_back({
+            "x.Assist.Freeform",
+            "Ask OpenAI for a guarded freeform answer after local resolution misses",
+            "ReasoningProvider",
+            "assist_freeform_used",
+            "OpenAI returned a validated freeform answer after local memory, definitions, command routing, and tool planning missed.",
+            {routed_profile.raw_prompt},
+            freeform->used_context.empty() ? std::vector<std::string>{"openai_freeform"} : freeform->used_context,
+        });
+        return true;
+    };
+
     std::string dispatch_module = dispatch_module_for(resolution.intent);
 
     if (resolution.intent == RequestIntent::ProbeProvider) {
@@ -1326,19 +2358,35 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
             : (report.provider_probe_report->status == "inactive" ? "provider_inactive" : "provider_probe_failed");
         report.answer_explanation = report.provider_probe_report->summary;
         if (report.provider_probe_report->status == "ready") {
-            report.next_action = "Provider readiness is confirmed. OmniX will still remain deterministic-only until assistive execution is explicitly enabled.";
+            report.next_action =
+                "Provider readiness is confirmed. Use `omnix ask <prompt> --assist`, `omnix shell --assist`, or `/assist on` in the shell to enable guarded assist.";
         } else if (report.provider_probe_report->status == "inactive") {
             report.next_action = "Set `OMNIX_REASONING_PROVIDER=ollama` and rerun `omnix provider probe` when you want to assess a local model.";
         } else if (report.provider_probe_report->status == "config_incomplete") {
-            report.next_action = "Set `OMNIX_OLLAMA_MODEL` and rerun `omnix provider probe`.";
+            report.next_action = report.provider_probe_report->provider_id == "openai"
+                ? "Set `OPENAI_API_KEY` / `OMNIX_OPENAI_API_KEY` and `OPENAI_MODEL` / `OMNIX_OPENAI_MODEL`, then rerun `omnix provider probe`."
+                : "Set `OMNIX_OLLAMA_MODEL` and rerun `omnix provider probe`.";
         } else if (report.provider_probe_report->status == "unsupported_provider") {
-            report.next_action = "Use `OMNIX_REASONING_PROVIDER=ollama` or unset the provider selection.";
+            report.next_action = "Use `OMNIX_REASONING_PROVIDER=ollama`, `OMNIX_REASONING_PROVIDER=openai`, or unset the provider selection.";
         } else if (report.provider_probe_report->status == "invalid_config") {
-            report.next_action = "Fix `OMNIX_OLLAMA_BASE_URL` and rerun `omnix provider probe`.";
+            report.next_action = report.provider_probe_report->provider_id == "openai"
+                ? "Fix `OMNIX_OPENAI_BASE_URL` or `OPENAI_BASE_URL` and rerun `omnix provider probe`."
+                : "Fix `OMNIX_OLLAMA_BASE_URL` and rerun `omnix provider probe`.";
         } else if (report.provider_probe_report->status == "model_missing") {
-            report.next_action = "Pull or load the requested Ollama model, then rerun `omnix provider probe`.";
+            report.next_action = report.provider_probe_report->provider_id == "openai"
+                ? "Choose an OpenAI model available to this API key, then rerun `omnix provider probe`."
+                : (report.provider_probe_report->model == "deepnimsec-omni:latest"
+                    ? "Run `./scripts/omnix_deepnimsec.sh --refresh-model`, then rerun `omnix provider probe`."
+                    : "Pull or load the requested Ollama model, then rerun `omnix provider probe`.");
+        } else if (report.provider_probe_report->status == "model_unusable") {
+            report.next_action = report.provider_probe_report->provider_id == "ollama" &&
+                    report.provider_probe_report->model == "deepnimsec-omni:latest"
+                ? "Run `./scripts/omnix_deepnimsec.sh --refresh-model`, then rerun `omnix provider probe`."
+                : "Rebuild or reload the requested model, then rerun `omnix provider probe`.";
         } else {
-            report.next_action = "Start Ollama locally or correct the provider configuration, then rerun `omnix provider probe`.";
+            report.next_action = report.provider_probe_report->provider_id == "openai"
+                ? "Verify the OpenAI API key, optional project/organization settings, and network access, then rerun `omnix provider probe`."
+                : "Start Ollama locally or correct the provider configuration, then rerun `omnix provider probe`.";
         }
     } else if (resolution.intent == RequestIntent::InspectToolchain) {
         report.answer_status = "toolchain";
@@ -1420,7 +2468,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
                     report.answer_explanation = report.doctor_report->summary;
                     report.next_action = "Use `" + native_tool_verify_command(canonical_tool) + "` or run `omnix build " +
                         tool_alias->canonical_name + "` only when you want the managed source build.";
-                } else if (report.preflight_report->ready) {
+                } else if (report.preflight_report->ready && report.doctor_report->status == "doctor_ready") {
                     report.doctor_report->status = "build_ready";
                     report.doctor_report->summary = "Native `" + canonical_tool +
                         "` was not found, but the managed source-build recipe is ready.";
@@ -1431,7 +2479,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
                 } else {
                     report.doctor_report->status = "doctor_attention_needed";
                     report.doctor_report->summary = "Native `" + canonical_tool +
-                        "` was not found and the source-build recipe still has unmet prerequisites.";
+                        "` was not found and the managed source-build doctor still has attention items.";
                     report.answer_status = report.doctor_report->status;
                     report.answer_explanation = report.doctor_report->summary;
                     report.next_action = "Use the package guidance below, then rerun `omnix doctor " + canonical_tool +
@@ -1475,8 +2523,138 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
             ? "Run `omnix build <project>` to execute the selected portable recipe."
             : "Use the doctor guidance to install the missing dependencies, then rerun preflight.";
         }
+    } else if (!blocked_tool_route_detail.empty()) {
+        report.answer_status = "guardrail_blocked";
+        report.answer_explanation = blocked_tool_route_detail;
+        report.next_action =
+            "Use `Run NMAP`, `Run NMAP Scan`, or `Run NMAP with a local /24 scan` when you want a guarded local probe.";
+    } else if (resolution.intent == RequestIntent::NeuralMath) {
+        NeuralMathEngine neural_math;
+        const std::string mode = routed_profile.neural_math_mode.empty() ? "perceptron" : routed_profile.neural_math_mode;
+        if (mode != "perceptron") {
+            NeuralMathReport invalid;
+            invalid.status = "neural_math_invalid_mode";
+            invalid.summary = "Neural math phase 1 supports only `perceptron`.";
+            invalid.model_type = mode;
+            invalid.dataset = routed_profile.neural_dataset;
+            report.neural_math_report = invalid;
+        } else {
+            report.neural_math_report = neural_math.run_perceptron(routed_profile.neural_dataset,
+                                                                   routed_profile.neural_epochs,
+                                                                   routed_profile.neural_learning_rate);
+        }
+        report.answer_status = report.neural_math_report->status;
+        report.answer_explanation = report.neural_math_report->summary;
+        report.next_action = report.answer_status == "not_linearly_separable"
+            ? "Use a hidden-layer MLP simulation in the next NeuralNetwork phase; XOR is the teaching case."
+            : "Run `omnix nn math perceptron --dataset xor` to see why the next phase needs an MLP.";
+        report.storage_writes.push_back("x.Store(neural.math -> " + report.neural_math_report->dataset + ")");
+        report.tze_stages.push_back({
+            "x.Neural.Math",
+            "Simulate local neural-network math without external ML dependencies",
+            "NeuralMathEngine",
+            report.answer_status,
+            report.answer_explanation,
+            {report.neural_math_report->model_type,
+             report.neural_math_report->dataset,
+             "epochs=" + std::to_string(report.neural_math_report->epochs_requested),
+             "learning_rate=" + std::to_string(report.neural_math_report->learning_rate)},
+            report.neural_math_report->math_trace,
+        });
+    } else if (resolution.intent == RequestIntent::NeuralRoute) {
+        NeuralSignalRouter router;
+        if (routed_profile.neural_route_mode != "tview") {
+            NeuralRouteReport invalid;
+            invalid.status = "neural_route_invalid_mode";
+            invalid.summary = "Neural routing phase 1 supports only `nn route tview <file.jsonl>`.";
+            invalid.input_path = routed_profile.neural_route_input_path;
+            report.neural_route_report = invalid;
+        } else {
+            report.neural_route_report = router.route_tview_jsonl(routed_profile.neural_route_input_path);
+        }
+        if (report.neural_route_report.has_value() && !routed_profile.neural_route_output_path.empty() &&
+            report.neural_route_report->status == "neural_route_complete") {
+            std::string export_error;
+            if (router.export_jsonl(*report.neural_route_report, routed_profile.neural_route_output_path, &export_error)) {
+                report.neural_route_report->artifact_path = routed_profile.neural_route_output_path;
+                report.storage_writes.push_back("x.Store(neural.route.jsonl -> " + routed_profile.neural_route_output_path + ")");
+            } else {
+                report.neural_route_report->warnings.push_back(export_error);
+            }
+        }
+        report.answer_status = report.neural_route_report->status;
+        report.answer_explanation = report.neural_route_report->summary;
+        report.next_action = report.answer_status == "neural_route_complete"
+            ? "Backtrace the weighted factors with `omnix tze replay latest` or `omnix tze report latest`."
+            : "Provide a TView JSONL file from `omnix tview ... --out file.jsonl`.";
+        report.storage_writes.push_back("x.Store(neural.route -> " + report.answer_status + ")");
+        std::vector<std::string> outputs;
+        if (!report.neural_route_report->predictions.empty()) {
+            const NeuralRoutePrediction& top = report.neural_route_report->predictions.front();
+            outputs.push_back(top.label + " confidence=" + std::to_string(top.confidence));
+            for (const MathAttribution& attribution : top.attributions) {
+                outputs.push_back(attribution.name + "=" + std::to_string(attribution.contribution));
+            }
+        }
+        report.tze_stages.push_back({
+            "x.Neural.SignalRouter",
+            "Route TView evidence with local fixed-weight neural-style scoring",
+            "NeuralSignalRouter",
+            report.answer_status,
+            report.answer_explanation,
+            {routed_profile.neural_route_input_path, "mode=tview"},
+            outputs,
+        });
+    } else if (resolution.intent == RequestIntent::PacketCapture) {
+        PacketCaptureRequest packet_request = packet_request_from_profile(routed_profile, resolution);
+        if (packet_request.mode == "doctor") {
+            report.packet_capture_report = packet_capture_.doctor(packet_request);
+        } else if (packet_request.mode == "pcap") {
+            report.packet_capture_report = packet_capture_.read_pcap(packet_request);
+        } else if (packet_request.port <= 0) {
+            PacketCaptureReport invalid;
+            invalid.mode = packet_request.mode;
+            invalid.status = "capture_invalid_request";
+            invalid.summary = "`omnix tview port <port>` requires a TCP port between 1 and 65535.";
+            report.packet_capture_report = std::move(invalid);
+        } else {
+            report.packet_capture_report = packet_capture_.capture(packet_request);
+        }
+        if (report.packet_capture_report.has_value() && !packet_request.export_path.empty() &&
+            (report.packet_capture_report->status == "capture_complete" ||
+             report.packet_capture_report->status == "capture_empty")) {
+            std::string export_error;
+            if (packet_capture_.export_jsonl(*report.packet_capture_report, packet_request.export_path, &export_error)) {
+                report.packet_capture_report->export_path = packet_request.export_path;
+                report.storage_writes.push_back("x.Store(packet.jsonl -> " + packet_request.export_path + ")");
+            } else {
+                report.packet_capture_report->warnings.push_back(export_error);
+            }
+        }
+        report.answer_status = report.packet_capture_report->status;
+        report.answer_explanation = report.packet_capture_report->summary;
+        report.next_action = report.packet_capture_report->status == "capture_attention_needed" ||
+                report.packet_capture_report->status == "capture_blocked"
+            ? "Run `omnix tview doctor` for manual packet-capture permission guidance."
+            : "Use `omnix tview pcap <file> --port <port>` for deterministic offline packet review.";
+        report.storage_writes.push_back("x.Store(packet.capture -> " + report.answer_status + ")");
+    } else if (resolution.intent == RequestIntent::DefenseDiagnostic) {
+        const DefenseDiagnosticRequest defense_request = defense_request_from_profile(routed_profile, resolution);
+        report.defense_diagnostic_report = run_defense_diagnostic(defense_request);
+        report.answer_status = report.defense_diagnostic_report->status;
+        report.answer_explanation = report.defense_diagnostic_report->summary;
+        report.next_action = "Use the proposed actions manually only after validating the evidence.";
+        report.storage_writes.push_back("x.Store(defense.diagnostic -> " + report.answer_status + ")");
     } else if (resolution.intent == RequestIntent::ToolAction) {
         tool_flow_.run(routed_profile, memory, report, builder_, tools_, memory_);
+        if (report.tool_invocation_report.has_value() &&
+            report.tool_invocation_report->logical_name == "nmap") {
+            if (const std::optional<int> open_port = first_open_tcp_port(*report.tool_invocation_report);
+                open_port.has_value()) {
+                report.next_action = "Investigate the open loopback TCP service with `omnix tview port " +
+                    std::to_string(*open_port) + "`.";
+            }
+        }
     } else if (resolution.intent == RequestIntent::ReplayTzeRun) {
         const std::string run_id = !routed_profile.tze_run_reference.empty() ? routed_profile.tze_run_reference : resolution.primary_target;
         const std::string resolved_id = memory_.resolve_tze_run_id(memory, run_id);
@@ -1717,14 +2895,150 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
             push_unique(report.memory_writes, artifact);
         }
         report.storage_writes.push_back("x.Store(incident.report -> " + incident_ref + ")");
+    } else if (resolution.intent == RequestIntent::ReviewModule) {
+        const std::string target = !routed_profile.review_target.empty() ? routed_profile.review_target : resolution.primary_target;
+        report.review_artifact = self_review_.review_target(target, memory, std::filesystem::current_path());
+        report.answer_status = report.review_artifact->status == "reviewed" ? "review_ready" : report.review_artifact->status;
+        report.answer_explanation = report.review_artifact->summary;
+        report.next_action = report.review_artifact->status == "reviewed"
+            ? "Run `omnix patch-proposal " + target + "` to generate a guarded patch proposal artifact."
+            : "Check the target path or module name and retry the review.";
+        if (!report.review_artifact->artifact_path.empty()) {
+            report.produced_artifact = report.review_artifact->artifact_path;
+            push_unique(report.memory_writes, report.review_artifact->artifact_path);
+        }
+        report.storage_writes.push_back("x.Store(review -> " + target + ")");
+    } else if (resolution.intent == RequestIntent::PatchProposal) {
+        const std::string target = !routed_profile.review_target.empty() ? routed_profile.review_target : resolution.primary_target;
+        const ReviewArtifact review = self_review_.review_target(target, memory, std::filesystem::current_path());
+        report.review_artifact = review;
+        report.patch_proposal_artifact = self_review_.propose_patch(target, memory, review, std::filesystem::current_path());
+        report.answer_status = report.patch_proposal_artifact->status == "proposed" ? "patch_proposal_ready" : report.patch_proposal_artifact->status;
+        report.answer_explanation = report.patch_proposal_artifact->summary;
+        report.next_action = report.patch_proposal_artifact->status == "proposed"
+            ? "Review the proposal artifact and apply changes manually through a guarded edit flow."
+            : "Resolve the review target first, then rerun the patch proposal.";
+        if (!report.patch_proposal_artifact->artifact_path.empty()) {
+            report.produced_artifact = report.patch_proposal_artifact->artifact_path;
+            push_unique(report.memory_writes, report.patch_proposal_artifact->artifact_path);
+        }
+        report.storage_writes.push_back("x.Store(patch-proposal -> " + target + ")");
     } else if (resolution.intent == RequestIntent::ShowMemory) {
         const std::string view = resolution.memory_view.empty() ? "history" : resolution.memory_view;
         report.answer_status = "memory";
         report.answer_explanation = memory_.render_view(memory, view);
         report.next_action = "Run `omnix ask` or `omnix define` to add more learning data.";
-    } else if (resolution.intent == RequestIntent::DefineSymbol || resolution.intent == RequestIntent::ExplainCommand) {
+    } else if (resolution.intent == RequestIntent::SetPersonaMode) {
+        const std::string requested_mode = !routed_profile.persona_mode.empty()
+            ? routed_profile.persona_mode
+            : resolution.primary_target;
+        const std::string canonical_mode = canonical_persona_mode(requested_mode);
+        if (canonical_mode.empty()) {
+            report.answer_status = "persona_mode_unknown";
+            report.answer_explanation =
+                "Unknown persona mode `" + requested_mode + "`. Available modes: premise, cynic, professional, neutral.";
+            report.next_action = "Run `omnix persona mode premise`, `cynic`, `professional`, or `neutral`.";
+        } else {
+            OperatorPersonaRecord persona = memory.operator_persona.value_or(OperatorPersonaRecord{});
+            apply_persona_mode_defaults(persona, canonical_mode);
+            persona.local_username = persona.local_username.empty() ? local_operator_identity() : persona.local_username;
+            persona.host_identifier = persona.host_identifier.empty() ? local_host_identity() : persona.host_identifier;
+            persona.last_source_map = routed_profile.source_map_path;
+            persona.last_memory_root = routed_profile.memory_root_path.empty() ? "(default)" : routed_profile.memory_root_path;
+            memory_.remember_operator_persona(memory, persona);
+            report.answer_status = "persona_mode_set";
+            report.answer_explanation = persona_mode_readout(persona);
+            report.next_action = "Run `omnix memory persona` or ask `Who am I?` to inspect the active mode.";
+            push_unique(report.memory_writes, memory.paths.preferences_path.string());
+            report.storage_writes.push_back("x.Store(persona.mode -> " + persona.persona_mode + ")");
+        }
+    } else if (resolution.intent == RequestIntent::Conversation) {
+        report.answer_status = "ok";
+        if (is_context_summary_prompt(routed_profile.raw_prompt)) {
+            report.answer_explanation = render_context_summary(memory);
+            report.next_action = memory.tze_runs.empty()
+                ? "Run `omnix ask \"What is the Sun\"`, `secure my system`, or `Run NMAP` to create local context."
+                : "Use `omnix tze replay latest` or rerun the last activity with a narrower prompt.";
+        } else if (is_greeting_prompt(routed_profile.raw_prompt)) {
+            const std::string prefix = memory.operator_persona.has_value() && !memory.operator_persona->persona_mode.empty()
+                ? "[" + memory.operator_persona->persona_mode + " mode] "
+                : "";
+            report.answer_explanation =
+                prefix + "Hello. I’m OmniX, your local TZE-native analyst and orchestration shell. "
+                "I can inspect this machine, analyze evidence, replay TZE runs, and route guarded native operations.";
+            report.next_action =
+                "Try `who are you`, `secure my system`, `Run NMAP`, or `omnix memory history`.";
+        } else if (is_operator_identity_prompt(routed_profile.raw_prompt)) {
+            if (memory.operator_persona.has_value() &&
+                (!memory.operator_persona->preferred_label.empty() ||
+                 !memory.operator_persona->persona_mode.empty())) {
+                const OperatorPersonaRecord& persona = *memory.operator_persona;
+                std::ostringstream who;
+                who << "You are " << (persona.preferred_label.empty() ? "the local operator" : persona.preferred_label);
+                if (!persona.role_label.empty()) {
+                    who << ", acting as " << persona.role_label;
+                }
+                who << ".";
+                if (!persona.self_description.empty()) {
+                    who << " " << persona.self_description;
+                }
+                if (!persona.local_username.empty()) {
+                    who << " Local user: " << persona.local_username << ".";
+                }
+                if (!persona.host_identifier.empty()) {
+                    who << " Host: " << persona.host_identifier << ".";
+                }
+                if (!persona.persona_mode.empty()) {
+                    who << " Active mode: " << persona.persona_mode << ".";
+                }
+                if (!persona.tone_profile.empty()) {
+                    who << " Tone: " << persona.tone_profile << ".";
+                }
+                if (!persona.safety_posture.empty()) {
+                    who << " Safety posture: " << persona.safety_posture << ".";
+                }
+                report.answer_explanation = who.str();
+            } else {
+                report.answer_explanation =
+                    "I do not have a richer stored operator persona yet. "
+                    "Right now I can identify you as local user `" + local_operator_identity() +
+                    "` on host `" + local_host_identity() + "`.";
+            }
+            report.next_action = "Use `omnix memory persona` to inspect the current operator/persona view.";
+        } else if (is_identity_prompt(routed_profile.raw_prompt)) {
+            // Intentionally aspirational readout kept as a manual Turning Test marker.
+            report.answer_explanation =
+                "I’m OmniX: a deterministic analyst, case manager, and TZE orchestration engine with guarded local assist. "
+                "I can ingest logs, analyze cases, explain runs, route safe tools like Nmap, and keep a replayable memory of what we do.";
+            report.next_action =
+                "Try `secure my system`, `Run NMAP with a local /24 scan`, or `define xProcessingCache`.";
+        } else {
+            report.answer_explanation =
+                "I’m here and ready. Ask for a system check, a case review, a TZE replay, or a guarded local tool run.";
+            report.next_action =
+                "Try `secure my system`, `Run NMAP`, or `who are you`.";
+        }
+        if (!routed_profile.shell_correction_note.empty()) {
+            report.answer_explanation += "\nNormalization: " + routed_profile.shell_correction_note;
+        }
+    } else if (resolution.intent == RequestIntent::GeneralDefinitionQuery ||
+               resolution.intent == RequestIntent::DefineSymbol ||
+               resolution.intent == RequestIntent::ExplainCommand) {
         const std::string target = resolution.primary_target.empty() ? routed_profile.raw_prompt : resolution.primary_target;
         definition_flow_.run(routed_profile, target, memory, report, definitions_, memory_);
+        if (routed_profile.assist_requested &&
+            report.definition_answer.has_value() &&
+            !report.definition_answer->found &&
+            (report.answer_status == "unknown_query" || report.answer_status == "clarify_needed")) {
+            try_openai_freeform(*report.definition_answer, "definition_unresolved");
+        }
+    } else if (resolution.intent == RequestIntent::AuthorBuildRecipe) {
+        RequestProfile author_profile = routed_profile;
+        author_profile.project_reference = !routed_profile.project_reference.empty()
+            ? routed_profile.project_reference
+            : resolution.primary_target;
+        author_profile.build_source_path = author_profile.project_reference;
+        recipe_authoring_.run(author_profile, memory, report, builder_, cache_, memory_, *provider_, security_);
     } else if (resolution.intent == RequestIntent::BuildProject || routed_profile.execute_build) {
         RequestProfile build_profile = routed_profile;
         build_profile.raw_prompt = routed_profile.raw_prompt;
@@ -1734,6 +3048,18 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         build_profile.execute_build = true;
         build_flow_.run(build_profile, memory, report, builder_, cache_, knowledge_, memory_, tools_, aliases_, projects_, *provider_, security_);
     } else if (resolution.intent == RequestIntent::Unknown && routed_profile.assist_requested) {
+        if (is_security_guidance_only_prompt(routed_profile.raw_prompt)) {
+            const DefinitionAnswer answer = definitions_.lookup(routed_profile.raw_prompt,
+                                                                routed_profile.source_map_path,
+                                                                memory);
+            report.definition_answer = answer;
+            if (!try_openai_freeform(answer, "security_guidance_only")) {
+                report.answer_status = "unknown_intent";
+                report.answer_explanation = answer.summary;
+                report.next_action =
+                    "Run explicit read-only diagnostics such as `omnix defend diag cpu`, `omnix defend diag memory`, or `omnix defend diag port <port>`.";
+            }
+        } else {
         const std::vector<std::string> allowlisted_tools = allowlisted_tool_assist_actions();
         std::optional<ToolAssistPlan> proposed_plan =
             provider_->propose_tool_action(routed_profile.raw_prompt, allowlisted_tools);
@@ -1800,10 +3126,12 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
                                                                     routed_profile.source_map_path,
                                                                     memory);
                 report.definition_answer = answer;
-                report.answer_status = "unknown_intent";
-                report.answer_explanation = answer.summary +
-                    "\nGuarded assist rejected the proposed tool plan: " + validation_detail;
-                report.next_action = "Try a more specific prompt or run one of the allowlisted tools directly.";
+                if (!try_openai_freeform(answer, validation_detail)) {
+                    report.answer_status = "unknown_intent";
+                    report.answer_explanation = answer.summary +
+                        "\nGuarded assist rejected the proposed tool plan: " + validation_detail;
+                    report.next_action = "Try a more specific prompt or run one of the allowlisted tools directly.";
+                }
             }
         } else {
             report.assist_status = "assist_bypassed";
@@ -1820,9 +3148,12 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
                                                                 routed_profile.source_map_path,
                                                                 memory);
             report.definition_answer = answer;
-            report.answer_status = "unknown_intent";
-            report.answer_explanation = answer.summary;
-            report.next_action = "Try a more specific prompt or run a tool command explicitly.";
+            if (!try_openai_freeform(answer, "tool_plan_unavailable")) {
+                report.answer_status = "unknown_intent";
+                report.answer_explanation = answer.summary;
+                report.next_action = "Try a more specific prompt or run a tool command explicitly.";
+            }
+        }
         }
     } else {
         const DefinitionAnswer answer = definitions_.lookup(routed_profile.raw_prompt.empty() ? resolution.primary_target : routed_profile.raw_prompt,
@@ -1883,6 +3214,79 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         });
     }
 
+    if (routed_profile.assist_requested &&
+        (resolution.intent == RequestIntent::InspectIncident || resolution.intent == RequestIntent::ReportIncident ||
+         resolution.intent == RequestIntent::InspectCase)) {
+        const std::string target_label = resolution.intent == RequestIntent::InspectIncident
+            ? (!routed_profile.incident_reference.empty() ? routed_profile.incident_reference : resolution.primary_target)
+            : (!routed_profile.analyst_reference.empty() ? routed_profile.analyst_reference : resolution.primary_target);
+        const std::optional<CaseSummaryAssistPlan> proposed = provider_->propose_case_summary(target_label, report.answer_explanation);
+        if (proposed.has_value()) {
+            CaseSummaryAssistPlan validated;
+            std::string validation_detail;
+            if (validate_case_summary_assist_plan(*proposed, &validated, &validation_detail)) {
+                report.assist_status = "assist_used";
+                report.case_summary_assist_plan = validated;
+                report.answer_explanation += render_case_summary_annotation_text(validated);
+                if (!report.produced_artifact.empty()) {
+                    std::ofstream output(report.produced_artifact, std::ios::app);
+                    output << "\n\n## Guarded Assist Summary\n\n";
+                    if (!validated.summary_title.empty()) {
+                        output << "- Title: " << validated.summary_title << "\n";
+                    }
+                    output << "- Executive summary: " << validated.executive_summary << "\n";
+                    for (const std::string& highlight : validated.highlights) {
+                        output << "- Highlight: " << highlight << "\n";
+                    }
+                    push_unique(report.memory_writes, report.produced_artifact);
+                }
+                report.tze_stages.push_back({
+                    "x.Assist.CaseSummary",
+                    "Append a validated case or incident summary",
+                    "ReasoningProvider",
+                    "assist_used",
+                    validation_detail,
+                    {target_label},
+                    {validated.executive_summary},
+                });
+            } else {
+                if (report.assist_status.empty()) {
+                    report.assist_status = "assist_bypassed";
+                }
+                report.tze_stages.push_back({
+                    "x.Assist.CaseSummary",
+                    "Append a validated case or incident summary",
+                    "ReasoningProvider",
+                    "assist_rejected",
+                    validation_detail,
+                    {target_label},
+                    {"deterministic_fallback"},
+                });
+            }
+        }
+    }
+
+    if (routed_profile.assist_requested &&
+        (resolution.intent == RequestIntent::ReviewModule || resolution.intent == RequestIntent::PatchProposal)) {
+        AssistRequest assist_request;
+        assist_request.task_id = resolution.intent == RequestIntent::ReviewModule ? "review" : "patch_proposal";
+        assist_request.target_label = !routed_profile.review_target.empty() ? routed_profile.review_target : resolution.primary_target;
+        assist_request.deterministic_text = report.answer_explanation;
+        const std::optional<AssistAnnotation> assist = provider_->assist_annotation(assist_request);
+        if (assist.has_value()) {
+            report.assist_status = "assist_used";
+            report.assist_annotation = assist;
+            if (report.review_artifact.has_value()) {
+                report.review_artifact->assist_annotation = assist;
+            }
+            if (report.patch_proposal_artifact.has_value()) {
+                report.patch_proposal_artifact->assist_annotation = assist;
+            }
+        } else if (report.assist_status.empty()) {
+            report.assist_status = "assist_bypassed";
+        }
+    }
+
     report.tze_stages.push_back({
         "x.Dispatch",
         "Execute the selected runtime flow",
@@ -1893,11 +3297,35 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         {report.answer_status, report.next_action},
     });
 
+    report.postprocess_record = build_postprocess_record(report);
+    report.storage_writes.push_back("x.Store(final.artifact -> " + report.postprocess_record->final_artifact_summary + ")");
+    report.storage_writes.push_back("x.Store(retention -> " + report.postprocess_record->retention_decision + ")");
+    report.tze_stages.push_back(make_stage_record(
+        "x.PostProcessor",
+        "Classify the outcome, prune transient chain text, and retain the final artifact summary",
+        "SessionCoordinator",
+        report.postprocess_record->status,
+        "Reduced the run outcome to a compact retained artifact with explicit provenance and retention.",
+        {report.answer_status, report.answer_explanation},
+        {report.postprocess_record->final_artifact_summary,
+         report.postprocess_record->provenance,
+         report.postprocess_record->retention_decision},
+        source_stage_index));
+
     report.storage_writes.push_back("x.Store(summary -> " + report.cache.name + ")");
     report.storage_writes.push_back("x.Store(preferences -> xMap_Perm_Prioritys.SearchExtranet)");
 
     if (source_unit.has_value()) {
         attach_source_backed_mappings(*source_unit, report);
+        if (is_legacy_source_path(source_unit->source_name)) {
+            report.legacy_source = make_legacy_source_record(*source_unit);
+            report.legacy_symbol_coverage = build_legacy_symbol_coverage(*source_unit);
+            report.legacy_recovery_status =
+                summarize_legacy_recovery(report.legacy_source->source_label, report.legacy_symbol_coverage);
+            memory_.remember_legacy_source(memory, *report.legacy_source);
+            push_unique(report.memory_writes, memory.paths.legacy_sources_path.string());
+            report.storage_writes.push_back("x.Store(legacy.source -> " + report.legacy_source->source_label + ")");
+        }
     }
     cache_.destroy(report.cache, routed_profile.persist_on_success);
 
@@ -1921,6 +3349,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     run_record.target = !report.resolved_project.empty() ? report.resolved_project : resolution.primary_target;
     run_record.linked_case_id = report.case_record.has_value() ? report.case_record->id : std::string{};
     run_record.status = report.answer_status;
+    run_record.source_map_path = report.source_map_path;
     run_record.reasoning_provider = report.reasoning_provider;
     run_record.provider_probe_status = report.provider_probe_report.has_value()
         ? report.provider_probe_report->status
@@ -1931,6 +3360,10 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     run_record.command_assist_plan = report.command_assist_plan;
     run_record.tool_assist_plan = report.tool_assist_plan;
     run_record.build_assist_plan = report.build_assist_plan;
+    run_record.recipe_authoring_artifact = report.recipe_authoring_artifact;
+    run_record.next_step_assist_plan = report.next_step_assist_plan;
+    run_record.case_summary_assist_plan = report.case_summary_assist_plan;
+    run_record.freeform_assist_answer = report.freeform_assist_answer;
     run_record.next_action = report.next_action;
     run_record.produced_artifact = report.produced_artifact;
     if (std::find(report.memory_writes.begin(),
@@ -1940,7 +3373,19 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     }
     run_record.language_resolution = report.language_resolution;
     run_record.uac_state = report.uac_state;
+    run_record.postprocess_record = report.postprocess_record;
+    run_record.legacy_source = report.legacy_source;
+    run_record.legacy_bridge_report = report.legacy_bridge_report;
+    run_record.legacy_research_artifacts = report.legacy_research_artifacts;
+    run_record.legacy_correlations = report.legacy_correlations;
+    run_record.legacy_symbol_coverage = report.legacy_symbol_coverage;
+    run_record.legacy_recovery_status = report.legacy_recovery_status;
     run_record.query_session = report.query_session;
+    run_record.review_artifact = report.review_artifact;
+    run_record.patch_proposal_artifact = report.patch_proposal_artifact;
+    run_record.definition_answer = report.definition_answer;
+    run_record.neural_math_report = report.neural_math_report;
+    run_record.neural_route_report = report.neural_route_report;
     run_record.stages = report.tze_stages;
     memory_.remember_tze_run(memory, run_record);
 

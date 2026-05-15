@@ -740,12 +740,24 @@ ToolInvocationReport NativeToolRegistry::invoke(std::string_view name,
         }
         ToolResolution grep = resolve("grep", memory, allow_deep_hunt);
         if (grep.found) {
+            bool has_directory_target = false;
+            for (std::size_t index = 1; index < arguments.size(); ++index) {
+                std::error_code ec;
+                if (std::filesystem::is_directory(arguments[index], ec)) {
+                    has_directory_target = true;
+                    break;
+                }
+            }
             std::vector<std::string> command;
             if (grep.provider_type == "busybox_applet") {
-                command = {grep.executable_path, grep.applet_name, "-E", "-n", "--"};
+                command = {grep.executable_path, grep.applet_name};
             } else {
-                command = {grep.executable_path, "-E", "-n", "--"};
+                command = {grep.executable_path};
             }
+            if (has_directory_target) {
+                command.push_back("-R");
+            }
+            command.insert(command.end(), {"-E", "-n", "--"});
             command.insert(command.end(), arguments.begin(), arguments.end());
             ToolInvocationReport report = invoke_with_resolution(make_virtual_resolution(logical_name, logical_name, grep), command);
             report.logical_name = logical_name;

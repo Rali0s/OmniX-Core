@@ -1,0 +1,102 @@
+{
+  "event_type": "omnix.threshold.evidence.v1",
+  "thresholdStatus": "thresholds_evaluated",
+  "scenarioId": "threshold-scenario-rabbitmq-xxb",
+  "alarm": {
+    "id": "P1-RMQ-2B-XXB-STOPPED-REPORTING",
+    "severity": "P1",
+    "timestamp": "2026-01-14T02:14:00-05:00"
+  },
+  "assets": {
+    "server": "XYZ_CLASSC1_CUST8",
+    "serverClass": "ClassC.SensorQueueNode",
+    "customer": "CUST8",
+    "site": "NY_HOME_HEATING_OIL",
+    "queue": "XXB",
+    "rabbitmqNode": "RabbitMQ-2B",
+    "app": "ABC",
+    "serviceName": "abc-worker.service"
+  },
+  "ownership": {
+    "fedBy": "ABC producer",
+    "consumedBy": "ABC worker",
+    "devOwner": "Payments Platform Team",
+    "infraOwner": "Engineer Infra",
+    "logPaths": [
+      "/var/log/abc/worker.log",
+      "/var/log/rabbitmq/rabbit@XYZ_CLASSC1_CUST8.log"
+    ]
+  },
+  "metrics": {
+    "cpuUsage": 47.2,
+    "ramUsage": 91,
+    "mountHealthy": true,
+    "storageUsage": 63,
+    "dataBrickHealthy": true,
+    "rabbitmqNodeHealthy": true,
+    "queueDepth": 642,
+    "previousQueueDepth": 388,
+    "consumerCount": 0,
+    "previousConsumerCount": 2,
+    "publishRate": 28,
+    "ackRate": 0,
+    "oldestMessageAgeSeconds": 860,
+    "appServiceStatus": "failed",
+    "messagesPersistent": true,
+    "estimatedRestartLossPackets": 3
+  },
+  "baseline": {
+    "normalDepthMax": 40,
+    "warningDepth": 100,
+    "abnormalDepth": 200,
+    "criticalDepth": 500,
+    "p1Depth": 1000
+  },
+  "seasonalOverride": {
+    "name": "NY home heating oil cold season",
+    "active": true,
+    "applied": true
+  },
+  "matchedSignatures": ["EYZ-47281"],
+  "decision": {
+    "severity": "abnormal",
+    "likelyCause": "app_worker_memory_exhaustion",
+    "decision": "recommend_runbook",
+    "recommendation": "Restart abc-worker.service, then validate consumer reconnect and queue drain.",
+    "restartRecommended": true,
+    "escalationRequired": false,
+    "actionId": "restart-abc-worker",
+    "actionStatus": "recommendation_only",
+    "rationale": [
+      "Seasonal override `NY home heating oil cold season` adjusted queue-depth boundaries.",
+      "Queue depth is rising from 388 to 642.",
+      "Consumer count is 0 for queue `XXB`.",
+      "RAM usage is above 85% at 91%.",
+      "RabbitMQ node `RabbitMQ-2B` is healthy, so node failure is less likely.",
+      "Decision policy allows `restart-abc-worker` because RabbitMQ is healthy, messages are persistent, consumers are down, and estimated loss is <= 3 packets."
+    ]
+  },
+  "runbook": {
+    "id": "restart-abc-worker",
+    "type": "systemd_restart_service",
+    "displayCommand": "sudo systemctl restart abc-worker.service",
+    "validationChecks": [
+      "systemctl status abc-worker.service returns active",
+      "RabbitMQ consumer count returns to 2",
+      "Queue XXB depth begins draining",
+      "Oldest message age decreases",
+      "No new EYZ-47281 heap error appears"
+    ]
+  },
+  "logs": [
+    {
+      "path": "/var/log/abc/worker.log",
+      "snippet": "2026-01-14T02:12:31Z ERROR EYZ-47281: Java heap exhausted while processing Queue XXB batch"
+    },
+    {
+      "path": "/var/log/rabbitmq/rabbit@XYZ_CLASSC1_CUST8.log",
+      "snippet": "2026-01-14T02:13:58Z queue=XXB consumers=0 ready=642 publish_rate=28 ack_rate=0 node_health=green"
+    }
+  ],
+  "artifacts": { "evidencePath": "", "jiraPath": "" }
+}

@@ -4,6 +4,8 @@
 #include <string_view>
 #include <vector>
 
+#include "tze/types.hpp"
+
 namespace tze {
 
 class OmniBridge {
@@ -30,6 +32,9 @@ public:
     static std::string compression_algo_classes();
     static std::string access_search(std::string_view label);
     static std::string access_compare(std::string_view lhs, std::string_view rhs);
+    static LegacyBridgeReport recover_legacy_bridge(std::string_view label,
+                                                    const MemorySnapshot& memory,
+                                                    QuerySessionRecord* query_session = nullptr);
 };
 
 }  // namespace tze

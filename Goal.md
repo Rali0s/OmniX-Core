@@ -6,7 +6,7 @@
 ### Current Product Status
 - `v1`: done
 - `v2`: in progress, deterministic TZE completion milestone
-- `v3`: deferred, optional Ollama-assisted layer after `v2` stabilization
+- `v3`: in progress, guarded Ollama-assisted layer is available behind explicit assist enablement, but remains bounded and deterministic-first
 
 ### Prime-Arc-A: Omni / TZE Execution Arc
 - [V2-V3 Roadmap](docs/agile/00-roadmap.md)
@@ -18,6 +18,7 @@
 - [Epic 6: TZE Conformance Tests](docs/agile/60-epic-tze-conformance-tests.md)
 - [Post-V2 Backlog](docs/agile/90-backlog-post-v2.md)
 - [V3 Guard Policy](docs/agile/95-v3-guard-policy.md)
+- [V3 Knowledge Routing and Definition](docs/agile/96-v3-knowledge-routing-and-definition.md)
 
 ### Prime-Arc-B: Foundry / Gotham-Aligned Architecture Arc
 - [Prime-Arc-B Roadmap](docs/agile/B-00-prime-arc-b-roadmap.md)
@@ -44,10 +45,12 @@
 # Immediate Goals:
 1. Finish 10 Goals
 2. Build TCP Capture & Dump
-3. Build TCP Analysis w/ Wireshark Library
-4. Output Simplex or Simple Analysis Codes
-5. Load MITRE: Connect MITRE-DB ( JSON ) To SIEM
-6. Choose Couse of Action For Defense 
+3. Build Wireshark-like local TCP analysis primitives where useful, deferring direct Wireshark/TShark library binding unless native `libpcap` analysis hits a hard ceiling
+4. Output Simplex / Simple Analysis Codes for packet capture, plain-text payload readout, and JSONL ingestion
+5. Load MITRE: Connect MITRE-DB ( JSON ) To SIEM as a separate local data pipeline from the DeepNimSec Ollama connector
+6. Choose Course of Action For Defense with diagnostic-first prompts for task kill review, CPU diag, memory diag, log view, PID review, and port closure recommendations
+7. Build the missing `x.Preprocessor` / `x.PostProcessor` runtime path from `res/tze.txt` pseudo-code, including bounded artifact retention and final artifact storage
+8. A [P2-P3] Personality Persona Engine
 
 # Mid-Term Goals:
 1. Compare Two Functions Against Eachother - Essentially A <vs> Operator
@@ -60,12 +63,25 @@
 8. Create: During Identification Process -> See if PreExisting Data Exists
 9. Create: Load Data Into Decision Logic -> Add Weight Factors
 10. Create: Choose Best Output
+11. Add Anti-Drift Discipline: keep docs, shell identity, tests, and runtime behavior aligned so authored intent does not separate from implemented truth
+12. Build a Neural Layer Architecture: add local neural retrieval, reranking, and learning-loop support on top of the deterministic OmniX core
+13. Modernize legacy X++ nomenclature into HumanReadable runtime names while preserving old labels as source-history mappings
+14. Research and design a lightweight onboard native TCP viewer, TShark-like in operator usefulness but small enough to ship with OmniX without the full Wireshark dependency surface; defer GHOSTLINE-GATE to a future capture-source adapter once its source/API is available
+15. Build Neuromorphic Programming Research Track: explore event-driven, spike-like local computation, Backtrace, Backtest, and Back-add learning loops for future OmniX intelligence
+16. Build C++ / Python Interop Code Segment: define a guarded bridge where OmniX C++ can call bounded Python analysis modules, exchange typed JSON artifacts, and keep Python execution optional, sandbox-aware, and replayable
+17. Build NeuralNetwork + TensorFlow Math Track: learn and operationalize perceptron/MLP fundamentals, simulation-first TensorFlow model training, and local neural signal routing without confusing this with neuromorphic/SNN research
+18. Build Native C++ Neural Signal Router: classify TView JSONL with dependency-free math, attach weighted attributions to definitions and decisions, and backtrace how math shaped each data decision
 
 # Grandiose Goals & Additions ( Not Necessary - Can Go This Route ):
 1. Wolfram Alpha API
 2. OpenAI API
-3. PyTorch - Python Interop
+3. PyTorch - Python Interop as a later specialization of the guarded C++ / Python bridge
 4. Execution Of Python Files & Integration Of Maps
+
+# SideQuests:
+1. Falcon SDK Platform Integration: research a guarded connector path for Falcon SDK data, detections, incidents, and response actions while keeping credentials, destructive actions, and cloud calls explicitly operator-controlled
+2. Future iPhone Intelligence Integration: design a local-only mobile edge use case where an iPhone can contribute trusted local signals, operator context, notifications, captures, or approval workflows to OmniX without requiring cloud processing by default; needs deeper privacy, pairing, and on-device execution research
+3. Real-Time Speech and Translation Guard: research a phone-out assistant that detects likely mistranslations, wrong-language drift, risky tone/formality, names/numbers mistakes, or "the user is about to say the wrong thing" moments, then alerts through subtle haptics, visual cues, earbuds, or watch taps; keep local-only/offline-first speech and glossary checks as the default path, with OpenAI Realtime prompting as an optional assist reference rather than the authority. Example: "English, SIR, your VITALS and patterns suggest you are about to curse" -> response: "VIBRATE 4 TIMES on SMART WATCH"
 
 # Le Grand Mission:
 Localized AI && Local Threat Engine & Local Guardian

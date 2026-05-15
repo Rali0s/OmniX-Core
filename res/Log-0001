@@ -1,0 +1,1248 @@
+ matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:33:15 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:32:34 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:32:34 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:36:30 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:36:21 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `define <concept>` phrase.
+Sources: memory
+Recent feedback: 2026-05-08T21:33:15 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:32:34 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:32:34 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:33:15 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:32:34 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:32:34 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:53 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:29:03 | unknown_query | I recognized `sun?` as a concept-definition query, but no local definition source answered it.
+Definition source: unresolved
+Definition source label: behavioral_router
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Suggestions: define sun?
+enable assist for wording help
+2026-05-08T21:28:49 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Recent feedback: 2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:57 | defined | The Sun is the star around which Earth orbits.
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.700000
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `what is <concept>` phrase.
+Sources: local_glossary
+Recent feedback: 2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+2026-05-08T21:19:47 | clarify_needed | I can answer `sun` as a concept definition, but this prompt is ambiguous without context.
+Definition source: clarification_required
+Definition source label: behavioral_router
+Comparison rationale: Prompt is a single plain-language concept and needs clarification between a concept definition and a contextual-summary interpretation.
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+Suggestions: What is sun?
+What matters here?
+Definition query: sun
+Normalized concept: sun
+Semantic family: general_knowledge
+Definition source: local_glossary
+Definition source label: /Users/premise/Documents/github/OmniX-Core/res/local_glossary.tsv
+Definition confidence: 0.7
+Comparison rationale: Behavioral comparison selected a concept-definition route from the explicit `define <concept>` phrase.
+Definition sources:
+ - memory
+Next action: Use `omnix ask "Build <project>"`, `omnix doctor <project>`, or `omnix search <symbol>` for the next step.
+Query session: query-7460977048707703048 | results=No historical feedback available.
+TZE stages:
+ - xProcessingCache [ok] CacheCoordinator | Prepared cache `xMap_Perm` for `Investigate` with 4 cache operation(s). | source=Build CMake:45
+ - x.Define.Low [ok] IntentResolver | Resolved `general_definition_query` and decoded instruction `Investigate`. | source=Build CMake:82
+ - x.DisplayPriorityProcessingGate [ok] KnowledgeEngine | Ranked 1 knowledge source(s) using preference path `/Users/premise/.omnix/preferences.json:source_preference_order` via query session `query-7460977048707703048`. | source=Build CMake:112
+ - x.DisplayFeedBackLoop [ok] KnowledgeEngine | Loaded 1 feedback item(s) for `Investigate`. | source=Build CMake:161
+ - x.Assist.Provider [configured_dormant] ReasoningProvider | Provider `ollama` is configured for probe-only use; OmniX remains deterministic-only until assist is explicitly enabled.
+ - x.Dispatch [defined] DefinitionFlowInterpreter | Delegated execution to `DefinitionFlowInterpreter` for intent `general_definition_query`.
+ - x.Store [ok] MemoryStore | Persisted the TZE run ledger and interaction history for `tze-run-11911377308781451516`. | source=Build CMake:185
+Memory used:
+ - /Users/premise/.omnix/history.jsonl
+ - /Users/premise/.omnix/tze_runs.json
+ - /Users/premise/.omnix/definitions.json
+ - /Users/premise/.omnix/preferences.json
+ - /Users/premise/.omnix/projects.json
+ - /Users/premise/.omnix/native_tools.json
+ - /Users/premise/.omnix/security_audits.json
+ - /Users/premise/.omnix/language_contexts.json
+ - /Users/premise/.omnix/uac_states.json
+ - /Users/premise/.omnix/legacy_sources.json
+ - /Users/premise/.omnix/cases.json
+Memory updated:
+ - /Users/premise/.omnix/definitions.json
+ - /Users/premise/.omnix/tze_runs.json
+ - /Users/premise/.omnix/history.jsonl
+Toolchain:
+ - Git: available (git version 2.50.1 (Apple Git-155))
+ - GCC: available (Apple clang version 17.0.0 (clang-1700.6.4.2))
+ - G++: available (Apple clang version 17.0.0 (clang-1700.6.4.2))
+ - Make: available (GNU Make 3.81)
+ - CMake: available (cmake version 4.3.1)
+omnix[assist]> how long did it take you to learn the difference to respond the same way
+unknown_intent: No exact definition was found in the current source map, operand catalogue, or local memory.
+next: Try a more specific prompt or run a tool command explicitly.
+omnix[assist]> build omni speech
+preflight_failed: OmniX could not determine a supported build recipe for this request.
+project: omni speech
+next: Resolve the preflight blockers and retry the build.
+omnix[assist]> next
+Resolve the preflight blockers and retry the build.
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> 
+omnix[assist]> what is speech
+unknown_query: I recognized `speech` as a concept-definition query, but no local definition source answered it.
+omnix[assist]> define language engine
+unknown_query: I recognized `language engine` as a concept-definition query, but no local definition source answered it.
+omnix[assist]> /help
+OmniX shell commands:
+ - /help
+ - /status
+ - /provider
+ - /assist on|off
+ - /verbose on|off
+ - /why
+ - /case <id>
+ - /incident <id>
+ - /replay [run-id|latest]
+ - /report [run-id|latest]
+ - /diff <left-run-id> <right-run-id>
+ - /quit
+Plain input is routed through the normal OmniX intent resolver.
+omnix[assist]> /report
+tze_report_written: Saved the TZE run report for `tze-run-10838394528177754392` at `/Users/premise/.omnix/tze-reports/tze-run-10838394528177754392.txt`.
+artifact: /Users/premise/.omnix/tze-reports/tze-run-10838394528177754392.txt
+omnix[assist]> what matters here
+ok: What matters right now is the latest persisted run from `tze report latest`: status `tze_report_written`. Open the saved TZE report at `/Users/premise/.omnix/tze-reports/tze-run-10838394528177754392.txt` or compare it with another run using `omnix tze diff`.
+omnix[assist]> 

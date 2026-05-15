@@ -1,0 +1,79 @@
+{
+  "id": "threshold-scenario-rabbitmq-xxb-normal-season",
+  "evaluationTimestamp": "2026-07-14T02:36:00-04:00",
+  "alarm": {
+    "id": "WARN-RMQ-2B-XXB-DEPTH",
+    "severity": "warning",
+    "timestamp": "2026-07-14T02:14:00-04:00"
+  },
+  "assets": {
+    "server": "XYZ_CLASSC1_CUST8",
+    "serverClass": "ClassC.SensorQueueNode",
+    "customer": "CUST8",
+    "site": "NY_HOME_HEATING_OIL",
+    "queue": "XXB",
+    "rabbitmqNode": "RabbitMQ-2B",
+    "app": "ABC",
+    "serviceName": "abc-worker.service"
+  },
+  "ownership": {
+    "fedBy": "ABC producer",
+    "consumedBy": "ABC worker",
+    "devOwner": "Payments Platform Team",
+    "infraOwner": "Engineer Infra",
+    "logPaths": ["/var/log/abc/worker.log"]
+  },
+  "metrics": {
+    "cpuUsage": 35,
+    "ramUsage": 62,
+    "mountHealthy": true,
+    "storageUsage": 51,
+    "dataBrickHealthy": true,
+    "rabbitmqNodeHealthy": true,
+    "queueDepth": 240,
+    "previousQueueDepth": 180,
+    "consumerCount": 2,
+    "previousConsumerCount": 2,
+    "publishRate": 19,
+    "ackRate": 17,
+    "oldestMessageAgeSeconds": 200,
+    "appServiceStatus": "active",
+    "messagesPersistent": true,
+    "estimatedRestartLossPackets": 0
+  },
+  "baseline": {
+    "normalDepthMax": 40,
+    "warningDepth": 100,
+    "abnormalDepth": 200,
+    "criticalDepth": 500,
+    "p1Depth": 1000,
+    "normalConsumers": 2,
+    "maxOldestMessageAgeSeconds": 180
+  },
+  "seasonalOverride": {
+    "name": "NY home heating oil cold season",
+    "active": false,
+    "expectedDepthMax": 400,
+    "abnormalDepth": 500,
+    "criticalDepth": 900
+  },
+  "errorSignatures": [],
+  "decisionPolicy": {
+    "maxRestartLossPackets": 3,
+    "requireRabbitmqHealthy": true,
+    "requirePersistentMessages": true
+  },
+  "runbookAction": {
+    "id": "restart-abc-worker",
+    "type": "systemd_restart_service",
+    "serviceName": "abc-worker.service",
+    "displayCommand": "sudo systemctl restart abc-worker.service",
+    "validationChecks": ["service active", "consumers connected", "queue drains"]
+  },
+  "logs": [
+    {
+      "path": "/var/log/abc/worker.log",
+      "snippet": "2026-07-14T02:12:31Z INFO Queue XXB processing normally"
+    }
+  ]
+}

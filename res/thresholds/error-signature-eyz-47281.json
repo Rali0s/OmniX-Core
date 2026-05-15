@@ -1,0 +1,7 @@
+{
+  "code": "EYZ-47281",
+  "pattern": "Java heap exhausted",
+  "likelyCause": "app_worker_memory_exhaustion",
+  "recommendedAction": "Restart abc-worker.service if RabbitMQ is healthy, messages are persistent, and estimated restart loss is acceptable.",
+  "developerRecommendation": "Review heap allocation, batch sizing, retry behavior, and memory pressure handling for Queue XXB."
+}

@@ -22,8 +22,8 @@ const std::vector<OperandDefinition>& operand_catalogue() {
         {
             "xProcessingCache",
             OperandCategory::Cache,
-            "Prepare cache context for a new request.",
-            "Entry point that sizes and instantiates temporary working cells before any other operand runs.",
+            "Legacy name for Cache.PrepareWorkspace.",
+            "Source-history alias for the runtime step that prepares cache context, budget, and working cells before request execution.",
         },
         {
             "xize",
@@ -52,8 +52,8 @@ const std::vector<OperandDefinition>& operand_catalogue() {
         {
             "x.Define.Low",
             OperandCategory::Query,
-            "Resolve a symbolic instruction slot (aZ::n).",
-            "Translates indexed pseudo instructions (e.g., aZ::1) into concrete verbs like Build before downstream lookups.",
+            "Legacy name for Intent.DecodeInstruction.",
+            "Source-history alias for decoding indexed pseudo instructions such as aZ::1 into concrete runtime verbs like Build.",
         },
         {
             "x3m",
@@ -64,20 +64,20 @@ const std::vector<OperandDefinition>& operand_catalogue() {
         {
             "x.DisplayPriorityProcessingGate",
             OperandCategory::Query,
-            "Present ranked references and capture preferences.",
-            "Displays sources such as Wikipedia/Oxford/Webster and records administrator ranking for future runs.",
+            "Legacy name for Knowledge.EvidenceRanking.",
+            "Source-history alias for ranking references, source preferences, and module evidence for the active request.",
         },
         {
             "x.DisplayFeedBackLoop",
             OperandCategory::Query,
-            "Replay past answers for similar questions.",
-            "Reads cached history (lMC::Cache) to improve recall efficiency and detect anomalies in stored knowledge.",
+            "Legacy name for Memory.FeedbackReview.",
+            "Source-history alias for reviewing cached history and learned outcomes before final execution.",
         },
         {
             "x.Store",
             OperandCategory::Query,
-            "Persist structured data into a map.",
-            "Writes values into xMap_Temp or xMap_Perm with rich key paths (aZ_Int, aZ_Prime, epoch metadata).",
+            "Legacy name for Memory.StoreArtifact.",
+            "Source-history alias for persisting retained artifacts into Storage.Temporary or Storage.Permanent.",
         },
         {
             "x.Return",
@@ -89,7 +89,7 @@ const std::vector<OperandDefinition>& operand_catalogue() {
             "x.Comms",
             OperandCategory::Security,
             "Request administrator involvement.",
-            "Sends prompts such as PrioritizeNow and coordinates the three-phase communication pipeline (x.C_P.*).",
+            "Sends prompts such as PrioritizeNow and coordinates HumanReadable workflow stages translated from the legacy x.C_P map.",
         },
         {
             "x.Security",
@@ -100,20 +100,20 @@ const std::vector<OperandDefinition>& operand_catalogue() {
         {
             "x.C_P.1",
             OperandCategory::Security,
-            "Administrative workflow phase 1.",
-            "Initial step in the admin communication pipeline; pairs with x.C_P.2 and x.C_P.3 for full processing.",
+            "Legacy name for SourceIntake.",
+            "Historical phase label now represented by HumanReadable runtime names such as RecipeAuthoring.SourceIntake.",
         },
         {
             "x.C_P.2",
             OperandCategory::Security,
-            "Administrative workflow phase 2.",
-            "Handles the preference query/record loop before feedback analysis runs.",
+            "Legacy name for EvidenceRanking.",
+            "Historical phase label now represented by HumanReadable runtime names such as RecipeAuthoring.EvidenceRanking.",
         },
         {
             "x.C_P.3",
             OperandCategory::Security,
-            "Administrative workflow phase 3.",
-            "Executes the feedback loop analysis and memory checks once preferences are stored.",
+            "Legacy name for RecipeDraft.",
+            "Historical phase label now represented by HumanReadable runtime names such as RecipeAuthoring.RecipeDraft.",
         },
         {
             "xX_Kill.All",
@@ -136,19 +136,19 @@ const std::vector<OperandDefinition>& operand_catalogue() {
         {
             "xMap_Temp",
             OperandCategory::DataMap,
-            "Temporary working map namespace.",
+            "Legacy name for Storage.Temporary.",
             "Used for ephemeral storage during active processing, including preference rankings and generated keys.",
         },
         {
             "xMap_Perm",
             OperandCategory::DataMap,
-            "Persistent canonical map namespace.",
+            "Legacy name for Storage.Permanent.",
             "Holds long-lived knowledge structures (AdminProcessingGate, Prioritys.SearchExtranet, etc.).",
         },
         {
             "xMap_Core",
             OperandCategory::DataMap,
-            "Core system datastore.",
+            "Legacy name for Storage.Core.",
             "Accessed only in elevated contexts such as super-admin investigations and deep threat sweeps.",
         },
     };

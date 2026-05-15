@@ -1,0 +1,237 @@
+premise@MacBookPro OmniX-Core % ./build/omnix shell
+OmniX shell started. Type /help for commands.
+omnix> define Apple
+defined: 1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+omnix> what is an apple
+defined: 1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+omnix> what is apple in therms of technology
+unknown_query: I recognized `apple in therms of technology` as a concept-definition query, but no local definition source answered it.
+omnix> what is apple in terms of technology
+unknown_query: I recognized `apple in terms of technology` as a concept-definition query, but no local definition source answered it.
+omnix> Define Apple, in terms of Technology.
+unknown_query: No exact definition was found in the current source map, operand catalogue, or local memory.
+omnix> Define Apple in terms of Technology
+unknown_query: I recognized `Apple in terms of Technology` as a concept-definition query, but no local definition source answered it.
+omnix> What is Apple when discussing technology
+unknown_query: I recognized `Apple when discussing technology` as a concept-definition query, but no local definition source answered it.
+omnix> define Apple
+defined: 1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+omnix> define Apple when reffering to technology
+unknown_query: I recognized `Apple when reffering to technology` as a concept-definition query, but no local definition source answered it.
+omnix> Who is Steve Jobs
+unknown_intent: No exact definition was found in the current source map, operand catalogue, or local memory.
+next: Try `omnix ask "Build NMAP"`, `omnix define xProcessingCache`, or `omnix memory history`.
+omnix> define who
+defined: who | ho͞o | pronoun 1 [interrogative pronoun] what or which person or people
+omnix> Who is Steve Jobs
+unknown_intent: No exact definition was found in the current source map, operand catalogue, or local memory.
+next: Try `omnix ask "Build NMAP"`, `omnix define xProcessingCache`, or `omnix memory history`.
+omnix> /status
+Shell status:
+ - Assist mode: off
+ - Output mode: auto
+ - Tool results: full
+ - Memory root: (default)
+ - Source map: (auto)
+ - Current run: tze-run-14608488267333586689
+omnix> define who is steve jobs
+unknown_query: I recognized `who is steve jobs` as a concept-definition query, but no local definition source answered it.
+omnix> define Apple in terms of technology
+unknown_query: I recognized `Apple in terms of technology` as a concept-definition query, but no local definition source answered it.
+omnix> tze replay latest
+tze_run_replayed: TZE Run Replay
+omnix> tze chain latest  
+tze_chain_rendered: TZE Chain
+omnix> who is steve jobs
+unknown_intent: No exact definition was found in the current source map, operand catalogue, or local memory.
+next: Try `omnix ask "Build NMAP"`, `omnix define xProcessingCache`, or `omnix memory history`.
+omnix> memory history
+memory: History:
+omnix> what matters here?
+ok: What matters right now is the latest persisted run from `memory history`: status `memory`. Run `omnix ask` or `omnix define` to add more learning data.
+omnix> omnix define who is steve jobs
+unknown_query: I recognized `who is steve jobs` as a concept-definition query, but no local definition source answered it.
+omnix> omnix ask who is steve jobs
+unknown_intent: No exact definition was found in the current source map, operand catalogue, or local memory.
+next: Try `omnix ask "Build NMAP"`, `omnix define xProcessingCache`, or `omnix memory history`.
+omnix> define Apple
+defined: 1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+omnix> ask what is Apple
+defined: 1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+omnix> omnix ask what is Apple
+defined: 1 the round fruit of a tree of the rose family, which typically has thin red or green skin and crisp flesh.
+omnix> omnix ask what is apple in terms of Steve Jobs
+unknown_query: I recognized `apple in terms of Steve Jobs` as a concept-definition query, but no local definition source answered it.
+omnix> Who is Steve Jobs
+unknown_intent: No exact definition was found in the current source map, operand catalogue, or local memory.
+next: Try `omnix ask "Build NMAP"`, `omnix define xProcessingCache`, or `omnix memory history`.
+omnix> ask who is steve jobs
+unknown_intent: No exact definition was found in the current source map, operand catalogue, or local memory.
+next: Try `omnix ask "Build NMAP"`, `omnix define xProcessingCache`, or `omnix memory history`.
+omnix> define who is steve jobs
+unknown_query: I recognized `who is steve jobs` as a concept-definition query, but no local definition source answered it.
+omnix> define Who Is Steve Jobs?
+unknown_query: No exact definition was found in the current source map, operand catalogue, or local memory.
+omnix> tze replay latest
+tze_run_replayed: TZE Run Replay
+omnix> tze chain latest
+tze_chain_rendered: TZE Chain
+omnix> /report
+tze_report_written: Saved the TZE run report for `tze-run-1886311457628006586` at `/Users/premise/.omnix/tze-reports/tze-run-1886311457628006586.txt`.
+artifact: /Users/premise/.omnix/tze-reports/tze-run-1886311457628006586.txt
+omnix> define Steve Jobs
+defined: Jobs, Steven Jobs, Steven | jäbz | (1955–2011), US computer entrepreneur
+omnix> tze replay latest
+tze_run_replayed: TZE Run Replay
+omnix> tze chain latest
+tze_chain_rendered: TZE Chain
+omnix> /report
+tze_report_written: Saved the TZE run report for `tze-run-10187931266062354783` at `/Users/premise/.omnix/tze-reports/tze-run-10187931266062354783.txt`.
+artifact: /Users/premise/.omnix/tze-reports/tze-run-10187931266062354783.txt
+omnix> 
+
+Looks like we have AI - Advanced Intelligence below Artificial Intelligence but nonetheless, we are on our way. I wonder what will happen if I turn on Ollama fully or allow OpenAI Integrations? Behave Mike, control the cyncism. We have work to do.
+
+
+drwxr-xr-x@ 122 premise  staff      3904 May  9 14:13 .
+drwxr-xr-x@  29 premise  staff       928 Apr 19 03:03 ..
+-rw-r--r--@   1 premise  staff     32772 May  9 14:06 .DS_Store
+drwxr-xr-x@   4 premise  staff       128 May  9 14:13 cli-analyst
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 cli-assist-build-plan
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 cli-assist-command-plan
+drwxr-xr-x@   6 premise  staff       192 May  9 14:12 cli-assist-command-tool-nmap
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 cli-assist-command-tool-nmap-external-target
+drwxr-xr-x@   7 premise  staff       224 May  9 14:12 cli-assist-command-tool-nmap-openai
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 cli-assist-tool-plan
+drwxr-xr-x@   5 premise  staff       160 May  9 14:13 cli-case-links
+drwxr-xr-x@   3 premise  staff        96 May  9 14:13 cli-general-definition-glossary
+drwxr-xr-x@   3 premise  staff        96 May  8 21:14 cli-general-definition-glossary-debug
+drwxr-xr-x@   4 premise  staff       128 May  9 14:13 cli-general-definition-science
+drwxr-xr-x@   4 premise  staff       128 May  9 14:13 cli-general-definition-system
+drwxr-xr-x@   4 premise  staff       128 May  8 21:13 cli-general-definition-system-debug
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 cli-guarded-assist
+drwxr-xr-x@   6 premise  staff       192 May  9 14:13 cli-incident-assist-summary
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 cli-memory-define
+drwxr-xr-x@  17 premise  staff       544 May  9 14:13 cli-memory-doctor
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 cli-memory-language
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 cli-memory-security
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 cli-memory-uac
+drwxr-xr-x@   7 premise  staff       224 May  9 14:13 cli-native-tools
+drwxr-xr-x@   5 premise  staff       160 May  9 14:13 cli-nmap
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 cli-provider-probe
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 cli-provider-probe-openai
+drwxr-xr-x@   3 premise  staff        96 May  9 14:13 cli-review-and-patch
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 cli-run-nmap
+drwxr-xr-x@   3 premise  staff        96 May  9 14:12 cli-shell
+drwxr-xr-x@   3 premise  staff        96 May  9 14:12 cli-shell-aliases
+drwxr-xr-x@   4 premise  staff       128 May  9 14:13 cli-shell-ask-prefix-definition
+drwxr-xr-x@   3 premise  staff        96 May  9 14:12 cli-shell-conversation
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 cli-shell-next-step-assist
+drwxr-xr-x@   5 premise  staff       160 May  9 14:13 cli-shell-nmap-lexicon
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 cli-shell-nmap-local-slash24
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 cli-shell-nmap-results
+drwxr-xr-x@   3 premise  staff        96 May  9 14:12 cli-shell-secure-my-system
+drwxr-xr-x@   5 premise  staff       160 May  9 14:13 cli-tshark
+drwxr-xr-x@   4 premise  staff       128 May  9 14:13 cli-tze-latest
+drwxr-xr-x@  17 premise  staff       544 May  9 14:13 cli-tze-runs
+drwxr-xr-x@   6 premise  staff       192 May  9 14:13 cli-v2-incident
+drwxr-xr-x@   4 premise  staff       128 May  9 14:13 cli-v2-timeline
+drwxr-xr-x@   7 premise  staff       224 May  9 14:13 cli-v2-tze
+drwxr-xr-x@   3 premise  staff        96 May  9 14:13 cli-what-matters
+-rw-r--r--@   1 premise  staff      2995 May  9 12:47 cmake_install.cmake
+-rw-r--r--@   1 premise  staff     19138 Apr 25 20:03 CMakeCache.txt
+drwxr-xr-x@  50 premise  staff      1600 May  9 14:12 CMakeFiles
+-rw-r--r--@   1 premise  staff      3285 May  8 21:13 CPackConfig.cmake
+-rw-r--r--@   1 premise  staff      3743 May  8 21:13 CPackSourceConfig.cmake
+drwxr-xr-x@  14 premise  staff       448 May  9 12:49 ctest-build-flow
+drwxr-xr-x@   3 premise  staff        96 May  9 12:48 ctest-generated
+drwxr-xr-x@   4 premise  staff       128 May  9 12:49 ctest-install
+drwxr-xr-x@  17 premise  staff       544 May  9 12:48 ctest-memory-build-current
+drwxr-xr-x@  17 premise  staff       544 May  9 12:48 ctest-memory-define
+drwxr-xr-x@  17 premise  staff       544 May  9 12:48 ctest-memory-doctor
+drwxr-xr-x@  17 premise  staff       544 May  9 12:48 ctest-memory-preflight
+drwxr-xr-x@  17 premise  staff       544 May  9 12:48 ctest-memory-toolchain
+drwxr-xr-x@   4 premise  staff       128 May  9 12:49 ctest-packages
+drwxr-xr-x@   3 premise  staff        96 May  9 12:49 ctest-smoke-evidence
+-rw-r--r--@   1 premise  staff      7810 May  9 12:47 CTestTestfile.cmake
+-rw-r--r--@   1 premise  staff      2600 May  8 21:13 DartConfiguration.tcl
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 definition-engine-memory
+drwxr-xr-x@   2 premise  staff        64 May  9 14:13 definition-engine-system-dictionary
+drwxr-xr-x@   3 premise  staff        96 May  9 14:13 definition-engine-webster-dttext
+drwxr-xr-x@   3 premise  staff        96 May  9 14:13 definition-engine-webster-invalid
+drwxr-xr-x@   3 premise  staff        96 May  9 14:13 definition-engine-webster-meta
+drwxr-xr-x@   6 premise  staff       192 May  9 14:12 fake-builder
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 fake-cmake-install
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 fake-configure-builder
+drwxr-xr-x@  16 premise  staff       512 May  9 14:12 fake-doctor
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 fake-lua-install
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 fake-make-builder
+drwxr-xr-x@   6 premise  staff       192 May  9 14:12 fake-preflight
+drwxr-xr-x@   6 premise  staff       192 May  9 14:12 fake-preflight-tshark
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 fake-processing-build
+drwxr-xr-x@   7 premise  staff       224 May  9 14:12 fake-toolchain
+drwxr-xr-x@   3 premise  staff        96 May  9 12:49 generated
+-rw-r--r--@   1 premise  staff      1509 May  9 12:49 install_manifest.txt
+drwxr-xr-x@   4 premise  staff       128 May  8 21:17 knowledge-smoke
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 language-engine-memory
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 legacy-language-engine-memory
+-rw-r--r--@   1 premise  staff       370 May  9 14:12 legacy-tzu-fixture.cpp
+-rw-r--r--@   1 premise  staff  14154384 May  9 14:12 libtze.a
+-rw-r--r--@   1 premise  staff    949168 May  8 21:13 libxpp.a
+-rw-r--r--@   1 premise  staff     61271 May  9 12:47 Makefile
+drwxr-xr-x@   4 premise  staff       128 May  9 12:57 manual-definition-history
+drwxr-xr-x@   7 premise  staff       224 May  9 13:17 manual-openai-assist
+drwxr-xr-x@   4 premise  staff       128 May  9 13:17 manual-openai-fixture
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 memory-cases
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 memory-persona
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 memory-recipes
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 memory-store
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 memory-store-definition-history
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 native-first-nmap
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 native-first-tshark
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 native-tool-registry-cache
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 native-tool-registry-deep
+-rwxr-xr-x@   1 premise  staff   5679752 May  9 14:12 omnix
+-rwxr-xr-x@   1 premise  staff   5837976 May  9 14:12 omnix_tests
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 processing-analyst
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 processing-analyst-feedback
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 processing-analyst-history
+drwxr-xr-x@   4 premise  staff       128 May  9 14:12 processing-analyst-safe-modules
+drwxr-xr-x@  17 premise  staff       544 May  8 21:13 processing-build-memory
+drwxr-xr-x@   6 premise  staff       192 May  9 14:12 processing-case-clusters
+drwxr-xr-x@   5 premise  staff       160 May  9 14:12 processing-case-links
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 processing-conformance-backbone
+drwxr-xr-x@   3 premise  staff        96 May  9 14:12 processing-conformance-semantics
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 processing-define-memory
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 processing-language-memory
+drwxr-xr-x@  17 premise  staff       544 May  8 21:13 processing-memory-mappings
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 processing-ollama-dormant
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 processing-security-memory
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 processing-uac-memory
+drwxr-xr-x@   7 premise  staff       224 May  9 12:49 release
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 security-manager-memory
+drwxr-xr-x@   3 premise  staff        96 May  8 21:13 Testing
+drwxr-xr-x@   3 premise  staff        96 May  9 14:12 tests-generated
+drwxr-xr-x@   3 premise  staff        96 May  9 14:12 tests-generated-conformance
+drwxr-xr-x@  17 premise  staff       544 May  9 14:12 uac-runtime-memory
+-rwxr-xr-x@   1 premise  staff    115752 May  9 12:47 versus_demo
+premise@MacBookPro OmniX-Core % ls -la ./build | grep omnix
+-rwxr-xr-x@   1 premise  staff   5679752 May  9 14:12 omnix //FileSize 5679752 Taken during Session X
+-rwxr-xr-x@   1 premise  staff   5837976 May  9 14:12 omnix_tests
+premise@MacBookPro OmniX-Core % ls -la ./build | grep omnix
+-rwxr-xr-x@   1 premise  staff   5679752 May  9 14:12 omnix //FileSize 5679752 Taken during Session X
+-rwxr-xr-x@   1 premise  staff   5837976 May  9 14:12 omnix_tests
+premise@MacBookPro OmniX-Core % ls -la ./build | grep omnix
+-rwxr-xr-x@   1 premise  staff   5696712 May  9 14:35 omnix //FileSize 5679752 Taken during Session X Same Session New Size
+-rwxr-xr-x@   1 premise  staff   5856216 May  9 14:35 omnix_tests
+premise@MacBookPro OmniX-Core % ls -la ./build | grep omnix
+-rwxr-xr-x@   1 premise  staff   5696712 May  9 14:35 omnix
+-rwxr-xr-x@   1 premise  staff   5856216 May  9 14:35 omnix_tests
+premise@MacBookPro OmniX-Core % run cmake
+zsh: command not found: run
+premise@MacBookPro OmniX-Core % ls -la ./build | grep omnix
+-rwxr-xr-x@   1 premise  staff   5696712 May  9 14:35 omnix
+-rwxr-xr-x@   1 premise  staff   5856216 May  9 14:35 omnix_tests
+
+Now I am only 10+ years or so behind, but !VIBE! omnix ask "build query-1311956042888461849"
+Plus QWEN-3:8b is too much for my OSX to handle can not test assist right now.

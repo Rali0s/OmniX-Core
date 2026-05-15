@@ -1,0 +1,1 @@
+{"ts":2768416476740166,"action_id":"action-1-1","trigger_id":"trigger-1-c2s-raw-live-1","candidate_id":"candidate-1-c2s-raw-live-1","flow":1,"plugin":"raw-live","stage":"action-created","title":"Review raw live mutation","detail":"Raw live mutation released successfully but crossed the configured review threshold."}

@@ -10,6 +10,7 @@ The self-preprocessor section in [res/tze.txt](../../res/tze.txt) describes a pe
 - Preprocessor functions mostly emit labeled strings.
 - There is no real persisted `uAC` cache model.
 - Recovery flows and trait indexing are not represented as a bounded runtime subsystem.
+- The `res/tze.txt` pseudo flow for `x.BinaryPreProcessor`, `x.BPP`, `x.reGENx`, feedback interpretation, and post-processing-style cleanup/retention paths is still only partially mapped into runtime code.
 
 ## Target Behavior
 - Omni persists a real `uAC`-oriented preprocessor state model aligned with the TZE section.
@@ -43,6 +44,8 @@ The self-preprocessor section in [res/tze.txt](../../res/tze.txt) describes a pe
 - Model recovery flows as deterministic hints and state transitions.
 - Integrate preprocessor state with pruning and export/import behavior.
 - Expose replay/report views for `uAC` state transitions and recovery decisions.
+- Build the missing `x.Preprocessor` path from `res/tze.txt`, including `x.BinaryPreProcessor`, `x.BPP`, and `x.reGENx`-style bounded state transitions.
+- Build the matching `x.PostProcessor` path so `PostSuccess` / `PostFail` retention, cleanup, feedback interpretation, and final artifact persistence are explicit runtime steps rather than implied strings.
 
 ## Acceptance Criteria
 - Persisted preprocessor state is visible to replay and reporting.
@@ -58,3 +61,4 @@ The self-preprocessor section in [res/tze.txt](../../res/tze.txt) describes a pe
 ## Risks / Notes
 - This subsystem can become storage-heavy if persisted too naively.
 - Recovery semantics should remain operator-visible and bounded, especially on systems with low SSD space.
+- The pseudo source blends preprocessing, regeneration, feedback interpretation, and retention policy. We should keep the implementation split into bounded pre-process and post-process phases instead of collapsing everything into one opaque helper.

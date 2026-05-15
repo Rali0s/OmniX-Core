@@ -12,10 +12,13 @@
 #include "tze/knowledge_engine.hpp"
 #include "tze/memory_store.hpp"
 #include "tze/native_tool_registry.hpp"
+#include "tze/packet_capture_engine.hpp"
 #include "tze/project_alias_registry.hpp"
 #include "tze/project_resolver.hpp"
+#include "tze/recipe_authoring_engine.hpp"
 #include "tze/reasoning_provider.hpp"
 #include "tze/security_manager.hpp"
+#include "tze/self_review.hpp"
 #include "tze/tool_flow_interpreter.hpp"
 #include "tze/types.hpp"
 
@@ -37,10 +40,13 @@ private:
     KnowledgeEngine knowledge_;
     MemoryStore memory_;
     NativeToolRegistry tools_;
+    PacketCaptureEngine packet_capture_;
     std::unique_ptr<ReasoningProvider> provider_;
     ProjectAliasRegistry aliases_;
     ProjectResolver projects_;
+    RecipeAuthoringEngine recipe_authoring_;
     SecurityManager security_;
+    SelfReviewEngine self_review_;
     ToolFlowInterpreter tool_flow_;
 };
 

@@ -1,0 +1,13 @@
+{
+  "queue": "XXB",
+  "fedBy": "ABC producer",
+  "consumedBy": "ABC worker",
+  "server": "XYZ_CLASSC1_CUST8",
+  "serviceName": "abc-worker.service",
+  "logPaths": [
+    "/var/log/abc/worker.log",
+    "/var/log/rabbitmq/rabbit@XYZ_CLASSC1_CUST8.log"
+  ],
+  "devOwner": "Payments Platform Team",
+  "infraOwner": "Engineer Infra"
+}
