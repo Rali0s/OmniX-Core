@@ -18,6 +18,8 @@
 *~
 .idea/
 .vscode/
+.mp4
+.pdf
 
 # Logs and local runtime scratch
 *.log

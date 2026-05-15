@@ -4,6 +4,8 @@ OmniX is a local-first C++ analyst console and TZE runtime for investigation,
 deterministic orchestration, native tool execution, and guarded model-assisted
 shell workflows.
 
+Aside from my lofy goals - I wrote this over 20 years ago in PseudoCode and named X++
+
 ## What OmniX Does
 
 - Runs a deterministic TZE pipeline backed by [`res/tze.txt`](res/tze.txt)
