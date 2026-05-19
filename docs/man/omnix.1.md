@@ -10,8 +10,14 @@
 omnix ask <prompt> [--assist]
 omnix shell [--assist]
 omnix provider probe
+omnix id [--compact|--verbose]
 omnix api status|doctor|configure <openai|ollama>|template <openai|ollama|huggingface>
+omnix jinja inspect|render|plan|execute <file.j2> [--vars vars.json]
+omnix node doctor|id|status|heartbeat|enroll
+omnix master doctor|init|node list|node approve <fingerprint>|job plan <type>
+omnix tensor doctor|inspect|validate|run mlp|ask [args...]
 omnix why [latest|run-id]
+omnix vg doctor|shape|explain|correlate|compare|cab [artifact.json]
 omnix link install|remove|doctor [--with-tze] [--with-gg]
 omnix tool <name> -- <args...>
 omnix build <project-or-path> [--assist]
@@ -19,6 +25,7 @@ omnix recipe author <source-path> [--assist]
 omnix persona mode <premise|cynic|professional|neutral>
 omnix tview port <port> [--out packets.jsonl]
 omnix defend diag <cpu|memory|logs|pid|port> [target]
+omnix defend detect <env|sessions|persistence|packages|services|logs|eventviewer|all>
 ```
 
 ## Command Dictionary
@@ -44,17 +51,24 @@ OmniX is deterministic-first. Ollama or OpenAI may help with bounded planning, b
 - `review <path-or-module>`
 - `patch-proposal <path-or-module>`
 - `provider probe`
+- `id`
 - `api status`
 - `api doctor`
 - `api configure <openai|ollama>`
 - `api template <openai|ollama|huggingface>`
+- `jinja inspect|render|plan|execute <file.j2>`
+- `node doctor|id|status|heartbeat|enroll`
+- `master doctor|init|node list|node approve <fingerprint>|job plan <type>|job dispatch|job status`
+- `tensor doctor|inspect|validate|run mlp|ask`
 - `why <run-id|latest>`
+- `vg doctor|shape|explain|correlate|compare|cab`
 - `link install|remove|doctor`
 - `persona mode <premise|cynic|professional|neutral>`
 - `tview port <port>`
 - `tview pcap <file> --port <port> --out <file>.jsonl`
 - `tview doctor`
 - `defend diag <cpu|memory|logs|pid|port> [target]`
+- `defend detect <env|sessions|persistence|packages|services|logs|eventviewer|all>`
 - `memory <history|prefs|definitions|language|security|uac|cases|runs|tze|legacy|persona|operator|assist>`
 - `tze latest`
 - `tze replay <run-id|latest>`
@@ -76,6 +90,15 @@ Simplex analysis codes use the `NET.TCP.*` namespace, including `NET.TCP.HTTP_PL
 Defense diagnostics are non-destructive. They collect CPU, memory, log, PID, or port evidence and
 suggest manual next actions without killing processes or changing firewall/service state.
 
+Salt-style Jinja/node/master commands are local-first planning surfaces. `jinja execute` refuses
+arbitrary rendered shell text in this phase, `node` emits local identity and heartbeat artifacts, and
+`master` stores file-spool job plans for allowlisted read-only/planning job types before any network
+transport or remote mutation exists.
+
+Tensor commands provide native local tensor literacy. They inspect and validate JSON tensor bundles,
+run tiny MLP traces through loaded tensors, and ask DeepNimSec/Citizen-AI-style local model profiles
+against bounded local knowledge context while optionally capturing supervised training examples.
+
 Persona modes are display-only behavior profiles. `Premise`, `Cynic`, `Professional`, and `Neutral`
 may shape identity and tone readouts, but never change command authority, routing, guardrails, or safety checks.
 
@@ -87,6 +110,7 @@ may shape identity and tone readouts, but never change command authority, routin
 - TZE replay flows: `tze latest`, `tze replay`, `tze chain`, `tze diff`, `tze report`, `tze explain-change`
 - Recursive explanation flow: `why latest` or shell `/why`
 - Next-action flow: `next latest`, shell `next`, or shell `/next`
+- Vuplus Gate flow: `vg doctor`, `vg shape`, `vg explain`, `vg correlate`, `vg compare`, `vg cab`
 - Context reset flow: `context reset`, `memory reset-context`, or `memory prune-expired`
 - API/link UX flows: `api status`, `api configure`, `link install`
 - Definition flows: `define <symbol-or-term>`, `explain <command-or-symbol>`
@@ -121,6 +145,7 @@ The interactive shell accepts plain OmniX language and a few convenience aliases
 - `api status` checks environment and repo-local `.env` without printing secrets.
 - `api configure openai` writes repo-local `.env` with restrictive permissions where supported.
 - `api template huggingface` prints a placeholder curl command only; HuggingFace is not a runtime provider yet.
+- `id` emits an OmniX instance identity derived from CPU architecture, platform, host hint hash, OmniX version, and a local persisted salt. It is SGX-inspired local software identity, not hardware attestation.
 - For `deepnimsec-omni:latest`, a stale custom model should be repaired with `./scripts/omnix_deepnimsec.sh --refresh-model`.
 - `./scripts/omnix_openai.sh` loads repo-local `./.env` for explicit OpenAI assist runs without printing secrets.
 - OpenAI freeform answers are a final `ask --assist` fallback after local memory, definitions, command routing, and guarded tool planning miss.
@@ -172,6 +197,7 @@ If a temporary learned association starts overriding the expected source truth, 
 
 ```bash
 ./build/omnix provider probe
+./build/omnix id --compact
 ./scripts/omnix_deepnimsec.sh --refresh-model
 ./scripts/omnix_openai.sh provider probe --compact
 ./build/omnix api status --compact

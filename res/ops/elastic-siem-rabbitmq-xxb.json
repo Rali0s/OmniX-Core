@@ -1,0 +1,89 @@
+{
+  "event_type": "omnix.ops.elastic_siem_fixture.v1",
+  "sourceSystem": "elastic-siem-json-shape",
+  "ingestMode": "local_fixture_only",
+  "alerts": [
+    {
+      "schema": "OperationalAlert",
+      "alarmId": "P1-RMQ-2B-XXB-STOPPED-REPORTING",
+      "severity": "P1",
+      "timestamp": "2026-01-14T02:14:00-05:00",
+      "asset": "XXB",
+      "customer": "CUST8",
+      "site": "NY_HOME_HEATING_OIL",
+      "trigger": "Queue XXB stopped reporting and consumers dropped to zero.",
+      "thresholds": [
+        "queue.depth.abnormal",
+        "consumer.count.zero",
+        "memory.usage.heap_pressure"
+      ],
+      "sourceSystem": "Elastic SIEM"
+    }
+  ],
+  "events": [
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:12:31-05:00",
+      "source": "elastic.logs.application",
+      "host": "XYZ_CLASSC1_CUST8",
+      "actor": "abc-worker.service",
+      "service": "abc-worker.service",
+      "eventType": "application_error_signature",
+      "severity": "critical",
+      "evidenceExcerpt": "ERROR EYZ-47281: Java heap exhausted while processing Queue XXB batch",
+      "contentHash": "sha256:fixture-eyz-47281",
+      "confidence": 0.93
+    },
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:13:58-05:00",
+      "source": "elastic.metrics.rabbitmq",
+      "host": "XYZ_CLASSC1_CUST8",
+      "actor": "RabbitMQ-2B",
+      "service": "rabbitmq",
+      "eventType": "queue_health_metric",
+      "severity": "critical",
+      "evidenceExcerpt": "queue=XXB consumers=0 ready=642 publish_rate=28 ack_rate=0 node_health=green",
+      "contentHash": "sha256:fixture-rmq-xxb-metric",
+      "confidence": 0.91
+    }
+  ],
+  "incident": {
+    "schema": "OperationalIncident",
+    "id": "incident-rmq-xxb-20260114",
+    "linkedEvents": [
+      "sha256:fixture-eyz-47281",
+      "sha256:fixture-rmq-xxb-metric"
+    ],
+    "linkedAlerts": [
+      "P1-RMQ-2B-XXB-STOPPED-REPORTING"
+    ],
+    "matchedThresholds": [
+      "memory.heap-pressure.queue-consumer-stop",
+      "safe-worker-restart-boundary"
+    ],
+    "dependencyMapRef": "res/ops/dependency-map-outage-window.json",
+    "likelyCause": "app_worker_memory_exhaustion",
+    "evidenceSummary": "RabbitMQ is healthy, Queue XXB is rising, consumers are zero, and the ABC worker emitted heap exhaustion.",
+    "nextAction": "Recommend worker restart runbook after operator review and before/after validation."
+  },
+  "notes": [
+    {
+      "schema": "OperationalNote",
+      "operator": "Engineer Infra",
+      "timestamp": "2026-01-14T02:36:00-05:00",
+      "note": "Do not inspect source code. Use logs, queue state, metrics, ownership, and runbook evidence.",
+      "commandsObserved": [
+        "systemctl status abc-worker.service",
+        "rabbitmqctl list_queues name messages consumers",
+        "grep EYZ-47281 /var/log/abc/worker.log"
+      ],
+      "reasoning": "Heap signature plus zero consumers explains queue stall without treating RabbitMQ as primary cause.",
+      "validationNotes": [
+        "consumer count must return",
+        "queue depth must drain",
+        "heap signature must not recur"
+      ]
+    }
+  ]
+}

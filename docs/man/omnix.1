@@ -10,11 +10,29 @@ omnix \- local-first analyst console, TZE runtime, and guarded assist shell
 .br
 .B omnix provider probe
 .br
+.B omnix id
+[--compact|--verbose]
+.br
 .B omnix api
 status|doctor|configure <openai|ollama>|template <openai|ollama|huggingface>
 .br
+.B omnix jinja
+inspect|render|plan|execute <file.j2> [--vars vars.json]
+.br
+.B omnix node
+doctor|id|status|heartbeat|enroll
+.br
+.B omnix master
+doctor|init|node list|node approve <fingerprint>|job plan <type>
+.br
+.B omnix tensor
+doctor|inspect|validate|run mlp|ask [args...]
+.br
 .B omnix why
 [latest|run-id]
+.br
+.B omnix vg
+doctor|explain|correlate|compare [artifact.json]
 .br
 .B omnix link
 install|remove|doctor [--with-tze] [--with-gg]
@@ -36,6 +54,9 @@ install|remove|doctor [--with-tze] [--with-gg]
 .br
 .B omnix defend diag
 <cpu|memory|logs|pid|port> [target]
+.br
+.B omnix defend detect
+<env|sessions|persistence|packages|services|logs|eventviewer|all>
 .SH COMMAND DICTIONARY
 OmniX is deterministic-first. Ollama or OpenAI may help with bounded planning, but they do not own execution.
 .PP
@@ -79,6 +100,8 @@ patch-proposal <path-or-module>
 .IP \(bu 2
 provider probe
 .IP \(bu 2
+id
+.IP \(bu 2
 api status
 .IP \(bu 2
 api doctor
@@ -87,7 +110,17 @@ api configure <openai|ollama>
 .IP \(bu 2
 api template <openai|ollama|huggingface>
 .IP \(bu 2
+jinja inspect|render|plan|execute <file.j2>
+.IP \(bu 2
+node doctor|id|status|heartbeat|enroll
+.IP \(bu 2
+master doctor|init|node list|node approve <fingerprint>|job plan <type>|job dispatch|job status
+.IP \(bu 2
+tensor doctor|inspect|validate|run mlp|ask
+.IP \(bu 2
 why <run-id|latest>
+.IP \(bu 2
+vg doctor|shape|explain|correlate|compare|cab
 .IP \(bu 2
 link install|remove|doctor
 .IP \(bu 2
@@ -100,6 +133,8 @@ tview pcap <file> --port <port> --out <file>.jsonl
 tview doctor
 .IP \(bu 2
 defend diag <cpu|memory|logs|pid|port> [target]
+.IP \(bu 2
+defend detect <env|sessions|persistence|packages|services|logs|eventviewer|all>
 .IP \(bu 2
 memory <history|prefs|definitions|language|security|uac|cases|runs|tze|legacy|persona|operator|assist>
 .IP \(bu 2
@@ -134,6 +169,15 @@ NET.TCP.TEXT_UTF8, and NET.TCP.TLS_OPAQUE.
 Defense diagnostics are non-destructive. They collect CPU, memory, log, PID, or port evidence and
 suggest manual next actions without killing processes or changing firewall/service state.
 .PP
+Salt-style Jinja/node/master commands are local-first planning surfaces. jinja execute refuses
+arbitrary rendered shell text in this phase, node emits local identity and heartbeat artifacts, and
+master stores file-spool job plans for allowlisted read-only/planning job types before any network
+transport or remote mutation exists.
+.PP
+Tensor commands provide native local tensor literacy. They inspect and validate JSON tensor bundles,
+run tiny MLP traces through loaded tensors, and ask DeepNimSec/Citizen-AI-style local model profiles
+against bounded local knowledge context while optionally capturing supervised training examples.
+.PP
 Persona modes are display-only behavior profiles. Premise, Cynic, Professional, and Neutral may
 shape identity and tone readouts, but never change command authority, routing, guardrails, or safety checks.
 .SH COMMAND FAMILIES
@@ -149,6 +193,8 @@ TZE replay flows: tze latest, tze replay, tze chain, tze diff, tze report, tze e
 Recursive explanation flow: why latest or shell /why
 .IP \(bu 2
 Next-action flow: next latest, shell next, or shell /next
+.IP \(bu 2
+Vuplus Gate flow: vg doctor, vg shape, vg explain, vg correlate, vg compare, vg cab
 .IP \(bu 2
 Context reset flow: context reset, memory reset-context, or memory prune-expired
 .IP \(bu 2
@@ -199,6 +245,8 @@ api status checks environment and repo-local .env without printing secrets
 api configure openai writes repo-local .env with restrictive permissions where supported
 .IP \(bu 2
 api template huggingface prints a placeholder curl command only; HuggingFace is not a runtime provider yet
+.IP \(bu 2
+id emits an OmniX instance identity derived from CPU architecture, platform, host hint hash, OmniX version, and a local persisted salt. It is SGX-inspired local software identity, not hardware attestation.
 .IP \(bu 2
 For deepnimsec-omni:latest, repair a stale custom model with ./scripts/omnix_deepnimsec.sh --refresh-model
 .IP \(bu 2
@@ -257,6 +305,7 @@ OMNIX_WEBSTER_FIXTURE_FILE=/path/to/webster.html
 .SH EXAMPLES
 .nf
 ./build/omnix provider probe
+./build/omnix id --compact
 ./scripts/omnix_deepnimsec.sh --refresh-model
 ./scripts/omnix_openai.sh provider probe --compact
 ./build/omnix api status --compact

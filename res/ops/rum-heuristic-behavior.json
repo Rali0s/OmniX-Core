@@ -1,0 +1,15 @@
+{
+  "event_type": "omnix.ops.rum_heuristic_fixture.v1",
+  "sourceSystem": "local.rum.heuristic.fixture",
+  "profile": "Citizen-AI heuristic encoded data",
+  "businessFlow": "checkout",
+  "behaviorSignals": {
+    "p95LatencyMs": 3800,
+    "errorRate": 0.18,
+    "sessionDropRate": 0.31,
+    "navigationAnomaly": "users loop between cart and payment confirmation",
+    "endpointFailurePattern": "/api/payments returns clustered 500 errors",
+    "userImpact": "checkout degradation"
+  },
+  "note": "No web beacon or external RUM vendor is used in this fixture."
+}

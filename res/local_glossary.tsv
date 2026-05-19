@@ -24,6 +24,12 @@ back-add||Safely add validated historical findings back into glossary entries, c
 context reset|omnix|A safe OmniX operation that clears volatile learned/runtime caches and shell observer state without deleting source glossary entries, TZE ledgers, cases, recipes, tools, or persona.
 memory TTL|omnix|A retention boundary for temporary learned runtime entries so sticky definitions or history can expire without deleting durable source truth.
 next action|omnix|A compact OmniX readout that selects the safest recommended continuation from the latest or selected TZE run.
+FreeRTOS|embedded|A lightweight real-time operating system for microcontrollers and embedded devices; future OmniX work will treat it as a local evidence source for tasks, queues, timers, heap, stack, and scheduler diagnostics.
+firmware communications|embedded|Low-level device communication evidence such as UART, I2C, SPI, CAN, USB serial, GPIO events, and board-local telemetry used for careful firmware and bus diagnostics.
+bus trace|embedded|A captured view of device or board communication over a hardware or serial bus, used as evidence before deciding whether a firmware, wiring, timing, or protocol issue exists.
+RTOS task diagnostics|embedded|Local analysis of task state, queue pressure, stack high-water marks, heap pressure, timers, interrupts, and watchdog evidence in an RTOS-based system.
+OmniX instance ID|omnix|A stable local software identity for an OmniX memory root, generated from CPU architecture, platform, host hint hash, OmniX version, and a persisted local salt; SGX-inspired but not hardware attestation.
+local software identity|omnix|A non-attestation identity generated from local machine and install context so OmniX can label an instance without exposing raw device identifiers.
 neural network||A computing model made of connected units with weights and biases that learn patterns from examples through training and inference.
 perceptron||A simple single-layer neural network unit that applies weighted inputs, a bias, and an activation rule to make a binary decision.
 tensor||A structured numeric array used to represent scalars, vectors, matrices, and higher-dimensional data in neural-network math.
@@ -42,3 +48,22 @@ operating memory cache||The local memory layer OmniX searches during Recursive R
 reasoning slot||A bounded local state frame used by Recursive Why/Diff to hold initial facts, intermediate evidence, target state, or present observer context.
 failure path||The observed run path from logs, stages, artifacts, and status that Recursive Why/Diff compares against a successful path pattern.
 dependency-safe state transition||An ordered operational move that preserves system safety by satisfying prerequisites before changing state, like draining queues before stopping a database.
+Jinja passthrough|omnix|A local OmniX template workflow that inspects and renders simple Jinja-style variables as artifacts, while refusing arbitrary rendered shell execution by default.
+OmniX node|omnix|A local agent profile identified by an OmniX instance ID, grains, capability facts, heartbeat artifacts, and explicit enrollment state; it is not a mandatory daemon in v1.
+OmniX master|omnix|An opt-in coordination role that approves node fingerprints, stores file-spool job plans, and collects evidence without automatically becoming a remote shell.
+node grain|omnix|A local fact about an OmniX node, such as platform, CPU architecture, tool capability, package manager availability, service manager, or defense-detect support.
+job cache|omnix|A local file-spool record of planned or completed OmniX master jobs, stored as compact JSON without secrets or arbitrary command text.
+master authority|omnix|The explicit trust boundary where an approved OmniX master may plan allowlisted jobs for enrolled nodes, while mutation and remote execution remain gated or disabled.
+Apple Intelligence|apple|Apple's personal intelligence system for supported Apple devices; in OmniX it is a future local/mobile edge bridge, not a current runtime authority.
+Foundation Models framework|apple|Apple's framework for using on-device language models; OmniX treats it as a future Apple-supported advisory bridge while local tensor and evidence runtimes remain authoritative.
+App Intents bridge|apple|A future Apple-supported bridge where OmniX-approved actions or context can be exposed through App Intents, Shortcuts, Siri, widgets, or controls without granting automatic command execution.
+local tensor literacy|omnix|The OmniX capability to load, validate, inspect, and run small tensor operations locally before depending on larger model formats or external ML runtimes.
+DeepNimSec local operator model|omnix|A fully local DeepNimSec/Ollama profile intended to assist security and operator reasoning without becoming the deterministic execution authority.
+tensor bundle|omnix|A local JSON artifact containing tokenizer-like metadata, embeddings, tensors, layer parameters, and labels that OmniX can validate and trace without external ML dependencies.
+Citizen-AI local model|omnix|A future local operator model profile, similar to DeepNimSec, that can answer against OmniX local knowledge context while remaining advisory and offline-first.
+supervised training capture|omnix|A JSONL record of question, local context, model answer, and provenance that can later feed local fine-tuning or adapter export without storing secrets.
+Twilio alert transport|omnix|A future outbound-only OmniX notification path for alarms, CAB review nudges, threshold escalations, and operator reminders; it is not execution authority.
+tenant-bound enrollment|omnix|A future Master/Minion trust workflow that binds a node enrollment request to a specific company or tenant boundary before master approval.
+Master Public Key|omnix|The public identity key for an OmniX master, used for fingerprinting and tenant-bound enrollment metadata; it is not private key material.
+node enrollment bundle|omnix|A portable public enrollment artifact containing tenant id, master fingerprint, minion fingerprint, nonce, timestamp, and signature, without exporting private keys.
+no-stray mutation|omnix|The rule that an OmniX master must not plan, dispatch, or execute jobs against nodes outside its approved tenant boundary.

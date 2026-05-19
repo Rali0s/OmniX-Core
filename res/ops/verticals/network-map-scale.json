@@ -1,0 +1,65 @@
+{
+  "event_type": "omnix.ops.vertical.network_map.v1",
+  "sourceSystem": "offline-scale-fixture",
+  "description": "Offline network mapping fixture for testing Vuplus Gate after SIEM shaping. No network scan is performed.",
+  "topology": {
+    "omnix_master": "omnix-master-nyc-01",
+    "site": "NY_HOME_HEATING_OIL",
+    "customer": "CUST8",
+    "segments": [
+      {
+        "segment_id": "edge-ingress",
+        "cidr": "10.42.10.0/24",
+        "role": "public_edge",
+        "load_balancer": "lb-cust8-public",
+        "frontend": "https:443",
+        "backend": "app-pool-cust8"
+      },
+      {
+        "segment_id": "app-runtime",
+        "cidr": "10.42.20.0/24",
+        "role": "application",
+        "kubernetes_cluster": "aks-cust8-apps",
+        "ansible_group": "app_workers"
+      },
+      {
+        "segment_id": "data-services",
+        "cidr": "10.42.30.0/24",
+        "role": "database_queue_storage",
+        "queue": "XXB",
+        "database": "payments-db",
+        "storage_mount": "/data/payments"
+      }
+    ],
+    "nodes": [
+      {
+        "omnix_minion": "minion-edge-01",
+        "host": "EDGE_CLASSA_CUST8_01",
+        "ip": "10.42.10.11",
+        "neighbor": "lb-cust8-public",
+        "redundancy_group": "edge-a"
+      },
+      {
+        "omnix_minion": "minion-app-01",
+        "host": "XYZ_CLASSC1_CUST8",
+        "ip": "10.42.20.18",
+        "neighbor": "payments-db",
+        "redundancy_group": "app-worker-a"
+      },
+      {
+        "omnix_minion": "minion-app-02",
+        "host": "XYZ_CLASSC2_CUST8",
+        "ip": "10.42.20.19",
+        "neighbor": "payments-db",
+        "redundancy_group": "app-worker-a"
+      }
+    ],
+    "dependencyTrace": "omnix_master=omnix-master-nyc-01 omnix_minion=minion-app-01 neighbor=payments-db queue=XXB load_balancer=lb-cust8-public backend=app-pool-cust8 storage_mount=/data/payments"
+  },
+  "safety": {
+    "mode": "analysis_only",
+    "secrets": "none",
+    "cloudCalls": false,
+    "networkScan": false
+  }
+}

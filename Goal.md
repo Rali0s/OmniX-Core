@@ -71,16 +71,23 @@
 16. Build C++ / Python Interop Code Segment: define a guarded bridge where OmniX C++ can call bounded Python analysis modules, exchange typed JSON artifacts, and keep Python execution optional, sandbox-aware, and replayable
 17. Build NeuralNetwork + TensorFlow Math Track: learn and operationalize perceptron/MLP fundamentals, simulation-first TensorFlow model training, and local neural signal routing without confusing this with neuromorphic/SNN research
 18. Build Native C++ Neural Signal Router: classify TView JSONL with dependency-free math, attach weighted attributions to definitions and decisions, and backtrace how math shaped each data decision
+19. Build FreeRTOS / Firmware Communications Research Track: keep a lightweight embedded systems path for future low-level communications, buses, firmware traces, and RTOS-aware local diagnostics without adding embedded dependencies to OmniX core yet
+20. Build VI / Vim / Neovim Operator Bridge: detect local editor capability, collect explicit buffer/file context, preview OmniX patches, and support future Neovim RPC integration without making any editor a required core dependency
+21. Build Salt-Style Jinja, Node, and Master Layer: support local Jinja artifact workflows, explicit node identity/enrollment, and file-spool master job planning while deferring remote shell, mutation jobs, and network transport until trust policy is stronger
+22. Build Local Tensor Framework and DeepNimSec Runtime: load and validate JSON tensor bundles, run tiny MLP traces, ask DeepNimSec/Citizen-AI against local OmniX knowledge context, and capture supervised training examples without remote APIs or heavyweight ML dependencies
+   - BLOCKER: Do not start vendor-specific tensor backend work until Mike/Operator studies tensor architecture and records notes in `docs/study/tensor-architecture-notes.md`.
+23. Build Slash Dedupe Storage Feature: integrate Blackwell-inspired DeviceFabric concepts into OmniX as a future user-space dedupe, manifest, restore, verify, and compact storage layer
+24. Build Twilio Alert Transport And Tenant-Safe Master/Minion Wizard: design outbound-only Twilio alarm notifications and tenant-bound node enrollment so future masters cannot plan or dispatch jobs across company boundaries or perform no-stray mutation.
 
 # Grandiose Goals & Additions ( Not Necessary - Can Go This Route ):
 1. Wolfram Alpha API
-2. OpenAI API
+2. OpenAI API: polish the public-release CLI and shell wizard for `api configure openai` with friendlier guidance, masked confirmation, `.env` preview, next commands, and clear assist-only safety language
 3. PyTorch - Python Interop as a later specialization of the guarded C++ / Python bridge
 4. Execution Of Python Files & Integration Of Maps
 
 # SideQuests:
 1. Falcon SDK Platform Integration: research a guarded connector path for Falcon SDK data, detections, incidents, and response actions while keeping credentials, destructive actions, and cloud calls explicitly operator-controlled
-2. Future iPhone Intelligence Integration: design a local-only mobile edge use case where an iPhone can contribute trusted local signals, operator context, notifications, captures, or approval workflows to OmniX without requiring cloud processing by default; needs deeper privacy, pairing, and on-device execution research
+2. Apple Intelligence + Local AI/ML Edge Integration: design a local-only Apple/mobile bridge where Apple Intelligence, App Intents, Shortcuts/Siri, Writing Tools surfaces, and Foundation Models can contribute trusted context, summaries, operator approvals, or mobile-side signals to OmniX while immediate engineering stays focused on native tensors, `mlp-lens`, DeepNimSec local runtime, and local model artifact bridges.
 3. Real-Time Speech and Translation Guard: research a phone-out assistant that detects likely mistranslations, wrong-language drift, risky tone/formality, names/numbers mistakes, or "the user is about to say the wrong thing" moments, then alerts through subtle haptics, visual cues, earbuds, or watch taps; keep local-only/offline-first speech and glossary checks as the default path, with OpenAI Realtime prompting as an optional assist reference rather than the authority. Example: "English, SIR, your VITALS and patterns suggest you are about to curse" -> response: "VIBRATE 4 TIMES on SMART WATCH"
 
 # Le Grand Mission:

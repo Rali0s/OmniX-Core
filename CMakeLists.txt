@@ -37,6 +37,7 @@ add_library(tze STATIC
     src/definition_engine.cpp
     src/definition_flow_interpreter.cpp
     src/io_runtime.cpp
+    src/instance_identity.cpp
     src/intent_resolver.cpp
     src/language_engine.cpp
     src/knowledge_engine.cpp

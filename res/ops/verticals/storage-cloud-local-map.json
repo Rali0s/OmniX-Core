@@ -1,0 +1,21 @@
+{
+  "event_type": "omnix.ops.vertical.storage_map.v1",
+  "sourceSystem": "offline-scale-fixture",
+  "description": "Local and cloud-adjacent storage dependency map for outage and rollback analysis.",
+  "storage": {
+    "host": "XYZ_CLASSC1_CUST8",
+    "storage_mount": "/data/payments",
+    "disk": "nvme0n1p4",
+    "volume": "payments-worker-volume",
+    "persistent_volume": "pv-payments-worker",
+    "bucket": "gs://cust8-lab-backups",
+    "dataLossRisk": "medium_if_unmounted_before_queue_drain",
+    "shutdownOrder": "ingress_drain -> queue_drain -> app_stop -> db_stop -> storage_detach",
+    "event.original": "[data] storage_mount=/data/payments disk=nvme0n1p4 volume=payments-worker-volume persistent_volume=pv-payments-worker bucket=gs://cust8-lab-backups data_loss_risk=medium shutdown_order=ingress_drain>queue_drain>app_stop>db_stop>storage_detach"
+  },
+  "safety": {
+    "detachStorage": false,
+    "deleteStorage": false,
+    "analysisOnly": true
+  }
+}

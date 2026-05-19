@@ -40,6 +40,14 @@
 14. [Proactive Infrastructure Thresholds](104-proactive-infrastructure-thresholds.md)
 15. [Ghostline `gg` Integration](105-ghostline-gg-integration.md)
 16. [Recursive Why/Diff and API/Link UX](106-recursive-why-diff-and-api-link-ux.md)
+17. [FreeRTOS and Firmware Communications Research Track](107-freertos-firmware-communications.md)
+18. [VI, Vim, and Neovim Operator Bridge](108-vim-neovim-operator-bridge.md)
+19. [Salt-Style Jinja, Node, and Master Layer](109-salt-style-jinja-node-master.md)
+20. [Apple Intelligence + Local AI/ML Bridge](110-apple-intelligence-local-ai-ml-bridge.md)
+21. [Local Tensor Framework and DeepNimSec Runtime](111-local-tensor-framework-and-deepnimsec-runtime.md)
+22. [Slash Dedupe Storage and OpenAI API UX](112-slash-dedupe-storage-and-openai-api-ux.md)
+23. [Vuplus Gate Operational Intelligence Pipeline](113-operational-intelligence-pipeline.md)
+24. [Twilio Alerting and Tenant-Safe Master/Minion Wizard](114-twilio-alerting-and-tenant-master-minion-wizard.md)
 
 ## V2 Completion Criteria
 - Runtime stage execution is derived from source-backed TZE graph data instead of a primarily hardcoded stage pipeline.

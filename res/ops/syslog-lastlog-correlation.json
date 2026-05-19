@@ -1,0 +1,16 @@
+{
+  "event_type": "omnix.ops.session_correlation_fixture.v1",
+  "sourceSystem": "local.syslog.lastlog.fixture",
+  "sessionEvidence": {
+    "actor": "premise",
+    "sourceIp": "192.168.1.44",
+    "tty": "pts/3",
+    "firstSeen": "2026-05-18T02:13:00-04:00",
+    "lastSeen": "2026-05-18T02:19:00-04:00",
+    "authLog": "May 18 02:13:01 host sshd[2481]: Accepted publickey for premise from 192.168.1.44 port 53310 ssh2",
+    "lastlog": "premise pts/3 192.168.1.44 Mon May 18 02:13:01 -0400 2026",
+    "who": "premise pts/3 2026-05-18 02:13 (192.168.1.44)"
+  },
+  "quietHours": "22:00-06:00",
+  "anomalyHint": "admin activity during quiet hours requires verification before containment"
+}

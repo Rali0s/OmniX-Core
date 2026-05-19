@@ -1,0 +1,38 @@
+{
+  "event_type": "omnix.ops.vertical.minion_neighbor_map.v1",
+  "sourceSystem": "offline-scale-fixture",
+  "description": "CDP-style OmniX minion neighbor fixture for future master/minion topology mapping.",
+  "mesh": {
+    "omnix_master": "omnix-master-nyc-01",
+    "fingerprint": "sha256:example-master-fingerprint-not-a-secret",
+    "neighbors": [
+      {
+        "omnix_minion": "minion-edge-01",
+        "host": "EDGE_CLASSA_CUST8_01",
+        "neighbor": "minion-app-01",
+        "link": "edge-ingress -> app-runtime",
+        "status": "observed"
+      },
+      {
+        "omnix_minion": "minion-app-01",
+        "host": "XYZ_CLASSC1_CUST8",
+        "neighbor": "minion-db-01",
+        "link": "app-runtime -> data-services",
+        "status": "observed"
+      },
+      {
+        "omnix_minion": "minion-db-01",
+        "host": "DB_CLASSD_CUST8_01",
+        "neighbor": "minion-storage-01",
+        "link": "data-services -> storage",
+        "status": "observed"
+      }
+    ],
+    "event.original": "[data] omnix_master=omnix-master-nyc-01 omnix_minion=minion-app-01 neighbor=minion-db-01 fingerprint=sha256:example-master-fingerprint-not-a-secret link=app-runtime->data-services"
+  },
+  "safety": {
+    "remoteDispatch": false,
+    "enrollmentChange": false,
+    "analysisOnly": true
+  }
+}

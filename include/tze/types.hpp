@@ -15,8 +15,11 @@ enum class RequestIntent {
     GeneralDefinitionQuery,
     PacketCapture,
     DefenseDiagnostic,
+    DefenseDetection,
+    VuplusGate,
     NeuralMath,
     NeuralRoute,
+    TensorAction,
     SetPersonaMode,
     AuthorBuildRecipe,
     ReviewModule,
@@ -1232,6 +1235,151 @@ struct DefenseDiagnosticReport {
     std::vector<std::string> warnings;
 };
 
+struct DefenseDetectionSignal {
+    std::string category;
+    std::string id;
+    std::string severity;
+    std::string source;
+    std::string rationale;
+    double confidence = 0.0;
+    std::vector<std::string> evidence_lines;
+    std::string recommended_next_action;
+};
+
+struct EventViewerRetention {
+    std::string channel;
+    std::size_t max_size_bytes = 0;
+    std::string retention_mode;
+    bool below_minimum = false;
+    bool elevated_change_required = false;
+    std::string recommendation;
+    std::vector<std::string> evidence_lines;
+};
+
+struct SessionCorrelation {
+    std::string actor;
+    std::string source;
+    std::string tty;
+    std::string first_seen;
+    std::string last_seen;
+    double confidence = 0.0;
+    std::string anomaly_rationale;
+    std::vector<std::string> evidence_refs;
+};
+
+struct HeuristicSignal {
+    std::string id;
+    std::string category;
+    std::string severity;
+    double confidence = 0.0;
+    std::string rationale;
+    std::vector<std::string> evidence_refs;
+};
+
+struct AlarmCabRecommendation {
+    std::string alarm_id;
+    std::string recommendation_status;
+    std::string proposed_change;
+    std::string approval_requirement;
+    std::string owner;
+    std::string timestamp;
+    std::string threshold_window;
+    std::string blast_radius;
+    std::string rollback_impact;
+    std::vector<std::string> affected_assets;
+    std::vector<std::string> signals;
+    std::vector<std::string> validation_checks;
+};
+
+struct ShapedField {
+    std::string field;
+    std::string value;
+    std::string type;
+    std::string source;
+    std::string lineage;
+    std::string semantic_meaning;
+    std::string mapped_signal;
+    double confidence = 0.0;
+};
+
+struct ShapingRule {
+    std::string source;
+    std::string field;
+    std::string type;
+    std::string semantic_meaning;
+    std::string mapped_signal;
+    double confidence = 0.0;
+};
+
+struct KeyCustodyMap {
+    bool encrypted_evidence = false;
+    std::string visible_anchor;
+    std::vector<std::string> route_hypothesis;
+    std::string status;
+    std::vector<std::string> allowed_evidence;
+    std::vector<std::string> forbidden_evidence;
+    std::string next_action;
+};
+
+struct DefenseDetectionReport {
+    std::string status;
+    std::string summary;
+    std::string mode;
+    std::string since_window;
+    std::string quiet_hours;
+    std::string admin_user;
+    std::string artifact_path;
+    std::size_t max_lines = 40;
+    std::string eventviewer_channels;
+    std::string source_path;
+    std::vector<DefenseDetectionSignal> signals;
+    std::vector<EventViewerRetention> event_viewer_retention;
+    std::vector<SessionCorrelation> session_correlations;
+    std::vector<HeuristicSignal> heuristic_signals;
+    std::vector<ShapedField> shaped_fields;
+    std::vector<ShapingRule> shaping_rules;
+    std::optional<KeyCustodyMap> key_custody;
+    std::string execution_topology = "standalone_local_node";
+    std::optional<AlarmCabRecommendation> alarm_cab;
+    std::vector<std::string> proposed_actions;
+    std::vector<std::string> warnings;
+};
+
+struct VuplusGateReport {
+    std::string status;
+    std::string mode;
+    std::string segment = "Vuplus Gate";
+    std::string input_path;
+    std::string dependency_map_path;
+    std::string why;
+    std::vector<std::string> signals;
+    double confidence = 0.0;
+    std::string historical_correlation;
+    std::string operational_blast_radius;
+    std::string rollback_impact;
+    std::string next_action;
+    std::string remediation_mode = "recommendation_only";
+    std::string execution_topology = "standalone_local_node";
+    std::string artifact_path;
+    std::string json;
+    struct KeyPair {
+        std::string key;
+        std::string value;
+        std::string source;
+        std::size_t value_start = 0;
+        std::size_t value_end = 0;
+    };
+    std::vector<KeyPair> key_pairs;
+    std::vector<EventViewerRetention> event_viewer_retention;
+    std::vector<SessionCorrelation> session_correlations;
+    std::vector<HeuristicSignal> heuristic_signals;
+    std::vector<ShapedField> shaped_fields;
+    std::vector<ShapingRule> shaping_rules;
+    std::optional<KeyCustodyMap> key_custody;
+    std::optional<AlarmCabRecommendation> alarm_cab;
+    std::vector<std::string> warnings;
+};
+
 struct BuildExecution {
     std::string source_path;
     std::string resolved_source_path;
@@ -1313,6 +1461,8 @@ struct ProcessingReport {
     std::optional<ToolInvocationReport> tool_invocation_report;
     std::optional<PacketCaptureReport> packet_capture_report;
     std::optional<DefenseDiagnosticReport> defense_diagnostic_report;
+    std::optional<DefenseDetectionReport> defense_detection_report;
+    std::optional<VuplusGateReport> vuplus_gate_report;
     std::optional<NeuralMathReport> neural_math_report;
     std::optional<NeuralRouteReport> neural_route_report;
     std::optional<RecursiveDiffReport> recursive_diff_report;
@@ -1376,6 +1526,16 @@ struct RequestProfile {
     std::string defense_target;
     int defense_port = 0;
     int defense_pid = 0;
+    std::string defense_since_window = "24h";
+    std::string defense_quiet_hours;
+    std::string defense_admin_user;
+    std::size_t defense_max_lines = 40;
+    std::string defense_channels;
+    std::string defense_source_path;
+    std::string vuplus_mode;
+    std::string vuplus_input_path;
+    std::string vuplus_dependency_map_path;
+    bool vuplus_learn_shape = false;
     std::string neural_math_mode;
     std::string neural_dataset;
     std::size_t neural_epochs = 32;

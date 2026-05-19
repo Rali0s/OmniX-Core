@@ -74,7 +74,7 @@ load_env_file() {
 
 is_omnix_command() {
   case "${1:-}" in
-    --version|ask|ingest|analyze|decide|defend|case|incident|define|explain|review|patch-proposal|build|recipe|preflight|doctor|provider|persona|tview|shell|memory|tze|tool|legacy|map|search|emit-cpp|build-cmake)
+    --version|ask|ingest|analyze|decide|defend|case|incident|define|explain|review|patch-proposal|build|recipe|preflight|doctor|provider|persona|tview|tensor|shell|memory|tze|tool|legacy|map|search|emit-cpp|build-cmake)
       return 0
       ;;
   esac

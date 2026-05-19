@@ -14,7 +14,11 @@ DeepNimSec OmniX wrapper
 
 Common commands:
   ./scripts/omnix_deepnimsec.sh start
+  ./scripts/omnix_deepnimsec.sh doctor
   ./scripts/omnix_deepnimsec.sh probe --compact
+  ./scripts/omnix_deepnimsec.sh models
+  ./scripts/omnix_deepnimsec.sh run "Say ready."
+  ./scripts/omnix_deepnimsec.sh chat "What should I check next?"
   ./scripts/omnix_deepnimsec.sh provider probe --compact
   ./scripts/omnix_deepnimsec.sh --refresh-model
   ./scripts/omnix_deepnimsec.sh --ask "What should I check next?"
@@ -66,6 +70,20 @@ if [ "${1:-}" = "start" ] || [ "${1:-}" = "--start" ] || [ "${1:-}" = "--start-o
   exit 0
 fi
 
+if [ "${1:-}" = "models" ] || [ "${1:-}" = "list" ]; then
+  ensure_ollama_server
+  exec ollama list
+fi
+
+if [ "${1:-}" = "run" ] || [ "${1:-}" = "chat" ]; then
+  shift
+  ensure_ollama_server
+  if [ $# -eq 0 ]; then
+    exec ollama run "$MODEL_NAME"
+  fi
+  exec ollama run "$MODEL_NAME" "$*"
+fi
+
 if [ "${1:-}" = "--refresh-model" ] || [ "${1:-}" = "--rebuild-model" ]; then
   shift
   ensure_ollama_server
@@ -76,7 +94,7 @@ if [ "${1:-}" = "--refresh-model" ] || [ "${1:-}" = "--rebuild-model" ]; then
   fi
 fi
 
-if [ "${1:-}" = "--probe" ] || [ "${1:-}" = "probe" ] || [ "${1:-}" = "status" ]; then
+if [ "${1:-}" = "--probe" ] || [ "${1:-}" = "probe" ] || [ "${1:-}" = "status" ] || [ "${1:-}" = "doctor" ]; then
   shift
   ensure_ollama_server
   exec "$REPO_ROOT/build/omnix" provider probe "$@"

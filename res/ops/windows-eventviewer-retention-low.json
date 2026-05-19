@@ -1,0 +1,25 @@
+{
+  "event_type": "omnix.ops.windows_eventviewer_retention.v1",
+  "sourceSystem": "windows.eventviewer.fixture",
+  "channels": [
+    {
+      "channel": "Security",
+      "maxSizeBytes": 20971520,
+      "retentionMode": "overwrite_as_needed"
+    },
+    {
+      "channel": "System",
+      "maxSizeBytes": 67108864,
+      "retentionMode": "overwrite_as_needed"
+    },
+    {
+      "channel": "Application",
+      "maxSizeBytes": 1073741824,
+      "retentionMode": "overwrite_as_needed"
+    }
+  ],
+  "operatorContext": {
+    "owner": "Windows Administrator",
+    "approvalRequirement": "Administrator or SYSTEM authority required to change channel max size"
+  }
+}

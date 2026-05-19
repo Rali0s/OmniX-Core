@@ -1161,6 +1161,69 @@ void test_defense_diagnostic_routes_and_stays_non_destructive() {
             "Expected defense diagnostic to declare non-destructive behavior.");
 }
 
+void test_defense_detection_reports_local_environment_changes() {
+    tze::IntentResolver resolver;
+    const tze::IntentResolution resolution = resolver.resolve("detect environment changes");
+    require(resolution.intent == tze::RequestIntent::DefenseDetection,
+            "Expected environmental change prompt to route to defense detection.");
+
+    const std::filesystem::path root = kBinaryRoot / "defense-detection";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root / "home");
+    std::filesystem::create_directories(root / "bin");
+    {
+        std::ofstream profile(root / "home" / ".zshrc");
+        profile << "alias ll='ls -la'\n";
+        profile << "omni_helper() { echo ok; }\n";
+    }
+    const std::filesystem::path evidence = root / "evidence.json";
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    ScopedEnvVar home_override("HOME", (root / "home").string());
+    ScopedEnvVar path_override("PATH", (root / "bin").string());
+    const CommandCapture run = run_command_capture(
+        shell_quote(binary.string()) +
+        " defend detect env --max-lines 12 --out " + shell_quote(evidence.string()) +
+        " --memory-root " + shell_quote((root / "memory").string()) + " --assist --verbose");
+    require(run.exit_code == 0, "Expected defense detection command to succeed.");
+    require(run.output.find("Defense detection: defense_detection_complete") != std::string::npos,
+            "Expected defense detection status in verbose output.");
+    require(run.output.find("x.Defense.EnvironmentDetect") != std::string::npos,
+            "Expected defense detection TZE stage to be recorded.");
+    require(run.output.find("Detection-only mode") != std::string::npos,
+            "Expected defense detection to declare non-mutating behavior.");
+    require(run.output.find("local_defense_only") != std::string::npos,
+            "Expected defense detection to bypass API/provider assist even when --assist is supplied.");
+    require(run.output.find("profile_alias=") != std::string::npos,
+            "Expected shell profile alias evidence without dumping arbitrary profile content.");
+    const std::string exported = xpp::read_text_file(evidence);
+    require(exported.find("omnix.defense.detection.v1") != std::string::npos,
+            "Expected defense detection JSON evidence artifact.");
+    require(exported.find("\"mode\":\"env\"") != std::string::npos,
+            "Expected defense detection artifact to preserve mode.");
+
+    const std::filesystem::path eventviewer_low =
+        kSourceRoot / "res" / "ops" / "windows-eventviewer-retention-low.json";
+    const CommandCapture eventviewer = run_command_capture(
+        shell_quote(binary.string()) +
+        " defend detect eventviewer --source " + shell_quote(eventviewer_low.string()) +
+        " --compact --memory-root " + shell_quote((root / "memory-eventviewer").string()));
+    require(eventviewer.exit_code == 0, "Expected Event Viewer fixture detection to succeed.");
+    require(eventviewer.output.find("eventviewer.retention.below_1gb") != std::string::npos,
+            "Expected Event Viewer fixture to flag retention below 1GB.");
+    require(eventviewer.output.find("alarm-cab: OMNIX-EVENTVIEWER-RETENTION-Security") != std::string::npos,
+            "Expected Event Viewer fixture to emit an Alarm CAB recommendation.");
+
+    const CommandCapture eventviewer_live = run_command_capture(
+        shell_quote(binary.string()) +
+        " defend detect eventviewer --compact --memory-root " +
+        shell_quote((root / "memory-eventviewer-live").string()));
+    require(eventviewer_live.exit_code == 0,
+            "Expected Event Viewer live detection to return a clean status on non-Windows hosts.");
+    require(eventviewer_live.output.find("eventviewer.unsupported_or_missing") != std::string::npos ||
+                eventviewer_live.output.find("eventviewer.retention") != std::string::npos,
+            "Expected Event Viewer live detection to report unsupported/missing or retention evidence.");
+}
+
 void test_preflight_validates_recipe_overrides() {
     tze::ProjectAliasRegistry aliases;
     const std::optional<tze::ProjectAlias> alias = aliases.find("nmap");
@@ -3918,6 +3981,43 @@ void test_cli_provider_probe_modes() {
             "Expected unreachable probe output to echo the requested model.");
 }
 
+void test_cli_instance_identity_is_stable_and_private() {
+    const std::filesystem::path root = kBinaryRoot / "cli-instance-identity";
+    const std::filesystem::path memory_root = root / "memory";
+    safe_remove_all(root);
+    std::filesystem::create_directories(memory_root);
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+
+    const std::string command =
+        shell_quote(binary.string()) + " id --compact --memory-root " + shell_quote(memory_root.string());
+    const CommandCapture first = run_command_capture(command);
+    const CommandCapture second = run_command_capture(command);
+    require(first.exit_code == 0 && second.exit_code == 0, "Expected `omnix id` to succeed.");
+    require(first.output.find("instance_identity_ready: omnixid-v1-") != std::string::npos,
+            "Expected compact identity output to include the OmniX instance id.");
+    require(first.output.find("fingerprint: sha256:") != std::string::npos,
+            "Expected compact identity output to include a SHA-256 fingerprint.");
+    require(first.output.find("not Intel SGX") != std::string::npos,
+            "Expected identity output to clarify this is not hardware attestation.");
+    const std::string first_id_line = first.output.substr(0, first.output.find('\n'));
+    const std::string second_id_line = second.output.substr(0, second.output.find('\n'));
+    require(first_id_line == second_id_line,
+            "Expected OmniX instance identity to stay stable for the same memory root.");
+
+    const std::string salt = xpp::read_text_file(memory_root / "instance_salt");
+    require(!salt.empty(), "Expected `omnix id` to persist a local instance salt.");
+    require(first.output.find(salt) == std::string::npos,
+            "Expected compact identity output not to leak the raw local salt.");
+    require(std::filesystem::exists(memory_root / "instance_identity.json"),
+            "Expected `omnix id` to write a compact instance identity artifact.");
+
+    const CommandCapture verbose = run_command_capture(
+        shell_quote(binary.string()) + " id --verbose --memory-root " + shell_quote(memory_root.string()));
+    require(verbose.exit_code == 0, "Expected verbose identity output to succeed.");
+    require(verbose.output.find("Host hint hash: sha256:") != std::string::npos,
+            "Expected verbose identity output to hash the host hint.");
+}
+
 void test_cli_provider_probe_openai_fixture() {
     const std::filesystem::path root = kBinaryRoot / "cli-provider-probe-openai";
     const std::filesystem::path memory_root = root / "memory";
@@ -4645,6 +4745,113 @@ void test_cli_recursive_why_api_and_link_ux() {
     require(link_remove.exit_code == 0, "Expected top-level link remove to succeed.");
     require(!std::filesystem::exists(link_prefix / "omnix") && !std::filesystem::exists(link_prefix / "tze"),
             "Expected top-level link remove to remove OmniX-managed link names.");
+}
+
+void test_cli_salt_style_jinja_node_master() {
+    const std::filesystem::path root = kBinaryRoot / "cli-salt-style-jinja-node-master";
+    const std::filesystem::path memory_root = root / "memory";
+    const std::filesystem::path template_path = root / "service-plan.j2";
+    const std::filesystem::path vars_path = root / "vars.json";
+    const std::filesystem::path rendered_path = root / "rendered.txt";
+    const std::filesystem::path heartbeat_path = root / "heartbeat.json";
+    const std::filesystem::path job_path = root / "job.json";
+    safe_remove_all(root);
+    std::filesystem::create_directories(root);
+    std::filesystem::create_directories(memory_root);
+
+    {
+        std::ofstream template_file(template_path);
+        template_file << "service: {{ service }}\n"
+                      << "owner: {{ owner }}\n"
+                      << "validation: confirm status after plan\n";
+    }
+    {
+        std::ofstream vars_file(vars_path);
+        vars_file << "{\"service\":\"abc-worker.service\",\"owner\":\"Engineer Infra\"}\n";
+    }
+
+    const std::filesystem::path binary = kBinaryRoot / "omnix";
+    const std::string common = shell_quote(binary.string()) + " ";
+    const std::string memory_args = " --memory-root " + shell_quote(memory_root.string());
+
+    const CommandCapture inspect = run_command_capture(
+        common + "jinja inspect " + shell_quote(template_path.string()) +
+        " --vars " + shell_quote(vars_path.string()) + " --compact" + memory_args);
+    require(inspect.exit_code == 0, "Expected `omnix jinja inspect` to succeed.");
+    require(inspect.output.find("jinja_inspected") != std::string::npos,
+            "Expected Jinja inspect to report inspected status.");
+    require(inspect.output.find("status: safe") != std::string::npos,
+            "Expected simple Jinja inspect fixture to be safe.");
+
+    const CommandCapture render = run_command_capture(
+        common + "jinja render " + shell_quote(template_path.string()) +
+        " --vars " + shell_quote(vars_path.string()) +
+        " --out " + shell_quote(rendered_path.string()) + " --compact" + memory_args);
+    require(render.exit_code == 0, "Expected `omnix jinja render` to succeed.");
+    require(std::filesystem::exists(rendered_path), "Expected Jinja render to write the requested artifact.");
+    const std::string rendered = xpp::read_text_file(rendered_path);
+    require(rendered.find("abc-worker.service") != std::string::npos &&
+                rendered.find("Engineer Infra") != std::string::npos,
+            "Expected Jinja passthrough renderer to replace fixture variables.");
+
+    const CommandCapture plan = run_command_capture(
+        common + "jinja plan " + shell_quote(template_path.string()) +
+        " --vars " + shell_quote(vars_path.string()) + " --compact" + memory_args);
+    require(plan.exit_code == 0, "Expected `omnix jinja plan` to succeed.");
+    require(plan.output.find("jinja_planned: runbook_plan") != std::string::npos ||
+                plan.output.find("jinja_planned: config_plan") != std::string::npos,
+            "Expected Jinja plan to classify the rendered artifact.");
+
+    const CommandCapture execute = run_command_capture(
+        common + "jinja execute " + shell_quote(template_path.string()) +
+        " --vars " + shell_quote(vars_path.string()) + " --confirm --compact" + memory_args);
+    require(execute.exit_code != 0, "Expected `omnix jinja execute` to reject arbitrary execution.");
+    require(execute.output.find("jinja_execute_rejected") != std::string::npos,
+            "Expected Jinja execute to refuse arbitrary rendered shell text.");
+
+    const CommandCapture node_heartbeat = run_command_capture(
+        common + "node heartbeat --out " + shell_quote(heartbeat_path.string()) + " --compact" + memory_args);
+    require(node_heartbeat.exit_code == 0, "Expected `omnix node heartbeat` to succeed.");
+    require(std::filesystem::exists(heartbeat_path), "Expected node heartbeat artifact to be written.");
+    const std::string heartbeat = xpp::read_text_file(heartbeat_path);
+    require(heartbeat.find("omnix.node.heartbeat.v1") != std::string::npos,
+            "Expected node heartbeat artifact to include its event type.");
+    require(heartbeat.find("fingerprint") != std::string::npos &&
+                heartbeat.find("grains") != std::string::npos,
+            "Expected node heartbeat to include fingerprint and grains.");
+
+    const CommandCapture master_init =
+        run_command_capture(common + "master init --compact" + memory_args);
+    require(master_init.exit_code == 0, "Expected `omnix master init` to succeed.");
+
+    const CommandCapture approve =
+        run_command_capture(common + "master node approve sha256:test-node --compact" + memory_args);
+    require(approve.exit_code == 0, "Expected master node approval to succeed.");
+    require(approve.output.find("node_approved") != std::string::npos,
+            "Expected master node approval to report the approved fingerprint.");
+
+    const CommandCapture job_plan = run_command_capture(
+        common + "master job plan defend.detect --target edge-1 --out " + shell_quote(job_path.string()) +
+        " --compact" + memory_args);
+    require(job_plan.exit_code == 0, "Expected master job plan to succeed for allowlisted jobs.");
+    require(std::filesystem::exists(job_path), "Expected master job plan to write a job artifact.");
+    const std::string job = xpp::read_text_file(job_path);
+    require(job.find("omnix.master.job.v1") != std::string::npos &&
+                job.find("\"jobType\":\"defend.detect\"") != std::string::npos &&
+                job.find("\"target\":\"edge-1\"") != std::string::npos,
+            "Expected master job plan artifact to preserve job type and target.");
+
+    const CommandCapture job_status =
+        run_command_capture(common + "master job status --compact" + memory_args);
+    require(job_status.exit_code == 0, "Expected master job status to succeed.");
+    require(job_status.output.find("master_job_status") != std::string::npos,
+            "Expected master job status to report file-spool mode.");
+
+    const CommandCapture dispatch =
+        run_command_capture(common + "master job dispatch " + shell_quote(job_path.string()) + " --compact" + memory_args);
+    require(dispatch.exit_code != 0, "Expected master dispatch to remain disabled in this phase.");
+    require(dispatch.output.find("master_dispatch_disabled") != std::string::npos,
+            "Expected master dispatch to explain that network dispatch is deferred.");
 }
 
 void test_cli_recursive_why_mines_learned_definition_route() {
@@ -5761,6 +5968,110 @@ void test_cli_tool_namespace_commands() {
     require(mlp_empty.output.find("invalid_arguments") != std::string::npos,
             "Expected empty mlp-lens input to return invalid_arguments.");
 
+    const CommandCapture locate_tensor = run_command_capture(
+        command_prefix + " tool locate tensor --memory-root " + shell_quote(memory_root.string()));
+    require(locate_tensor.exit_code == 0, "Expected `tool locate tensor` to resolve the built-in module.");
+    require(locate_tensor.output.find("Tool: tensor") != std::string::npos,
+            "Expected tensor locate output to name the built-in tool.");
+    require(locate_tensor.output.find("Provider: analyst_module") != std::string::npos,
+            "Expected tensor to resolve as an analyst module.");
+
+    const CommandCapture doctor_tensor = run_command_capture(
+        command_prefix + " tool doctor tensor --memory-root " + shell_quote(memory_root.string()));
+    require(doctor_tensor.exit_code == 0, "Expected `tool doctor tensor` to succeed.");
+    require(doctor_tensor.output.find("Native tensor literacy") != std::string::npos,
+            "Expected tensor doctor output to describe local tensor literacy.");
+
+    const CommandCapture tensor_inspect = run_command_capture(
+        command_prefix + " tensor inspect " + shell_quote(tensor_bundle.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(tensor_inspect.exit_code == 0, "Expected top-level `tensor inspect` to succeed.");
+    require(tensor_inspect.output.rfind("{\"tool\":\"tensor\"", 0) == 0,
+            "Expected compact tensor inspect output to be raw JSON.");
+    require(tensor_inspect.output.find("\"valid\":true") != std::string::npos,
+            "Expected tensor inspect output to report a valid bundle.");
+    require(tensor_inspect.output.find("\"shapes\"") != std::string::npos,
+            "Expected tensor inspect output to include tensor shapes.");
+    const CommandCapture tensor_inspect_verbose = run_command_capture(
+        command_prefix + " tensor inspect " + shell_quote(tensor_bundle.string()) +
+        " --verbose --memory-root " + shell_quote(memory_root.string()));
+    require(tensor_inspect_verbose.exit_code == 0, "Expected verbose top-level `tensor inspect` to succeed.");
+    require(tensor_inspect_verbose.output.find("Intent: tensor_action") != std::string::npos,
+            "Expected top-level tensor command to persist as a typed tensor route.");
+    require(tensor_inspect_verbose.output.find("x.Tensor.Framework") != std::string::npos,
+            "Expected verbose tensor output to include the tensor TZE stage.");
+
+    const std::string shell_tensor_command =
+        "printf '%s\\n' " + shell_quote("tensor inspect " + tensor_bundle.string() + " --compact") +
+        " " + shell_quote("/quit") + " | " +
+        command_prefix + " shell --compact --memory-root " + shell_quote(memory_root.string());
+    const CommandCapture tensor_shell = run_command_capture(shell_tensor_command);
+    require(tensor_shell.exit_code == 0, "Expected shell tensor command to exit cleanly.");
+    require(tensor_shell.output.find("\"tool\":\"tensor\"") != std::string::npos,
+            "Expected shell to route `tensor inspect` through the native tensor tool.");
+    require(tensor_shell.output.find("unknown_intent") == std::string::npos,
+            "Expected shell tensor command not to fall into unknown_intent.");
+
+    const CommandCapture tensor_validate = run_command_capture(
+        command_prefix + " tensor validate " + shell_quote(tensor_bundle.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(tensor_validate.exit_code == 0, "Expected top-level `tensor validate` to succeed.");
+    require(tensor_validate.output.find("\"valid\":true") != std::string::npos,
+            "Expected tensor validate output to report a valid bundle.");
+
+    const CommandCapture tensor_run = run_command_capture(
+        command_prefix + " tensor run mlp " + shell_quote(tensor_bundle.string()) +
+        " --input " + shell_quote("server secure") + " --compact --memory-root " +
+        shell_quote(memory_root.string()));
+    require(tensor_run.exit_code == 0, "Expected top-level `tensor run mlp` to succeed.");
+    require(tensor_run.output.find("\"tensorMode\":\"run_mlp\"") != std::string::npos,
+            "Expected tensor run output to identify run_mlp mode.");
+    require(tensor_run.output.find("\"softmaxProbabilities\"") != std::string::npos,
+            "Expected tensor run output to include MLP softmax probabilities.");
+
+    const std::filesystem::path tensor_answer_fixture = root / "tensor-answer.txt";
+    const std::filesystem::path tensor_training_log = root / "tensor-training.jsonl";
+    {
+        std::ofstream out(tensor_answer_fixture);
+        out << "Local tensor literacy means OmniX can validate and trace tensors before relying on larger model formats.";
+    }
+    const CommandCapture tensor_ask = run_command_capture(
+        command_prefix + " tensor ask --model citizen-ai:local --profile citizen-ai --kb " +
+        shell_quote((kSourceRoot / "res" / "local_glossary.tsv").string()) +
+        " --fixture-answer " + shell_quote(tensor_answer_fixture.string()) +
+        " --training-log " + shell_quote(tensor_training_log.string()) +
+        " " + shell_quote("What is local tensor literacy?") +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(tensor_ask.exit_code == 0, "Expected top-level `tensor ask` to succeed with fixture-backed local model answer.");
+    require(tensor_ask.output.find("\"profile\":\"citizen-ai\"") != std::string::npos,
+            "Expected tensor ask output to identify Citizen-AI profile.");
+    require(tensor_ask.output.find("\"answerSource\":\"fixture_local_model\"") != std::string::npos,
+            "Expected tensor ask output to use the fixture local model answer.");
+    require(tensor_ask.output.find("\"knowledgeSources\"") != std::string::npos,
+            "Expected tensor ask output to include local knowledge sources.");
+    require(std::filesystem::exists(tensor_training_log), "Expected tensor ask to write a supervised training capture.");
+    require(xpp::read_text_file(tensor_training_log).find("omnix.tensor.training_example.v1") != std::string::npos,
+            "Expected tensor training log to include its event type.");
+
+    const CommandCapture tensor_ask_kb_only = run_command_capture(
+        command_prefix + " tensor ask --model deepnimsec-omni:latest --kb " +
+        shell_quote((kSourceRoot / "res" / "local_glossary.tsv").string()) +
+        " " + shell_quote("What is local tensor literacy?") +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(tensor_ask_kb_only.exit_code == 0,
+            "Expected tensor ask to synthesize an evidence-bound answer from local KB context.");
+    require(tensor_ask_kb_only.output.find("\"answerSource\":\"local_kb_synthesized\"") != std::string::npos,
+            "Expected tensor ask without a model answer to identify local KB synthesis.");
+    require(tensor_ask_kb_only.output.find("load, validate, inspect") != std::string::npos,
+            "Expected local tensor literacy answer to come from the glossary hit.");
+
+    const CommandCapture tensor_bad = run_command_capture(
+        command_prefix + " tensor validate " + shell_quote(invalid_bundle.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(tensor_bad.exit_code != 0, "Expected invalid tensor bundle validation to fail.");
+    require(tensor_bad.output.find("tensor_bundle_invalid") != std::string::npos,
+            "Expected invalid tensor validation to return tensor_bundle_invalid.");
+
     const std::filesystem::path ghostline_audit_fixture =
         kSourceRoot / "res" / "ghostline" / "ghostline_audit_fixture.jsonl";
     const std::filesystem::path ghostline_actions_fixture =
@@ -6019,6 +6330,298 @@ void test_cli_tool_namespace_commands() {
         require(evidence.find("fake systemctl restart abc-worker.service") != std::string::npos,
                 "Expected execution evidence to capture fake systemctl output.");
     }
+
+    const std::filesystem::path vg_siem = kSourceRoot / "res" / "ops" / "elastic-siem-rabbitmq-xxb.json";
+    const std::filesystem::path vg_metatag = kSourceRoot / "res" / "ops" / "elastic-siem-metatag-blob.json";
+    const std::filesystem::path vg_packages = kSourceRoot / "res" / "ops" / "package-manager-activity.json";
+    const std::filesystem::path vg_dependency = kSourceRoot / "res" / "ops" / "dependency-map-outage-window.json";
+    const std::filesystem::path vg_recovery = kSourceRoot / "res" / "ops" / "recovery-comparison-worker-restart.json";
+    const std::filesystem::path vg_eventviewer = kSourceRoot / "res" / "ops" / "windows-eventviewer-retention-low.json";
+    const std::filesystem::path vg_sessions = kSourceRoot / "res" / "ops" / "syslog-lastlog-correlation.json";
+    const std::filesystem::path vg_rum = kSourceRoot / "res" / "ops" / "rum-heuristic-behavior.json";
+    const std::filesystem::path vg_encrypted = kSourceRoot / "res" / "ops" / "encrypted-siem-custody.json";
+    const std::filesystem::path vg_verticals =
+        kSourceRoot / "res" / "ops" / "verticals" / "scale-verticals-combined.json";
+    const std::filesystem::path vg_k8s =
+        kSourceRoot / "res" / "ops" / "verticals" / "kubernetes-docker-context.json";
+    const std::filesystem::path vg_lb =
+        kSourceRoot / "res" / "ops" / "verticals" / "load-balancer-front-back.json";
+    const std::filesystem::path vg_network =
+        kSourceRoot / "res" / "ops" / "verticals" / "network-map-scale.json";
+    const std::filesystem::path vg_terraform =
+        kSourceRoot / "res" / "ops" / "verticals" / "terraform-gcp-compute-plan-shape.json";
+    const std::filesystem::path vg_minion =
+        kSourceRoot / "res" / "ops" / "verticals" / "omnix-minion-neighbor-map.json";
+    const std::filesystem::path vg_report_out = root / "vuplus-gate-report.json";
+    const std::filesystem::path vg_metatag_out = root / "vuplus-gate-metatag-report.json";
+    const std::filesystem::path vg_cab_out = root / "vuplus-gate-alarm-cab.json";
+    const std::filesystem::path vg_shape_out = root / "vuplus-gate-shape.json";
+    const std::filesystem::path vg_vertical_shape_out = root / "vuplus-gate-vertical-shape.json";
+    const std::filesystem::path vg_terraform_shape_out = root / "vuplus-gate-terraform-shape.json";
+
+    const CommandCapture vg_doctor = run_command_capture(
+        command_prefix + " vg doctor --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_doctor.exit_code == 0, "Expected `vg doctor` to report readiness.");
+    require(vg_doctor.output.find("Vuplus Gate") != std::string::npos,
+            "Expected Vuplus Gate doctor output to name the segment.");
+    require(vg_doctor.output.find("recommendation_only") != std::string::npos,
+            "Expected Vuplus Gate doctor output to preserve recommendation-only mode.");
+
+    const CommandCapture vg_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_siem.string()) +
+        " --compact --out " + shell_quote(vg_report_out.string()) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(vg_explain.exit_code == 0, "Expected `vg explain` to succeed on the SIEM fixture.");
+    require(vg_explain.output.find("vg_explained") != std::string::npos,
+            "Expected Vuplus Gate explain output to report vg_explained.");
+    require(vg_explain.output.find("why:") != std::string::npos,
+            "Expected Vuplus Gate compact output to include why.");
+    require(vg_explain.output.find("signal: log.signature.EYZ-47281") != std::string::npos,
+            "Expected Vuplus Gate explain output to include heap signature signal.");
+    require(vg_explain.output.find("historical-correlation:") != std::string::npos,
+            "Expected Vuplus Gate explain output to include historical correlation.");
+    require(vg_explain.output.find("operational-blast-radius:") != std::string::npos,
+            "Expected Vuplus Gate explain output to include blast radius.");
+    require(vg_explain.output.find("rollback-impact:") != std::string::npos,
+            "Expected Vuplus Gate explain output to include rollback impact.");
+    require(std::filesystem::exists(vg_report_out), "Expected Vuplus Gate --out report to be written.");
+    {
+        const std::string vg_json = xpp::read_text_file(vg_report_out);
+        require(vg_json.find("\"event_type\":\"omnix.vg.explain.v1\"") != std::string::npos,
+                "Expected Vuplus Gate JSON to use its event type.");
+        require(vg_json.find("\"remediationMode\":\"recommendation_only\"") != std::string::npos,
+                "Expected Vuplus Gate JSON to preserve recommendation-only mode.");
+    }
+
+    const CommandCapture vg_metatag_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_metatag.string()) +
+        " --compact --out " + shell_quote(vg_metatag_out.string()) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(vg_metatag_explain.exit_code == 0,
+            "Expected `vg explain` to extract SIEM meta-tag key/value evidence.");
+    require(vg_metatag_explain.output.find("signal: siem.keypair.boundary_extracted") != std::string::npos,
+            "Expected Vuplus Gate to report delimiter-aware key/value extraction.");
+    require(vg_metatag_explain.output.find("key-pair: queue=XXB") != std::string::npos,
+            "Expected Vuplus Gate to extract queue=XXB from event.original.");
+    require(vg_metatag_explain.output.find("key-pair: consumer_count=0") != std::string::npos,
+            "Expected Vuplus Gate to extract consumer_count=0 from event.original.");
+    require(vg_metatag_explain.output.find("signal: log.signature.EYZ-47281") != std::string::npos,
+            "Expected Vuplus Gate to derive the heap signature signal from embedded SIEM metadata.");
+    require(std::filesystem::exists(vg_metatag_out),
+            "Expected Vuplus Gate meta-tag report to be written.");
+    {
+        const std::string vg_json = xpp::read_text_file(vg_metatag_out);
+        require(vg_json.find("\"keyPairs\"") != std::string::npos,
+                "Expected Vuplus Gate JSON to include extracted keyPairs.");
+        require(vg_json.find("\"key\":\"queue\"") != std::string::npos,
+                "Expected Vuplus Gate JSON to include the extracted queue key.");
+        require(vg_json.find("\"value\":\"XXB\"") != std::string::npos,
+                "Expected Vuplus Gate JSON to include the extracted queue value.");
+        require(vg_json.find("\"valueStart\"") != std::string::npos &&
+                    vg_json.find("\"valueEnd\"") != std::string::npos,
+                "Expected Vuplus Gate JSON to include key/value boundary offsets.");
+    }
+
+    const CommandCapture vg_shape = run_command_capture(
+        command_prefix + " vg shape " + shell_quote(vg_metatag.string()) +
+        " --compact --out " + shell_quote(vg_shape_out.string()) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(vg_shape.exit_code == 0, "Expected `vg shape` to infer SIEM shaping fields.");
+    require(vg_shape.output.find("vg_shaped") != std::string::npos,
+            "Expected `vg shape` to report vg_shaped.");
+    require(vg_shape.output.find("shape: consumer_count type=integer") != std::string::npos,
+            "Expected `vg shape` to type consumer_count as integer.");
+    require(vg_shape.output.find("semantic=queue consumer count") != std::string::npos,
+            "Expected `vg shape` to infer semantic meaning for consumer_count.");
+    require(vg_shape.output.find("signal=consumer.count.zero") != std::string::npos,
+            "Expected `vg shape` to map consumer_count=0 to a signal.");
+    require(vg_shape.output.find("shaping-rules:") != std::string::npos,
+            "Expected `vg shape` to propose reusable shaping rules.");
+    require(std::filesystem::exists(vg_shape_out), "Expected `vg shape --out` artifact to be written.");
+    {
+        const std::string shape_json = xpp::read_text_file(vg_shape_out);
+        require(shape_json.find("\"shapedFields\"") != std::string::npos,
+                "Expected shape artifact to include shapedFields.");
+        require(shape_json.find("\"field\":\"consumer_count\"") != std::string::npos,
+                "Expected shape artifact to include consumer_count field.");
+        require(shape_json.find("\"value\":0") != std::string::npos,
+                "Expected shape artifact to preserve integer value without string coercion.");
+        require(shape_json.find("\"semanticMeaning\":\"queue consumer count\"") != std::string::npos,
+                "Expected shape artifact to include semantic meaning.");
+        require(shape_json.find("\"mappedSignal\":\"consumer.count.zero\"") != std::string::npos,
+                "Expected shape artifact to include mapped signal.");
+        require(shape_json.find("\"shapingRules\"") != std::string::npos,
+                "Expected shape artifact to include reusable shaping rules.");
+    }
+
+    const CommandCapture vg_learn_shape = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_metatag.string()) +
+        " --learn-shape --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_learn_shape.exit_code == 0,
+            "Expected `vg explain --learn-shape` to keep explanation green.");
+    require(vg_learn_shape.output.find("siem.shape.rules_proposed") != std::string::npos,
+            "Expected `vg explain --learn-shape` to include rule proposals.");
+
+    const CommandCapture vg_vertical_shape = run_command_capture(
+        command_prefix + " vg shape " + shell_quote(vg_verticals.string()) +
+        " --compact --out " + shell_quote(vg_vertical_shape_out.string()) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(vg_vertical_shape.exit_code == 0,
+            "Expected `vg shape` to infer fields from the vertical scale fixture.");
+    require(vg_vertical_shape.output.find("orchestrator.kubernetes") != std::string::npos,
+            "Expected vertical shape output to map Kubernetes fields.");
+    require(vg_vertical_shape.output.find("loadbalancer.frontend") != std::string::npos,
+            "Expected vertical shape output to map load balancer fields.");
+    require(vg_vertical_shape.output.find("config.ansible.inventory") != std::string::npos,
+            "Expected vertical shape output to map Ansible inventory fields.");
+    require(vg_vertical_shape.output.find("cloud.google.compute") != std::string::npos,
+            "Expected vertical shape output to map GCP compute fields.");
+    require(vg_vertical_shape.output.find("omnix.node.neighbor") != std::string::npos,
+            "Expected vertical shape output to map OmniX node/master fields.");
+    require(vg_vertical_shape.output.find("storage.dependency") != std::string::npos,
+            "Expected vertical shape output to map storage dependency fields.");
+    require(std::filesystem::exists(vg_vertical_shape_out),
+            "Expected vertical `vg shape --out` artifact to be written.");
+
+    const CommandCapture vg_k8s_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_k8s.string()) +
+        " --learn-shape --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_k8s_explain.exit_code == 0,
+            "Expected Vuplus Gate to explain Kubernetes/container vertical fixtures.");
+    require(vg_k8s_explain.output.find("signal: orchestrator.kubernetes") != std::string::npos,
+            "Expected Kubernetes explanation to include orchestrator signal.");
+    require(vg_k8s_explain.output.find("signal: runtime.container") != std::string::npos,
+            "Expected Kubernetes explanation to include container runtime signal.");
+
+    const CommandCapture vg_lb_correlate = run_command_capture(
+        command_prefix + " vg correlate " + shell_quote(vg_lb.string()) +
+        " --dependency-map " + shell_quote(vg_network.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_lb_correlate.exit_code == 0,
+            "Expected Vuplus Gate to correlate load balancer vertical fixtures.");
+    require(vg_lb_correlate.output.find("signal: loadbalancer.frontend") != std::string::npos,
+            "Expected load balancer correlation to include frontend signal.");
+    require(vg_lb_correlate.output.find("signal: loadbalancer.backend") != std::string::npos,
+            "Expected load balancer correlation to include backend signal.");
+    require(vg_lb_correlate.output.find("signal: loadbalancer.target.unhealthy") != std::string::npos,
+            "Expected load balancer correlation to include unhealthy target signal.");
+
+    const CommandCapture vg_terraform_shape = run_command_capture(
+        command_prefix + " vg shape " + shell_quote(vg_terraform.string()) +
+        " --compact --out " + shell_quote(vg_terraform_shape_out.string()) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(vg_terraform_shape.exit_code == 0,
+            "Expected `vg shape` to infer fields from Terraform/GCP fixture.");
+    require(vg_terraform_shape.output.find("iac.terraform.plan") != std::string::npos,
+            "Expected Terraform shape output to include IaC plan signal.");
+    require(vg_terraform_shape.output.find("cloud.google.compute") != std::string::npos,
+            "Expected Terraform shape output to include GCP compute signal.");
+    require(std::filesystem::exists(vg_terraform_shape_out),
+            "Expected Terraform `vg shape --out` artifact to be written.");
+
+    const CommandCapture vg_minion_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_minion.string()) +
+        " --learn-shape --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_minion_explain.exit_code == 0,
+            "Expected Vuplus Gate to explain OmniX minion neighbor fixtures.");
+    require(vg_minion_explain.output.find("signal: omnix.node.neighbor") != std::string::npos,
+            "Expected OmniX minion neighbor explanation to include node neighbor signal.");
+
+    const CommandCapture vg_correlate = run_command_capture(
+        command_prefix + " vg correlate " + shell_quote(vg_packages.string()) +
+        " --dependency-map " + shell_quote(vg_dependency.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_correlate.exit_code == 0, "Expected `vg correlate` to succeed.");
+    require(vg_correlate.output.find("vg_correlated") != std::string::npos,
+            "Expected Vuplus Gate correlate output to report vg_correlated.");
+    require(vg_correlate.output.find("dependency.package.apt") != std::string::npos,
+            "Expected Vuplus Gate correlate output to identify apt package surface.");
+    require(vg_correlate.output.find("dependency.script.powershell") != std::string::npos,
+            "Expected Vuplus Gate correlate output to identify PowerShell script surface.");
+
+    const CommandCapture vg_eventviewer_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_eventviewer.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_eventviewer_explain.exit_code == 0,
+            "Expected Vuplus Gate to explain Event Viewer retention fixtures.");
+    require(vg_eventviewer_explain.output.find("eventviewer.retention.below_1gb") != std::string::npos,
+            "Expected Vuplus Gate Event Viewer explanation to flag retention below 1GB.");
+    require(vg_eventviewer_explain.output.find("execution-topology: standalone_local_node") != std::string::npos,
+            "Expected Vuplus Gate output to include execution topology.");
+    require(vg_eventviewer_explain.output.find("alarm-cab: OMNIX-EVENTVIEWER-RETENTION-Security") != std::string::npos,
+            "Expected Vuplus Gate Event Viewer explanation to include a CAB recommendation.");
+
+    const CommandCapture vg_sessions_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_sessions.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_sessions_explain.exit_code == 0,
+            "Expected Vuplus Gate to explain syslog/lastlog correlation fixtures.");
+    require(vg_sessions_explain.output.find("session.syslog_lastlog.correlation") != std::string::npos,
+            "Expected Vuplus Gate to include syslog/lastlog session correlation.");
+
+    const CommandCapture vg_rum_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_rum.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_rum_explain.exit_code == 0,
+            "Expected Vuplus Gate to explain heuristic/RUM fixtures.");
+    require(vg_rum_explain.output.find("heuristic: rum.latency_spike") != std::string::npos,
+            "Expected Vuplus Gate to include a latency heuristic signal.");
+    require(vg_rum_explain.output.find("heuristic: rum.error_burst") != std::string::npos,
+            "Expected Vuplus Gate to include an error-burst heuristic signal.");
+
+    const CommandCapture vg_encrypted_explain = run_command_capture(
+        command_prefix + " vg explain " + shell_quote(vg_encrypted.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_encrypted_explain.exit_code == 0,
+            "Expected Vuplus Gate to explain encrypted SIEM custody fixtures.");
+    require(vg_encrypted_explain.output.find("siem.encrypted_evidence") != std::string::npos,
+            "Expected encrypted fixture to map encrypted evidence signal.");
+    require(vg_encrypted_explain.output.find("custody.operator_approval_required") != std::string::npos,
+            "Expected encrypted fixture to require operator approval for custody.");
+    require(vg_encrypted_explain.output.find("key-custody: operator_approval_required anchor=XYZ_CLASSC1_CUST8") != std::string::npos,
+            "Expected encrypted fixture to expose safe key-custody metadata without secrets.");
+
+    const CommandCapture vg_cab = run_command_capture(
+        command_prefix + " vg cab " + shell_quote(vg_eventviewer.string()) +
+        " --compact --out " + shell_quote(vg_cab_out.string()) +
+        " --memory-root " + shell_quote(memory_root.string()));
+    require(vg_cab.exit_code == 0, "Expected `vg cab` to write Alarm CAB JSON.");
+    require(vg_cab.output.find("vg_cab_ready") != std::string::npos,
+            "Expected Vuplus Gate CAB command to report vg_cab_ready.");
+    require(vg_cab.output.find("alarm-cab: OMNIX-EVENTVIEWER-RETENTION-Security") != std::string::npos,
+            "Expected Vuplus Gate CAB command to include CAB id.");
+    require(std::filesystem::exists(vg_cab_out), "Expected Vuplus Gate CAB JSON artifact to be written.");
+    {
+        const std::string cab_json = xpp::read_text_file(vg_cab_out);
+        require(cab_json.find("\"alarmCab\"") != std::string::npos,
+                "Expected Vuplus Gate CAB artifact to include alarmCab.");
+        require(cab_json.find("\"approvalRequirement\":\"Requires elevated Administrator/SYSTEM approval") != std::string::npos,
+                "Expected Vuplus Gate CAB artifact to include elevated approval requirement.");
+    }
+
+    const CommandCapture vg_compare = run_command_capture(
+        command_prefix + " vg compare " + shell_quote(vg_recovery.string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_compare.exit_code == 0, "Expected `vg compare` to succeed.");
+    require(vg_compare.output.find("vg_compared") != std::string::npos,
+            "Expected Vuplus Gate compare output to report vg_compared.");
+    require(vg_compare.output.find("recovery.success_path") != std::string::npos,
+            "Expected Vuplus Gate compare output to include success path signal.");
+    require(vg_compare.output.find("recovery.failed_path") != std::string::npos,
+            "Expected Vuplus Gate compare output to include failed path signal.");
+
+    const CommandCapture vg_replay = run_command_capture(
+        command_prefix + " tze replay latest --memory-root " + shell_quote(memory_root.string()));
+    require(vg_replay.exit_code == 0, "Expected TZE replay after Vuplus Gate to succeed.");
+    require(vg_replay.output.find("x.Vuplus.Gate") != std::string::npos,
+            "Expected TZE replay to include x.Vuplus.Gate stage.");
+
+    const CommandCapture vg_missing = run_command_capture(
+        command_prefix + " vg explain " + shell_quote((root / "missing-vg.json").string()) +
+        " --compact --memory-root " + shell_quote(memory_root.string()));
+    require(vg_missing.exit_code != 0, "Expected missing Vuplus Gate input to fail cleanly.");
+    require(vg_missing.output.find("vg_input_missing") != std::string::npos,
+            "Expected missing Vuplus Gate input to report vg_input_missing.");
 
     const CommandCapture regex = run_command_capture(
         command_prefix + " tool regex-search --memory-root " + shell_quote(memory_root.string()) +
@@ -6489,6 +7092,7 @@ int main() {
         test_source_mapped_runtime_semantics_stay_in_sync();
         test_processing_engine_build_nmap_prefers_native_tool();
         test_processing_engine_build_tshark_prefers_native_tool();
+        test_defense_detection_reports_local_environment_changes();
         test_processing_engine_keeps_ollama_dormant_when_configured();
         test_processing_engine_runs_analyst_case_flow();
         test_processing_engine_decide_uses_prior_success_history();
@@ -6502,6 +7106,7 @@ int main() {
         test_cli_security_audit_and_memory_view();
         test_cli_legacy_coverage_and_report();
         test_cli_provider_probe_modes();
+        test_cli_instance_identity_is_stable_and_private();
         test_cli_provider_probe_openai_fixture();
         test_cli_guarded_assist_falls_back_deterministically();
         test_cli_assist_tool_plan_executes_allowlisted_builtin();
@@ -6518,6 +7123,7 @@ int main() {
         test_cli_openai_freeform_does_not_override_command_route();
         test_cli_shell_provider_and_context();
         test_cli_recursive_why_api_and_link_ux();
+        test_cli_salt_style_jinja_node_master();
         test_cli_recursive_why_mines_learned_definition_route();
         test_cli_context_reset_clears_volatile_definition_cache();
         test_cli_shell_nmap_results_alias();

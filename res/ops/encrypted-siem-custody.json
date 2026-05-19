@@ -1,0 +1,12 @@
+{
+  "event_type": "omnix.ops.encrypted_siem_custody_fixture.v1",
+  "sourceSystem": "elastic-siem-json-shape",
+  "server": "XYZ_CLASSC1_CUST8",
+  "event": {
+    "kind": "alert",
+    "category": "encrypted_log_route",
+    "event.original": "[data] server=XYZ_CLASSC1_CUST8 queue=XXB consumer=abc-worker.service encrypted=true cipher=tls pkcs12_ref=company-logsource-cert fingerprint=SHA256:EXAMPLEONLY route=queue-consumer-logsource",
+    "visibleAnchor": "server=XYZ_CLASSC1_CUST8"
+  },
+  "custodyNote": "Fixture intentionally contains only certificate reference metadata. No private key material is present."
+}

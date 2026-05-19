@@ -434,6 +434,38 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
         return resolution;
     }
 
+    if (starts_with(lowered, "defend detect ") ||
+        lowered.find("environment change") != std::string::npos ||
+        lowered.find("new cron") != std::string::npos ||
+        lowered.find("new ssh") != std::string::npos ||
+        lowered.find("persistent session") != std::string::npos ||
+        lowered.find("package activity") != std::string::npos ||
+        lowered.find("service change") != std::string::npos) {
+        resolution.intent = RequestIntent::DefenseDetection;
+        resolution.primary_target = resolution.normalized_prompt;
+        if (lowered.find("session") != std::string::npos || lowered.find("ssh") != std::string::npos ||
+            lowered.find("tty") != std::string::npos) {
+            resolution.memory_view = "sessions";
+        } else if (lowered.find("cron") != std::string::npos || lowered.find("persistence") != std::string::npos ||
+                   lowered.find("launchd") != std::string::npos || lowered.find("timer") != std::string::npos) {
+            resolution.memory_view = "persistence";
+        } else if (lowered.find("package") != std::string::npos || lowered.find("npm") != std::string::npos ||
+                   lowered.find("apt") != std::string::npos || lowered.find("brew") != std::string::npos) {
+            resolution.memory_view = "packages";
+        } else if (lowered.find("service") != std::string::npos || lowered.find("systemd") != std::string::npos) {
+            resolution.memory_view = "services";
+        } else if (lowered.find("log") != std::string::npos || lowered.find("syslog") != std::string::npos) {
+            resolution.memory_view = "logs";
+        } else if (lowered.find("path") != std::string::npos || lowered.find("profile") != std::string::npos ||
+                   lowered.find("environment") != std::string::npos) {
+            resolution.memory_view = "env";
+        } else {
+            resolution.memory_view = "all";
+        }
+        resolution.confidence = 0.9;
+        return resolution;
+    }
+
     if (starts_with(lowered, "defend diag ") ||
         lowered.find("show cpu hog") != std::string::npos ||
         lowered.find("cpu diag") != std::string::npos ||
@@ -713,6 +745,13 @@ IntentResolution IntentResolver::resolve(std::string_view prompt) const {
             resolution.confidence = 0.96;
             return resolution;
         }
+    }
+
+    if (lowered == "tensor" || starts_with(lowered, "tensor ")) {
+        resolution.intent = RequestIntent::TensorAction;
+        resolution.primary_target = "tensor";
+        resolution.confidence = 0.99;
+        return resolution;
     }
 
     if (starts_with(lowered, "define ")) {

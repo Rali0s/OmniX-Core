@@ -1,0 +1,13 @@
+{
+  "event_type": "omnix.ops.elastic_siem_metatag_fixture.v1",
+  "sourceSystem": "elastic-siem-json-shape",
+  "description": "Fixture for SIEM/meta-tag blobs where key incident facts are packed into one event.original field.",
+  "event": {
+    "kind": "alert",
+    "category": "message_queue",
+    "severity": "critical",
+    "host.name": "XYZ_CLASSC1_CUST8",
+    "event.original": "[data] queue=XXB consumer_count=0 rabbitmq_node=RabbitMQ-2B error=EYZ-47281 service=abc-worker.service ram=91 oldest_age=860 dependency=payments-db mount=/data/payments action=recommend_only publish_rate=28 ack_rate=0",
+    "metaTag": "site=NY_HOME_HEATING_OIL customer=CUST8 app=ABC broker=RabbitMQ signal=queue_stopped_reporting"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "event_type": "omnix.ops.vertical.kubernetes_docker_context.v1",
+  "sourceSystem": "offline-scale-fixture",
+  "description": "Nested operator context fixture: Windows host to Kubernetes shell to cluster pod/container runtime.",
+  "context": {
+    "outerHost": "WIN-SRV-AZ-OPS-17",
+    "operatorShell": "PowerShell",
+    "kubernetes_cluster": "aks-cust8-apps",
+    "namespace": "payments-prod",
+    "node": "aks-nodepool1-000003",
+    "pod": "abc-worker-7f884c9c79-lx2br",
+    "container": "abc-worker",
+    "image": "registry.local/abc-worker:2026.05.18",
+    "service": "abc-worker.service",
+    "queue": "XXB",
+    "consumer_count": 0,
+    "health_status": "degraded",
+    "event.original": "[data] cluster=aks-cust8-apps namespace=payments-prod pod=abc-worker-7f884c9c79-lx2br container=abc-worker image=registry.local/abc-worker:2026.05.18 node=aks-nodepool1-000003 queue=XXB consumer_count=0 health_status=degraded"
+  },
+  "analysisBoundaries": {
+    "sourceCodeInspection": false,
+    "kubectlExecution": false,
+    "dockerExecution": false,
+    "recommendationMode": true
+  }
+}

@@ -1,0 +1,15 @@
+# OmniX Jinja Passthrough Test
+
+message: Hello World
+alarm_id: {{ alarm_id }}
+site: {{ site }}
+node: {{ grains.node_id }}
+service: {{ service_name }}
+queue: {{ queue_name }}
+owner: {{ owner }}
+
+runbook:
+  intent: review_only
+  summary: Investigate {{ service_name }} for queue {{ queue_name }} on {{ grains.node_id }}.
+  validation: Confirm service state, consumer count, queue depth trend, and latest error signature before action.
+  decision: Produce evidence first; do not execute remediation from rendered Jinja text.

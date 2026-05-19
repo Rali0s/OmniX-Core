@@ -16,6 +16,7 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -429,7 +430,7 @@ NativeToolRecord record_from_resolution(const ToolResolution& resolution) {
 }
 
 std::vector<std::string> analyst_builtin_tools() {
-    return {"inspect-log", "inspect-build", "inspect-host", "report-case", "text-pipeline", "mlp-lens", "thresholds", "symlink", "gg"};
+    return {"inspect-log", "inspect-build", "inspect-host", "report-case", "text-pipeline", "mlp-lens", "tensor", "thresholds", "symlink", "gg"};
 }
 
 bool is_analyst_builtin_tool(std::string_view logical_name) {
@@ -528,6 +529,19 @@ ToolDoctorReport builtin_doctor(std::string_view logical_name,
         };
         report.recommended_next_command =
             "Use `omnix tool mlp-lens -- --tensor-bundle res/mlp_lens/tiny_mlp_bundle.json \"Michael Jordan plays basketball\"`.";
+        return report;
+    }
+
+    if (logical_name == "tensor") {
+        report.summary = "Native tensor literacy is built into OmniX for local JSON tensor bundles and model-context question capture.";
+        report.capability_notes = {
+            "Inspects and validates local JSON tensor bundles without Python, TensorFlow, ONNX, safetensors, or GGUF dependencies.",
+            "Runs tiny MLP traces through loaded bundle tensors using the same math path as mlp-lens.",
+            "Can build local knowledge-context prompts for DeepNimSec or Citizen-AI and capture supervised training examples.",
+            "Model answers are local-only: fixture-backed for tests or optional local Ollama when explicitly enabled.",
+        };
+        report.recommended_next_command =
+            "Use `omnix tensor inspect res/mlp_lens/tiny_mlp_bundle.json --compact` or `omnix tensor ask --model deepnimsec-omni:latest --kb res/local_glossary.tsv \"What is local tensor literacy?\"`.";
         return report;
     }
 
@@ -3898,6 +3912,524 @@ std::string optional_json_scalar_string(const MlpJsonValue& object, std::string_
     return json_value_to_string(value->get());
 }
 
+std::vector<std::string> tokenize_for_search(std::string_view text) {
+    static const std::set<std::string> stopwords = {
+        "a", "an", "and", "are", "as", "for", "in", "is", "of", "on", "the", "to", "what", "who"
+    };
+    std::vector<std::string> tokens;
+    std::string current;
+    const auto flush = [&]() {
+        if (!current.empty() && current.size() > 2 && stopwords.find(current) == stopwords.end()) {
+            tokens.push_back(current);
+        }
+        current.clear();
+    };
+    for (char c : text) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isalnum(uc)) {
+            current.push_back(static_cast<char>(std::tolower(uc)));
+            continue;
+        }
+        flush();
+    }
+    flush();
+    return tokens;
+}
+
+std::vector<std::string> split_pipe_fields(std::string_view text) {
+    std::vector<std::string> fields;
+    std::string current;
+    for (char c : text) {
+        if (c == '|') {
+            fields.push_back(trim(current));
+            current.clear();
+        } else {
+            current.push_back(c);
+        }
+    }
+    fields.push_back(trim(current));
+    return fields;
+}
+
+bool contains_token(const std::vector<std::string>& tokens, std::string_view needle) {
+    const std::string lowered = lowercase(needle);
+    return std::find(tokens.begin(), tokens.end(), lowered) != tokens.end();
+}
+
+std::size_t overlap_score(std::string_view text, const std::vector<std::string>& query_tokens) {
+    const std::string lowered = lowercase(text);
+    std::size_t score = 0;
+    for (const std::string& token : query_tokens) {
+        if (!token.empty() && lowered.find(token) != std::string::npos) {
+            ++score;
+        }
+    }
+    return score;
+}
+
+std::size_t tensor_context_score(std::string_view text,
+                                 const std::vector<std::string>& query_tokens,
+                                 std::string_view question) {
+    std::size_t score = overlap_score(text, query_tokens);
+    const std::vector<std::string> fields = split_pipe_fields(text);
+    if (fields.size() < 3) {
+        return score;
+    }
+
+    const std::string question_lower = lowercase(question);
+    const std::string term_lower = lowercase(fields[0]);
+    const std::string domain_lower = lowercase(fields[1]);
+    const std::vector<std::string> term_tokens = tokenize_for_search(fields[0]);
+    const bool term_exact = !term_lower.empty() && question_lower.find(term_lower) != std::string::npos;
+    if (term_exact) {
+        score += 8;
+    }
+    for (const std::string& token : term_tokens) {
+        if (contains_token(query_tokens, token)) {
+            score += 3;
+        }
+    }
+    if (!domain_lower.empty() && question_lower.find(domain_lower) != std::string::npos) {
+        score += 5;
+    } else if (fields[1].empty() && term_exact) {
+        score += 2;
+    }
+    return score;
+}
+
+std::optional<std::string> synthesize_answer_from_tensor_context(const std::vector<std::string>& context) {
+    for (const std::string& line : context) {
+        const std::size_t sep = line.find(" | ");
+        const std::string payload = sep == std::string::npos ? line : line.substr(sep + 3);
+        const std::vector<std::string> fields = split_pipe_fields(payload);
+        if (fields.size() < 3 || fields[0].empty() || fields[2].empty()) {
+            continue;
+        }
+        std::string answer = fields[0];
+        if (!fields[1].empty()) {
+            answer += " [" + fields[1] + "]";
+        }
+        answer += ": " + fields[2];
+        return answer;
+    }
+    if (!context.empty()) {
+        return "Best local context: " + context.front();
+    }
+    return std::nullopt;
+}
+
+std::vector<std::filesystem::path> default_tensor_kb_paths() {
+    std::vector<std::filesystem::path> paths;
+    if (std::filesystem::exists("res/local_glossary.tsv")) {
+        paths.emplace_back("res/local_glossary.tsv");
+    }
+    if (std::filesystem::exists("Goal.md")) {
+        paths.emplace_back("Goal.md");
+    }
+    return paths;
+}
+
+std::vector<std::filesystem::path> expand_kb_paths(const std::vector<std::filesystem::path>& requested) {
+    std::vector<std::filesystem::path> files;
+    const std::vector<std::filesystem::path> roots = requested.empty() ? default_tensor_kb_paths() : requested;
+    for (const std::filesystem::path& root : roots) {
+        std::error_code ec;
+        if (!std::filesystem::exists(root, ec)) {
+            continue;
+        }
+        if (std::filesystem::is_regular_file(root, ec)) {
+            files.push_back(root);
+            continue;
+        }
+        if (std::filesystem::is_directory(root, ec)) {
+            std::size_t seen = 0;
+            for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+                if (ec || seen >= 24) {
+                    break;
+                }
+                if (!entry.is_regular_file()) {
+                    continue;
+                }
+                const std::string ext = lowercase(entry.path().extension().string());
+                if (ext == ".md" || ext == ".txt" || ext == ".tsv" || ext == ".json" || ext == ".jsonl") {
+                    files.push_back(entry.path());
+                    ++seen;
+                }
+            }
+        }
+    }
+    return files;
+}
+
+std::vector<std::string> collect_tensor_kb_context(const std::vector<std::filesystem::path>& requested,
+                                                   std::string_view question,
+                                                   std::vector<std::string>* source_labels) {
+    struct Candidate {
+        std::size_t score = 0;
+        std::string source;
+        std::string text;
+    };
+    std::vector<Candidate> candidates;
+    const std::vector<std::string> query_tokens = tokenize_for_search(question);
+    for (const std::filesystem::path& path : expand_kb_paths(requested)) {
+        std::ifstream input(path);
+        if (!input) {
+            continue;
+        }
+        std::string line;
+        std::size_t line_number = 0;
+        while (std::getline(input, line) && line_number < 400) {
+            ++line_number;
+            const std::string trimmed = trim(line);
+            if (trimmed.empty()) {
+                continue;
+            }
+            const std::size_t score = tensor_context_score(trimmed, query_tokens, question);
+            if (score == 0 && candidates.size() > 32) {
+                continue;
+            }
+            candidates.push_back({score, path.string() + ":" + std::to_string(line_number), trimmed});
+        }
+    }
+    std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate& lhs, const Candidate& rhs) {
+        return lhs.score > rhs.score;
+    });
+
+    std::vector<std::string> context;
+    std::size_t total_bytes = 0;
+    for (const Candidate& candidate : candidates) {
+        if (context.size() >= 8 || total_bytes > 2400) {
+            break;
+        }
+        if (candidate.score == 0 && !context.empty()) {
+            break;
+        }
+        const std::string entry = candidate.source + " | " + candidate.text;
+        total_bytes += entry.size();
+        context.push_back(entry);
+        if (source_labels != nullptr) {
+            source_labels->push_back(candidate.source);
+        }
+    }
+    return context;
+}
+
+std::optional<std::string> read_optional_answer_fixture(const std::filesystem::path& explicit_path) {
+    std::filesystem::path path = explicit_path;
+    if (path.empty()) {
+        if (const char* env_path = std::getenv("OMNIX_TENSOR_MODEL_ANSWER_FILE");
+            env_path != nullptr && *env_path != '\0') {
+            path = env_path;
+        }
+    }
+    if (path.empty()) {
+        return std::nullopt;
+    }
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("unable to read tensor model answer fixture `" + path.string() + "`");
+    }
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    return trim(buffer.str());
+}
+
+std::string extract_response_string_from_json(std::string_view text) {
+    try {
+        const MlpJsonValue parsed = MlpJsonParser(text).parse();
+        if (parsed.type == MlpJsonValue::Type::Object) {
+            if (const auto response = optional_object_field(parsed, "response");
+                response.has_value() && response->get().type == MlpJsonValue::Type::String) {
+                return response->get().string_value;
+            }
+            if (const auto answer = optional_object_field(parsed, "answer");
+                answer.has_value() && answer->get().type == MlpJsonValue::Type::String) {
+                return answer->get().string_value;
+            }
+        }
+    } catch (const std::exception&) {
+    }
+    return trim(text);
+}
+
+std::optional<std::string> request_local_ollama_tensor_answer(std::string_view model,
+                                                              std::string_view question,
+                                                              const std::vector<std::string>& context,
+                                                              bool allow_ollama) {
+    if (!allow_ollama) {
+        return std::nullopt;
+    }
+    const char* base_env = std::getenv("OMNIX_OLLAMA_BASE_URL");
+    const std::string base = (base_env != nullptr && *base_env != '\0') ? base_env : "http://127.0.0.1:11434";
+    if (base.find("127.0.0.1") == std::string::npos && base.find("localhost") == std::string::npos) {
+        return std::nullopt;
+    }
+    std::ostringstream prompt;
+    prompt << "You are OmniX local tensor/model literacy assist. Answer from local context only. "
+           << "If the context is insufficient, say what evidence is missing.\n\nLocal context:\n";
+    for (const std::string& line : context) {
+        prompt << "- " << line << "\n";
+    }
+    prompt << "\nQuestion: " << question << "\nAnswer:";
+
+    std::ostringstream body;
+    body << "{\"model\":\"" << escape_json(model) << "\",\"prompt\":\"" << escape_json(prompt.str())
+         << "\",\"stream\":false}";
+    const std::string command = "curl -sS --max-time 20 -H 'Content-Type: application/json' -d " +
+        shell_quote(body.str()) + " " + shell_quote(base + "/api/generate");
+    const CommandResult response = run_shell(command);
+    if (response.exit_code != 0 || response.output.empty()) {
+        return std::nullopt;
+    }
+    return extract_response_string_from_json(response.output);
+}
+
+std::string render_tensor_bundle_inspect_json(const MlpTensorBundle& bundle, bool valid) {
+    std::ostringstream json;
+    json << "{\"tool\":\"tensor\""
+         << ",\"mode\":\"inspect\""
+         << ",\"valid\":" << (valid ? "true" : "false")
+         << ",\"format\":\"" << escape_json(bundle.format) << "\""
+         << ",\"modelName\":\"" << escape_json(bundle.model_name) << "\""
+         << ",\"modelSource\":\"" << escape_json(bundle.model_source) << "\""
+         << ",\"tensorBundlePath\":\"" << escape_json(bundle.path) << "\""
+         << ",\"tokenizerSource\":\"" << escape_json(bundle.tokenizer.source) << "\""
+         << ",\"vocabularySize\":" << bundle.tokenizer.vocabulary.size()
+         << ",\"unknownToken\":\"" << escape_json(bundle.tokenizer.unknown_token) << "\""
+         << ",\"activation\":\"" << escape_json(bundle.layer.activation) << "\""
+         << ",\"shapes\":{"
+         << "\"embeddings\":" << render_shape_json({bundle.tokenizer.embeddings.size(), bundle.tokenizer.embeddings.front().size()})
+         << ",\"W1\":" << render_shape_json({bundle.layer.w1.size(), bundle.layer.w1.front().size()})
+         << ",\"b1\":" << render_shape_json({bundle.layer.b1.size()})
+         << ",\"W2\":" << render_shape_json({bundle.layer.w2.size(), bundle.layer.w2.front().size()})
+         << ",\"b2\":" << render_shape_json({bundle.layer.b2.size()})
+         << "},\"outputLabels\":" << render_string_array_json(bundle.output_labels)
+         << ",\"warning\":\"Loaded local JSON tensor bundle only; this is tensor literacy and tiny-model tracing, not full LLM training or production inference.\"}";
+    return json.str();
+}
+
+BuiltinToolResult invoke_tensor_tool(const std::vector<std::string>& arguments, bool verbose) {
+    BuiltinToolResult result;
+    result.invocation.logical_name = "tensor";
+    result.invocation.selected_provider = "analyst_module";
+    result.invocation.cache_origin = "builtin_analyst_module";
+    result.invocation.command_line = "omnix::tensor";
+
+    if (arguments.empty() || arguments.front() == "doctor") {
+        std::ostringstream json;
+        json << "{\"tool\":\"tensor\",\"mode\":\"doctor\",\"status\":\"tensor_ready\","
+             << "\"capabilities\":[\"inspect JSON tensor bundle\",\"validate dimensions\",\"run tiny MLP trace\",\"ask local model with local KB context\",\"capture supervised training prompt JSONL\"],"
+             << "\"next\":\"omnix tensor inspect res/mlp_lens/tiny_mlp_bundle.json --compact\"}";
+        result.invocation.status = "ok";
+        result.invocation.summary = "Native tensor literacy is ready for local JSON bundles and local model-context prompts.";
+        result.invocation.output_excerpt = {json.str()};
+        result.invocation.exit_code = 0;
+        result.next_action = "Run `omnix tensor validate res/mlp_lens/tiny_mlp_bundle.json --compact`.";
+        return result;
+    }
+
+    const std::string mode = arguments.front();
+    if (mode == "inspect" || mode == "validate") {
+        if (arguments.size() < 2) {
+            result.invocation.status = "invalid_arguments";
+            result.invocation.summary = "`tensor " + mode + "` requires a bundle path.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+        try {
+            const MlpTensorBundle bundle = load_mlp_tensor_bundle(arguments[1]);
+            result.invocation.status = "ok";
+            result.invocation.summary = mode == "validate"
+                ? "Tensor bundle validated successfully."
+                : "Tensor bundle inspected successfully.";
+            result.invocation.exit_code = 0;
+            result.invocation.output_excerpt = {render_tensor_bundle_inspect_json(bundle, true)};
+            result.next_action = "Run `omnix tensor run mlp " + arguments[1] + " --input \"hello\" --compact`.";
+            return result;
+        } catch (const std::exception& error) {
+            result.invocation.status = "tensor_bundle_invalid";
+            result.invocation.summary = error.what();
+            result.invocation.exit_code = 1;
+            result.next_action = "Fix the JSON bundle schema/dimensions before using it for local model traces.";
+            return result;
+        }
+    }
+
+    if (mode == "run") {
+        if (arguments.size() < 3 || arguments[1] != "mlp") {
+            result.invocation.status = "invalid_arguments";
+            result.invocation.summary = "`tensor run` currently supports `tensor run mlp <bundle.json> --input <text>`.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+        const std::string bundle_path = arguments[2];
+        std::vector<std::string> mlp_args = {"--tensor-bundle", bundle_path};
+        for (std::size_t index = 3; index < arguments.size(); ++index) {
+            if (arguments[index] == "--input") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`--input` requires text.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                mlp_args.push_back(arguments[++index]);
+            } else {
+                mlp_args.push_back(arguments[index]);
+            }
+        }
+        BuiltinToolResult mlp = invoke_mlp_lens(mlp_args, verbose);
+        mlp.invocation.logical_name = "tensor";
+        if (!mlp.invocation.output_excerpt.empty()) {
+            std::string wrapped = mlp.invocation.output_excerpt.front();
+            const std::string needle = "{\"tool\":\"mlp-lens\"";
+            if (wrapped.rfind(needle, 0) == 0) {
+                wrapped.replace(0, needle.size(), "{\"tool\":\"tensor\",\"tensorMode\":\"run_mlp\",\"traceTool\":\"mlp-lens\"");
+            }
+            mlp.invocation.output_excerpt = {wrapped};
+        }
+        return mlp;
+    }
+
+    if (mode == "ask") {
+        std::string model = "deepnimsec-omni:latest";
+        std::string profile = "deepnimsec";
+        std::filesystem::path fixture_answer;
+        std::filesystem::path training_log;
+        bool allow_ollama = false;
+        std::vector<std::filesystem::path> kb_paths;
+        std::vector<std::string> question_parts;
+        for (std::size_t index = 1; index < arguments.size(); ++index) {
+            const std::string& arg = arguments[index];
+            if (arg == "--model") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`--model` requires a local model name.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                model = arguments[++index];
+                profile = lowercase(model).find("citizen") != std::string::npos ? "citizen-ai" : "deepnimsec";
+            } else if (arg == "--profile") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`--profile` requires deepnimsec or citizen-ai.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                profile = lowercase(arguments[++index]);
+            } else if (arg == "--kb") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`--kb` requires a file or directory path.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                kb_paths.emplace_back(arguments[++index]);
+            } else if (arg == "--fixture-answer") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`--fixture-answer` requires a file path.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                fixture_answer = arguments[++index];
+            } else if (arg == "--training-log") {
+                if (index + 1 >= arguments.size()) {
+                    result.invocation.status = "invalid_arguments";
+                    result.invocation.summary = "`--training-log` requires a file path.";
+                    result.invocation.exit_code = 1;
+                    return result;
+                }
+                training_log = arguments[++index];
+            } else if (arg == "--allow-ollama") {
+                allow_ollama = true;
+            } else {
+                question_parts.push_back(arg);
+            }
+        }
+        const std::string question = trim(join_arguments(question_parts));
+        if (question.empty()) {
+            result.invocation.status = "invalid_arguments";
+            result.invocation.summary = "`tensor ask` requires a question.";
+            result.invocation.exit_code = 1;
+            return result;
+        }
+
+        std::vector<std::string> context_sources;
+        const std::vector<std::string> context = collect_tensor_kb_context(kb_paths, question, &context_sources);
+        std::string answer_source = "local_context_fallback";
+        std::string answer;
+        try {
+            if (const std::optional<std::string> fixture = read_optional_answer_fixture(fixture_answer);
+                fixture.has_value()) {
+                answer = *fixture;
+                answer_source = "fixture_local_model";
+            }
+        } catch (const std::exception& error) {
+            result.invocation.status = "model_answer_fixture_invalid";
+            result.invocation.summary = error.what();
+            result.invocation.exit_code = 1;
+            return result;
+        }
+        if (answer.empty()) {
+            if (const std::optional<std::string> local_model =
+                    request_local_ollama_tensor_answer(model, question, context, allow_ollama);
+                local_model.has_value() && !trim(*local_model).empty()) {
+                answer = trim(*local_model);
+                answer_source = "ollama_local_model";
+            }
+        }
+        if (answer.empty()) {
+            if (const std::optional<std::string> synthesized = synthesize_answer_from_tensor_context(context);
+                synthesized.has_value()) {
+                answer = *synthesized;
+                answer_source = "local_kb_synthesized";
+            } else {
+                answer = "No local knowledge context matched the question; add --kb <file-or-dir> or enable a local model with --allow-ollama.";
+            }
+        }
+
+        if (!training_log.empty()) {
+            std::error_code ec;
+            if (!training_log.parent_path().empty()) {
+                std::filesystem::create_directories(training_log.parent_path(), ec);
+            }
+            std::ofstream output(training_log, std::ios::app);
+            output << "{\"event_type\":\"omnix.tensor.training_example.v1\",\"timestamp\":\"" << escape_json(now_timestamp())
+                   << "\",\"model\":\"" << escape_json(model)
+                   << "\",\"profile\":\"" << escape_json(profile)
+                   << "\",\"question\":\"" << escape_json(question)
+                   << "\",\"answer\":\"" << escape_json(answer)
+                   << "\",\"answerSource\":\"" << escape_json(answer_source)
+                   << "\",\"context\":" << render_string_array_json(context) << "}\n";
+        }
+
+        std::ostringstream json;
+        json << "{\"tool\":\"tensor\",\"mode\":\"ask\""
+             << ",\"model\":\"" << escape_json(model) << "\""
+             << ",\"profile\":\"" << escape_json(profile) << "\""
+             << ",\"question\":\"" << escape_json(question) << "\""
+             << ",\"answer\":\"" << escape_json(answer) << "\""
+             << ",\"answerSource\":\"" << escape_json(answer_source) << "\""
+             << ",\"knowledgeSources\":" << render_string_array_json(context_sources)
+             << ",\"context\":" << render_string_array_json(context)
+             << ",\"trainingCapturePath\":\"" << escape_json(training_log.string()) << "\""
+             << ",\"warning\":\"Local tensor/model literacy path only; this captures supervised prompt context and local answers, not full model training or remote API inference.\"}";
+        result.invocation.status = "ok";
+        result.invocation.summary = "Asked a local model profile through OmniX tensor literacy and local knowledge context.";
+        result.invocation.output_excerpt = {json.str()};
+        result.invocation.exit_code = 0;
+        result.next_action = "Use captured training examples to build a future local fine-tuning/export dataset.";
+        return result;
+    }
+
+    result.invocation.status = "invalid_arguments";
+    result.invocation.summary = "tensor supports doctor, inspect, validate, run mlp, and ask.";
+    result.invocation.exit_code = 1;
+    result.next_action = "Run `omnix tensor doctor --compact`.";
+    return result;
+}
+
 std::string render_ghostline_tview_event(const MlpJsonValue& event) {
     const std::string type = optional_json_scalar_string(event, "type");
     const std::string stage = optional_json_scalar_string(event, "stage");
@@ -4270,6 +4802,9 @@ BuiltinToolResult invoke_builtin_tool(std::string_view logical_name,
     }
     if (logical_name == "mlp-lens") {
         return invoke_mlp_lens(arguments, verbose_output);
+    }
+    if (logical_name == "tensor") {
+        return invoke_tensor_tool(arguments, verbose_output);
     }
     if (logical_name == "thresholds") {
         return invoke_thresholds(arguments, verbose_output);

@@ -161,10 +161,16 @@ std::string command_label_for(RequestIntent intent, std::string_view decoded_ins
             return "OmniXTView";
         case RequestIntent::DefenseDiagnostic:
             return "DefenseDiagnostic";
+        case RequestIntent::DefenseDetection:
+            return "DefenseDetect";
+        case RequestIntent::VuplusGate:
+            return "VuplusGate";
         case RequestIntent::NeuralMath:
             return "NeuralMath";
         case RequestIntent::NeuralRoute:
             return "NeuralSignalRouter";
+        case RequestIntent::TensorAction:
+            return "TensorFramework";
         case RequestIntent::SetPersonaMode:
             return "PersonaEngine";
         case RequestIntent::AuthorBuildRecipe:
@@ -356,11 +362,16 @@ std::string instruction_family_hint_for(RequestIntent intent) {
         case RequestIntent::PacketCapture:
             return "packet-capture";
         case RequestIntent::DefenseDiagnostic:
+        case RequestIntent::DefenseDetection:
             return "defense";
+        case RequestIntent::VuplusGate:
+            return "vuplus-gate";
         case RequestIntent::NeuralMath:
             return "neural-math";
         case RequestIntent::NeuralRoute:
             return "neural-route";
+        case RequestIntent::TensorAction:
+            return "tensor";
         case RequestIntent::RecursiveWhyDiff:
             return "recursive-why-diff";
         case RequestIntent::SetPersonaMode:
@@ -634,6 +645,14 @@ DefenseDiagnosticRequest defense_request_from_profile(const RequestProfile& prof
     return request;
 }
 
+DefenseDiagnosticRequest defense_detection_request_from_profile(const RequestProfile& profile,
+                                                                const IntentResolution& resolution) {
+    DefenseDiagnosticRequest request;
+    request.mode = !profile.defense_mode.empty() ? profile.defense_mode : "all";
+    request.target = !profile.defense_target.empty() ? profile.defense_target : resolution.primary_target;
+    return request;
+}
+
 DefenseDiagnosticReport run_defense_diagnostic(const DefenseDiagnosticRequest& request) {
     DefenseDiagnosticReport report;
     report.mode = request.mode.empty() ? "summary" : request.mode;
@@ -670,6 +689,1857 @@ DefenseDiagnosticReport run_defense_diagnostic(const DefenseDiagnosticRequest& r
     if (report.evidence_lines.empty()) {
         report.status = "defense_diagnostic_empty";
         report.summary = "No local diagnostic evidence was returned for the requested target.";
+    }
+    return report;
+}
+
+std::string local_json_escape(std::string_view value) {
+    std::ostringstream out;
+    for (char c : value) {
+        switch (c) {
+            case '"':
+                out << "\\\"";
+                break;
+            case '\\':
+                out << "\\\\";
+                break;
+            case '\n':
+                out << "\\n";
+                break;
+            case '\r':
+                out << "\\r";
+                break;
+            case '\t':
+                out << "\\t";
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    out << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<int>(static_cast<unsigned char>(c)) << std::dec;
+                } else {
+                    out << c;
+                }
+                break;
+        }
+    }
+    return out.str();
+}
+
+std::string env_value_or_empty(const char* key) {
+    const char* value = std::getenv(key);
+    return value == nullptr ? std::string{} : std::string(value);
+}
+
+bool path_has_write_bit(const std::filesystem::path& path, bool* group_or_other = nullptr) {
+    std::error_code ec;
+    const auto status = std::filesystem::status(path, ec);
+    if (ec) {
+        if (group_or_other != nullptr) {
+            *group_or_other = false;
+        }
+        return false;
+    }
+    const auto perms = status.permissions();
+    const bool owner = (perms & std::filesystem::perms::owner_write) != std::filesystem::perms::none;
+    const bool group = (perms & std::filesystem::perms::group_write) != std::filesystem::perms::none;
+    const bool other = (perms & std::filesystem::perms::others_write) != std::filesystem::perms::none;
+    if (group_or_other != nullptr) {
+        *group_or_other = group || other;
+    }
+    return owner || group || other;
+}
+
+std::string severity_rank(const std::string& severity) {
+    if (severity == "critical") {
+        return "4";
+    }
+    if (severity == "high") {
+        return "3";
+    }
+    if (severity == "medium") {
+        return "2";
+    }
+    if (severity == "low") {
+        return "1";
+    }
+    return "0";
+}
+
+void add_detection_signal(DefenseDetectionReport& report,
+                          std::string category,
+                          std::string id,
+                          std::string severity,
+                          std::string source,
+                          std::string rationale,
+                          std::vector<std::string> evidence,
+                          std::string next_action,
+                          double confidence) {
+    DefenseDetectionSignal signal;
+    signal.category = std::move(category);
+    signal.id = std::move(id);
+    signal.severity = std::move(severity);
+    signal.source = std::move(source);
+    signal.rationale = std::move(rationale);
+    signal.evidence_lines = std::move(evidence);
+    signal.recommended_next_action = std::move(next_action);
+    signal.confidence = confidence;
+    report.signals.push_back(std::move(signal));
+}
+
+void scan_vg_json_key_pairs(VuplusGateReport& report, const std::string& text, const std::string& source);
+std::vector<EventViewerRetention> event_viewer_retention_from_pairs(const std::vector<VuplusGateReport::KeyPair>& pairs);
+std::vector<SessionCorrelation> session_correlations_from_text(const std::string& lowered,
+                                                               const std::vector<VuplusGateReport::KeyPair>& pairs);
+bool has_detection_signal(const DefenseDetectionReport& report, const std::string& id);
+
+void scan_profile_aliases(const std::filesystem::path& path,
+                          std::vector<std::string>& evidence,
+                          std::size_t max_lines) {
+    std::ifstream input(path);
+    if (!input) {
+        return;
+    }
+    std::string line;
+    std::size_t found = 0;
+    while (std::getline(input, line) && found < max_lines) {
+        const std::string trimmed = trim_local(line);
+        if (trimmed.rfind("alias ", 0) == 0) {
+            const std::size_t eq = trimmed.find('=');
+            const std::string name = eq == std::string::npos ? trimmed.substr(0, std::min<std::size_t>(trimmed.size(), 48))
+                                                             : trimmed.substr(0, eq);
+            evidence.push_back("profile_alias=" + path.string() + ":" + name);
+            ++found;
+        } else if (trimmed.rfind("function ", 0) == 0 || trimmed.find("()") != std::string::npos) {
+            std::string name = trimmed.substr(0, std::min<std::size_t>(trimmed.size(), 64));
+            if (const std::size_t open = name.find('{'); open != std::string::npos) {
+                name = name.substr(0, open);
+            }
+            evidence.push_back("profile_function=" + path.string() + ":" + trim_local(name));
+            ++found;
+        }
+    }
+}
+
+std::vector<std::filesystem::path> shell_profile_paths() {
+    std::vector<std::filesystem::path> paths;
+    const std::filesystem::path home = env_value_or_empty("HOME");
+    if (!home.empty()) {
+        for (std::string_view file : {".zshrc", ".zprofile", ".zshenv", ".bashrc", ".bash_profile", ".profile"}) {
+            paths.push_back(home / file);
+        }
+        paths.push_back(home / ".config/fish/config.fish");
+    }
+    for (std::string_view file : {"/etc/profile", "/etc/zshrc", "/etc/bashrc"}) {
+        paths.emplace_back(file);
+    }
+    return paths;
+}
+
+void collect_env_detection(DefenseDetectionReport& report) {
+    std::vector<std::string> path_evidence;
+    std::istringstream paths(env_value_or_empty("PATH"));
+    std::string entry;
+    while (std::getline(paths, entry, ':') && path_evidence.size() < report.max_lines) {
+        if (entry.empty()) {
+            path_evidence.push_back("path_entry=<empty>");
+            continue;
+        }
+        const std::filesystem::path path(entry);
+        bool group_or_other = false;
+        const bool writable = path_has_write_bit(path, &group_or_other);
+        std::string line = "path_entry=" + entry + " writable=" + (writable ? "true" : "false");
+        if (group_or_other) {
+            line += " group_or_other_writable=true";
+        }
+        path_evidence.push_back(line);
+    }
+    add_detection_signal(report,
+                         "env",
+                         "path.surface",
+                         "low",
+                         "PATH",
+                         "PATH entries were enumerated locally; writable or empty entries are important because command lookup can be redirected.",
+                         path_evidence,
+                         "Review writable PATH entries before trusting command execution.",
+                         0.72);
+
+    std::vector<std::string> profile_evidence;
+    for (const std::filesystem::path& path : shell_profile_paths()) {
+        if (profile_evidence.size() >= report.max_lines) {
+            break;
+        }
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec)) {
+            continue;
+        }
+        std::uintmax_t size = std::filesystem::is_regular_file(path, ec) ? std::filesystem::file_size(path, ec) : 0;
+        profile_evidence.push_back("profile_file=" + path.string() + " size=" + std::to_string(ec ? 0 : size));
+        scan_profile_aliases(path, profile_evidence, 3);
+    }
+    if (!profile_evidence.empty()) {
+        add_detection_signal(report,
+                             "env",
+                             "shell.startup.surface",
+                             "low",
+                             "shell_profiles",
+                             "Shell startup files and alias/function names were inspected without dumping command bodies or secrets.",
+                             profile_evidence,
+                             "If a profile was recently changed unexpectedly, compare it against source control or a known-good backup.",
+                             0.68);
+    }
+}
+
+void collect_session_detection(DefenseDetectionReport& report) {
+    std::vector<std::string> evidence = command_lines("who -a 2>/dev/null", report.max_lines / 2);
+    std::vector<std::string> recent = command_lines("last -20 2>/dev/null", report.max_lines / 2);
+    evidence.insert(evidence.end(), recent.begin(), recent.end());
+    std::vector<std::string> persisted = command_lines("ps -axo pid,ppid,etime,tty,comm 2>/dev/null | grep -E 'sshd|ssh|tmux|screen' | grep -v grep", 10);
+    evidence.insert(evidence.end(), persisted.begin(), persisted.end());
+#if defined(__linux__)
+    std::vector<std::string> lastlog = command_lines("lastlog 2>/dev/null | head -n 12", 12);
+    evidence.insert(evidence.end(), lastlog.begin(), lastlog.end());
+#endif
+    std::string severity = "low";
+    std::string rationale = "Local login/session evidence was collected from bounded who/last/process views.";
+    if (!report.quiet_hours.empty() && !report.admin_user.empty()) {
+        severity = "medium";
+        rationale += " Quiet-hours context is active; admin sessions during this window should be verified.";
+    }
+    add_detection_signal(report,
+                         "sessions",
+                         "interactive.sessions",
+                         severity,
+                         "who/last/ps",
+                         rationale,
+                         evidence,
+                         "If an unexpected SSH, TTY, tmux, or screen session appears, verify the operator before changing system state.",
+                         0.76);
+}
+
+void collect_persistence_detection(DefenseDetectionReport& report) {
+    std::vector<std::string> evidence;
+    for (std::string_view path_text : {"/etc/crontab", "/etc/cron.d", "/etc/cron.daily", "/etc/cron.hourly",
+                                      "/var/spool/cron", "/var/spool/cron/crontabs", "/etc/init.d", "/etc/rc.local",
+                                      "/Library/LaunchAgents", "/Library/LaunchDaemons"}) {
+        if (evidence.size() >= report.max_lines) {
+            break;
+        }
+        std::error_code ec;
+        const std::filesystem::path path(path_text);
+        if (std::filesystem::exists(path, ec)) {
+            evidence.push_back("persistence_path=" + path.string());
+        }
+    }
+    std::vector<std::string> cron = command_lines("crontab -l 2>/dev/null | head -n 12", 12);
+    evidence.insert(evidence.end(), cron.begin(), cron.end());
+#if defined(__APPLE__)
+    std::vector<std::string> launchd = command_lines("launchctl list 2>/dev/null | head -n 20", 20);
+    evidence.insert(evidence.end(), launchd.begin(), launchd.end());
+#else
+    std::vector<std::string> timers = command_lines("systemctl list-timers --all --no-pager 2>/dev/null | head -n 20", 20);
+    evidence.insert(evidence.end(), timers.begin(), timers.end());
+#endif
+    add_detection_signal(report,
+                         "persistence",
+                         "scheduled.persistence",
+                         "medium",
+                         "cron/launchd/systemd",
+                         "Persistence surfaces were enumerated read-only to identify scheduled or startup execution points.",
+                         evidence,
+                         "Investigate new scheduled entries before containment; preserve evidence first.",
+                         0.78);
+}
+
+void collect_package_detection(DefenseDetectionReport& report) {
+    std::vector<std::string> evidence;
+    for (std::string_view tool : {"npm", "pip", "pip3", "curl", "wget", "brew", "apt-get", "yum", "dnf"}) {
+        std::vector<std::string> found = command_lines("command -v " + std::string(tool) + " 2>/dev/null", 1);
+        for (const std::string& line : found) {
+            evidence.push_back(std::string("tool_present=") + std::string(tool) + " path=" + line);
+        }
+    }
+#if defined(__APPLE__)
+    std::vector<std::string> brew = command_lines("brew list --versions 2>/dev/null | head -n 12", 12);
+    evidence.insert(evidence.end(), brew.begin(), brew.end());
+#else
+    for (std::string_view log : {"/var/log/apt/history.log", "/var/log/dpkg.log", "/var/log/yum.log", "/var/log/dnf.log"}) {
+        std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::path(log), ec)) {
+            evidence.push_back("package_log=" + std::string(log));
+        }
+    }
+#endif
+    std::string severity = report.quiet_hours.empty() ? "low" : "medium";
+    std::string rationale = "Package/script tooling and local package logs were inspected without installing or updating anything.";
+    if (!report.quiet_hours.empty()) {
+        rationale += " Quiet-hours context is active; package activity during this window should be treated as anomalous until verified.";
+    }
+    add_detection_signal(report,
+                         "packages",
+                         "package.script.surface",
+                         severity,
+                         "package_tools",
+                         rationale,
+                         evidence,
+                         "If package activity is unexpected, preserve logs and compare against approved maintenance windows.",
+                         0.7);
+}
+
+void collect_service_detection(DefenseDetectionReport& report) {
+    std::vector<std::string> evidence;
+#if defined(__APPLE__)
+    evidence = command_lines("launchctl list 2>/dev/null | head -n 30", std::min<std::size_t>(report.max_lines, 30));
+#else
+    evidence = command_lines("systemctl --type=service --state=running --no-pager 2>/dev/null | head -n 30", std::min<std::size_t>(report.max_lines, 30));
+    std::vector<std::string> enabled = command_lines("systemctl list-unit-files --state=enabled --no-pager 2>/dev/null | head -n 20", 20);
+    evidence.insert(evidence.end(), enabled.begin(), enabled.end());
+#endif
+    add_detection_signal(report,
+                         "services",
+                         "service.state.surface",
+                         "low",
+                         "launchd/systemd",
+                         "Service state was sampled read-only to reveal enabled/running service surfaces and possible restart-loop investigation targets.",
+                         evidence,
+                         "For unknown listening services, run `omnix gg search --pid <term>` or `omnix gg search --port <port>` before packet inspection.",
+                         0.69);
+}
+
+void collect_log_detection(DefenseDetectionReport& report) {
+    std::vector<std::string> evidence;
+#if defined(__APPLE__)
+    evidence = command_lines("log show --last 10m --style compact --predicate 'eventMessage CONTAINS[c] \"ssh\" OR eventMessage CONTAINS[c] \"sudo\" OR eventMessage CONTAINS[c] \"install\" OR eventMessage CONTAINS[c] \"launch\"' 2>/dev/null | head -n 30", std::min<std::size_t>(report.max_lines, 30));
+#else
+    evidence = command_lines("journalctl --since '1 hour ago' -n 60 --no-pager 2>/dev/null | grep -Ei 'ssh|sudo|cron|apt|dnf|yum|npm|systemd|service' | head -n 30", std::min<std::size_t>(report.max_lines, 30));
+    if (evidence.empty()) {
+        evidence = command_lines("dmesg 2>/dev/null | tail -n 20", 20);
+    }
+#endif
+    add_detection_signal(report,
+                         "logs",
+                         "auth.system.logs",
+                         evidence.empty() ? "low" : "medium",
+                         "system_logs",
+                         "Bounded system/auth log excerpts were inspected for SSH, sudo, package, cron, and service-change indicators.",
+                         evidence,
+                         "Preserve matching log excerpts into a case before making containment changes.",
+                         0.74);
+    std::string joined;
+    for (const std::string& line : evidence) {
+        joined += line + "\n";
+    }
+    VuplusGateReport scratch;
+    report.session_correlations = session_correlations_from_text(lowercase_basic(joined), scratch.key_pairs);
+    if (!report.session_correlations.empty() && !has_detection_signal(report, "session.syslog_lastlog.correlation")) {
+        add_detection_signal(report,
+                             "logs",
+                             "session.syslog_lastlog.correlation",
+                             report.quiet_hours.empty() ? "low" : "medium",
+                             "syslog/lastlog/who",
+                             "Auth/syslog evidence was cross-referenced against session-style evidence where available.",
+                             evidence,
+                             "If session evidence is unmatched or odd-hour, verify the operator before containment.",
+                             0.76);
+    }
+}
+
+void collect_eventviewer_detection(DefenseDetectionReport& report) {
+    constexpr std::size_t kMinEventLogBytes = 1073741824ULL;
+    std::vector<std::string> evidence;
+    if (!report.source_path.empty()) {
+        std::ifstream input(report.source_path);
+        if (input) {
+            std::ostringstream buffer;
+            buffer << input.rdbuf();
+            const std::string content = buffer.str();
+            VuplusGateReport scratch;
+            scan_vg_json_key_pairs(scratch, content, "eventviewer_fixture");
+            report.event_viewer_retention = event_viewer_retention_from_pairs(scratch.key_pairs);
+            for (const EventViewerRetention& record : report.event_viewer_retention) {
+                evidence.push_back("channel=" + record.channel +
+                                   " maxSizeBytes=" + std::to_string(record.max_size_bytes) +
+                                   " belowMinimum=" + (record.below_minimum ? "true" : "false"));
+            }
+        } else {
+            report.warnings.push_back("eventviewer_source_missing:" + report.source_path);
+        }
+    } else {
+#if defined(_WIN32)
+        const std::string channels = report.eventviewer_channels.empty() ? "Security,System,Application"
+                                                                         : report.eventviewer_channels;
+        std::istringstream split(channels);
+        std::string channel;
+        while (std::getline(split, channel, ',') && evidence.size() < report.max_lines) {
+            channel = trim_local(channel);
+            if (channel.empty()) {
+                continue;
+            }
+            std::vector<std::string> lines = command_lines("wevtutil gl " + channel, 12);
+            evidence.insert(evidence.end(), lines.begin(), lines.end());
+        }
+#else
+        report.warnings.push_back("eventviewer_unsupported_platform: Windows Event Viewer metadata is only available on Windows or via --source fixture.");
+#endif
+    }
+
+    bool below_minimum = false;
+    for (const EventViewerRetention& record : report.event_viewer_retention) {
+        below_minimum = below_minimum || record.max_size_bytes < kMinEventLogBytes;
+    }
+    if (!report.event_viewer_retention.empty()) {
+        add_detection_signal(report,
+                             "eventviewer",
+                             below_minimum ? "eventviewer.retention.below_1gb" : "eventviewer.retention.healthy",
+                             below_minimum ? "medium" : "low",
+                             report.source_path.empty() ? "wevtutil" : report.source_path,
+                             below_minimum
+                                 ? "One or more Windows Event Viewer channels are below the 1GB evidence-retention floor; OmniX recommends CAB review only."
+                                 : "Windows Event Viewer retention metadata is at or above the 1GB evidence-retention floor for inspected channels.",
+                             evidence,
+                             below_minimum
+                                 ? "Prepare an Alarm CAB recommendation; changing retention requires elevated Admin/SYSTEM approval."
+                                 : "Keep current retention and continue local evidence correlation.",
+                             below_minimum ? 0.82 : 0.7);
+    } else {
+        add_detection_signal(report,
+                             "eventviewer",
+                             "eventviewer.unsupported_or_missing",
+                             "low",
+                             report.source_path.empty() ? "platform" : report.source_path,
+                             "Event Viewer metadata could not be collected from this platform or fixture.",
+                             evidence,
+                             "Run this detector on Windows or provide a local Event Viewer metadata fixture with --source.",
+                             0.45);
+    }
+}
+
+void render_event_viewer_retention_json(std::ostringstream& out,
+                                        const std::vector<EventViewerRetention>& records);
+void render_session_correlations_json(std::ostringstream& out,
+                                      const std::vector<SessionCorrelation>& correlations);
+void render_heuristic_signals_json(std::ostringstream& out,
+                                   const std::vector<HeuristicSignal>& signals);
+void render_alarm_cab_json(std::ostringstream& out, const std::optional<AlarmCabRecommendation>& cab);
+void render_shaped_fields_json(std::ostringstream& out, const std::vector<ShapedField>& fields);
+void render_shaping_rules_json(std::ostringstream& out, const std::vector<ShapingRule>& rules);
+void render_key_custody_json(std::ostringstream& out, const std::optional<KeyCustodyMap>& custody);
+
+std::string render_defense_detection_json(const DefenseDetectionReport& report) {
+    std::ostringstream out;
+    out << "{\"event_type\":\"omnix.defense.detection.v1\""
+        << ",\"status\":\"" << local_json_escape(report.status)
+        << "\",\"summary\":\"" << local_json_escape(report.summary)
+        << "\",\"mode\":\"" << local_json_escape(report.mode)
+        << "\",\"since\":\"" << local_json_escape(report.since_window)
+        << "\",\"quietHours\":\"" << local_json_escape(report.quiet_hours)
+        << "\",\"adminUser\":\"" << local_json_escape(report.admin_user)
+        << "\",\"maxLines\":" << report.max_lines
+        << ",\"signals\":[";
+    for (std::size_t index = 0; index < report.signals.size(); ++index) {
+        const DefenseDetectionSignal& signal = report.signals[index];
+        if (index != 0) {
+            out << ",";
+        }
+        out << "{\"category\":\"" << local_json_escape(signal.category)
+            << "\",\"id\":\"" << local_json_escape(signal.id)
+            << "\",\"severity\":\"" << local_json_escape(signal.severity)
+            << "\",\"source\":\"" << local_json_escape(signal.source)
+            << "\",\"confidence\":" << signal.confidence
+            << ",\"rationale\":\"" << local_json_escape(signal.rationale)
+            << "\",\"recommendedNextAction\":\"" << local_json_escape(signal.recommended_next_action)
+            << "\",\"evidence\":[";
+        for (std::size_t evidence_index = 0; evidence_index < signal.evidence_lines.size(); ++evidence_index) {
+            if (evidence_index != 0) {
+                out << ",";
+            }
+            out << "\"" << local_json_escape(signal.evidence_lines[evidence_index]) << "\"";
+        }
+        out << "]}";
+    }
+    out << "],";
+    render_event_viewer_retention_json(out, report.event_viewer_retention);
+    out << ",";
+    render_session_correlations_json(out, report.session_correlations);
+    out << ",";
+    render_heuristic_signals_json(out, report.heuristic_signals);
+    out << ",";
+    render_shaped_fields_json(out, report.shaped_fields);
+    out << ",";
+    render_shaping_rules_json(out, report.shaping_rules);
+    out << ",";
+    render_key_custody_json(out, report.key_custody);
+    out << ",\"executionTopology\":\"" << local_json_escape(report.execution_topology) << "\",";
+    render_alarm_cab_json(out, report.alarm_cab);
+    out << ",\"warnings\":[";
+    for (std::size_t index = 0; index < report.warnings.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(report.warnings[index]) << "\"";
+    }
+    out << "],\"proposedActions\":[";
+    for (std::size_t index = 0; index < report.proposed_actions.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(report.proposed_actions[index]) << "\"";
+    }
+    out << "]}";
+    return out.str();
+}
+
+bool export_defense_detection_json(DefenseDetectionReport& report, const std::string& path) {
+    if (path.empty()) {
+        return true;
+    }
+    std::ofstream output(path);
+    if (!output) {
+        report.warnings.push_back("Unable to write detection evidence JSON to `" + path + "`.");
+        return false;
+    }
+    report.artifact_path = path;
+    output << render_defense_detection_json(report) << "\n";
+    return true;
+}
+
+std::string read_small_text_file(const std::string& path, bool* ok = nullptr) {
+    std::ifstream input(path);
+    if (!input) {
+        if (ok != nullptr) {
+            *ok = false;
+        }
+        return {};
+    }
+    std::ostringstream out;
+    out << input.rdbuf();
+    if (ok != nullptr) {
+        *ok = true;
+    }
+    return out.str();
+}
+
+void append_vg_signal(VuplusGateReport& report, const std::string& signal) {
+    if (std::find(report.signals.begin(), report.signals.end(), signal) == report.signals.end()) {
+        report.signals.push_back(signal);
+    }
+}
+
+bool has_vg_signal(const VuplusGateReport& report, const std::string& signal) {
+    return std::find(report.signals.begin(), report.signals.end(), signal) != report.signals.end();
+}
+
+bool has_detection_signal(const DefenseDetectionReport& report, const std::string& id) {
+    return std::any_of(report.signals.begin(), report.signals.end(), [&](const DefenseDetectionSignal& signal) {
+        return signal.id == id;
+    });
+}
+
+std::string trim_vg_value(std::string value) {
+    value = trim_local(value);
+    if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+        value = value.substr(1, value.size() - 2);
+    }
+    if (value.size() > 240) {
+        value = value.substr(0, 237) + "...";
+    }
+    return value;
+}
+
+std::optional<std::size_t> parse_size_value(std::string value) {
+    value = trim_vg_value(std::move(value));
+    std::string digits;
+    for (char c : value) {
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            digits.push_back(c);
+        } else if (!digits.empty()) {
+            break;
+        }
+    }
+    if (digits.empty()) {
+        return std::nullopt;
+    }
+    try {
+        return static_cast<std::size_t>(std::stoull(digits));
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+std::string key_pair_value(const std::vector<VuplusGateReport::KeyPair>& pairs, std::string_view wanted_key) {
+    const std::string wanted = lowercase_basic(std::string(wanted_key));
+    for (const VuplusGateReport::KeyPair& pair : pairs) {
+        if (lowercase_basic(pair.key) == wanted) {
+            return pair.value;
+        }
+    }
+    return {};
+}
+
+bool is_integer_text(const std::string& value) {
+    if (value.empty()) {
+        return false;
+    }
+    std::size_t index = (value.front() == '-' || value.front() == '+') ? 1 : 0;
+    if (index >= value.size()) {
+        return false;
+    }
+    for (; index < value.size(); ++index) {
+        if (!std::isdigit(static_cast<unsigned char>(value[index]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_number_text(const std::string& value) {
+    bool seen_digit = false;
+    bool seen_dot = false;
+    std::size_t index = (value.front() == '-' || value.front() == '+') ? 1 : 0;
+    for (; index < value.size(); ++index) {
+        const char c = value[index];
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            seen_digit = true;
+        } else if (c == '.' && !seen_dot) {
+            seen_dot = true;
+        } else {
+            return false;
+        }
+    }
+    return seen_digit && seen_dot;
+}
+
+std::string infer_shape_type(const std::string& value) {
+    const std::string lowered = lowercase_basic(value);
+    if (lowered == "true" || lowered == "false") {
+        return "boolean";
+    }
+    if (is_integer_text(value)) {
+        return "integer";
+    }
+    if (is_number_text(value)) {
+        return "number";
+    }
+    if (value.find('/') != std::string::npos || value.find('.') != std::string::npos ||
+        value.find('-') != std::string::npos || value.find('_') != std::string::npos) {
+        return "identifier";
+    }
+    return "string";
+}
+
+std::string semantic_for_field(const std::string& key) {
+    const std::string lowered = lowercase_basic(key);
+    if (lowered == "consumer_count" || lowered == "consumercount") {
+        return "queue consumer count";
+    }
+    if (lowered == "queue" || lowered == "queue_name") {
+        return "message queue identifier";
+    }
+    if (lowered == "error" || lowered == "errorcode" || lowered == "error_code") {
+        return "application or log error signature";
+    }
+    if (lowered == "service" || lowered == "servicename") {
+        return "application service name";
+    }
+    if (lowered == "rabbitmq_node" || lowered == "broker") {
+        return "message broker node";
+    }
+    if (lowered == "ram" || lowered == "memory" || lowered == "memory_usage") {
+        return "memory pressure metric";
+    }
+    if (lowered == "oldest_age" || lowered == "oldestmessageageseconds") {
+        return "oldest queued message age";
+    }
+    if (lowered == "dependency" || lowered == "database") {
+        return "dependency target";
+    }
+    if (lowered == "mount") {
+        return "storage mount dependency";
+    }
+    if (lowered == "publish_rate") {
+        return "queue publish rate";
+    }
+    if (lowered == "ack_rate") {
+        return "queue acknowledgement rate";
+    }
+    if (lowered == "channel" || lowered == "maxsizebytes") {
+        return "Windows Event Viewer retention metadata";
+    }
+    if (lowered == "server" || lowered == "host" || lowered == "host.name") {
+        return "server identity anchor";
+    }
+    if (lowered == "cluster" || lowered == "kubernetes_cluster" || lowered == "namespace" ||
+        lowered == "pod" || lowered == "node") {
+        return "Kubernetes runtime identity";
+    }
+    if (lowered == "container" || lowered == "image") {
+        return "container runtime identity";
+    }
+    if (lowered == "load_balancer" || lowered == "frontend" || lowered == "backend" ||
+        lowered == "target_group" || lowered == "vip" || lowered == "drain_state" ||
+        lowered == "health_status") {
+        return "load balancer routing surface";
+    }
+    if (lowered == "terraform_action" || lowered == "resource_type" ||
+        lowered == "resource_name" || lowered == "provider" || lowered == "gcp_project" ||
+        lowered == "machine_type" || lowered == "network" || lowered == "subnet" ||
+        lowered == "firewall_rule") {
+        return "Terraform cloud resource declaration";
+    }
+    if (lowered == "ansible_group" || lowered == "ansible_controller" ||
+        lowered == "playbook" || lowered == "role" || lowered == "inventory_host" ||
+        lowered == "package_manager") {
+        return "Ansible inventory/control mapping";
+    }
+    if (lowered == "omnix_master" || lowered == "omnix_minion" || lowered == "neighbor" ||
+        lowered == "link" || lowered == "fingerprint" || lowered == "redundancy_group") {
+        return "OmniX master/minion neighbor mapping";
+    }
+    if (lowered == "storage_mount" || lowered == "disk" || lowered == "volume" ||
+        lowered == "persistent_volume" || lowered == "bucket" ||
+        lowered == "data_loss_risk" || lowered == "shutdown_order") {
+        return "storage dependency mapping";
+    }
+    if (lowered == "consumer") {
+        return "queue consumer service";
+    }
+    if (lowered == "pkcs12_ref" || lowered == "key_ref" || lowered == "keyref") {
+        return "certificate/key reference metadata";
+    }
+    if (lowered.find("encrypted") != std::string::npos || lowered.find("cipher") != std::string::npos) {
+        return "encrypted evidence marker";
+    }
+    if (lowered.find("cert") != std::string::npos || lowered.find("fingerprint") != std::string::npos) {
+        return "certificate custody metadata";
+    }
+    return "unclassified operational field";
+}
+
+std::string mapped_signal_for_field(const std::string& key, const std::string& value) {
+    const std::string lowered_key = lowercase_basic(key);
+    const std::string lowered_value = lowercase_basic(value);
+    if ((lowered_key == "consumer_count" || lowered_key == "consumercount") && value == "0") {
+        return "consumer.count.zero";
+    }
+    if (lowered_key == "error" && lowered_value == "eyz-47281") {
+        return "log.signature.EYZ-47281";
+    }
+    if (lowered_key == "queue" && lowered_value == "xxb") {
+        return "queue.XXB";
+    }
+    if (lowered_key == "rabbitmq_node" || lowered_value.find("rabbitmq") != std::string::npos) {
+        return "broker.rabbitmq";
+    }
+    if (lowered_key == "dependency" && !value.empty()) {
+        return "dependency.database";
+    }
+    if (lowered_key == "mount" && !value.empty()) {
+        return "dependency.mount";
+    }
+    if (lowered_key == "maxsizebytes") {
+        const std::size_t parsed = parse_size_value(value).value_or(0);
+        return parsed > 0 && parsed < 1073741824ULL ? "eventviewer.retention.below_1gb"
+                                                    : "eventviewer.retention.inspected";
+    }
+    if (lowered_key == "cluster" || lowered_key == "kubernetes_cluster" ||
+        lowered_key == "namespace" || lowered_key == "pod" || lowered_key == "node") {
+        return "orchestrator.kubernetes";
+    }
+    if (lowered_key == "container" || lowered_key == "image") {
+        return "runtime.container";
+    }
+    if (lowered_key == "load_balancer" || lowered_key == "frontend") {
+        return "loadbalancer.frontend";
+    }
+    if (lowered_key == "backend" || lowered_key == "target_group") {
+        return "loadbalancer.backend";
+    }
+    if (lowered_key == "health_status" && !value.empty() &&
+        (lowered_value != "healthy" || lowered_value.find("unhealthy") != std::string::npos)) {
+        return "loadbalancer.target.unhealthy";
+    }
+    if (lowered_key == "drain_state" && lowered_value.find("not") != std::string::npos) {
+        return "loadbalancer.drain.not_ready";
+    }
+    if (lowered_key == "terraform_action" || lowered_key == "resource_type" ||
+        lowered_key == "resource_name" || lowered_key == "machine_type" ||
+        lowered_key == "firewall_rule") {
+        return "iac.terraform.plan";
+    }
+    if ((lowered_key == "provider" && (lowered_value == "google" || lowered_value == "gcp")) ||
+        lowered_key == "gcp_project") {
+        return "cloud.google.compute";
+    }
+    if (lowered_key == "ansible_group" || lowered_key == "ansible_controller" ||
+        lowered_key == "playbook" || lowered_key == "role" || lowered_key == "inventory_host") {
+        return "config.ansible.inventory";
+    }
+    if (lowered_key == "omnix_master" || lowered_key == "omnix_minion" ||
+        lowered_key == "neighbor" || lowered_key == "link") {
+        return "omnix.node.neighbor";
+    }
+    if (lowered_key == "storage_mount" || lowered_key == "disk" || lowered_key == "volume" ||
+        lowered_key == "persistent_volume" || lowered_key == "bucket") {
+        return "storage.dependency";
+    }
+    if (lowered_key.find("encrypted") != std::string::npos ||
+        (lowered_value == "true" && lowered_key == "encrypted")) {
+        return "siem.encrypted_evidence";
+    }
+    return {};
+}
+
+std::string lineage_for_pair(const VuplusGateReport::KeyPair& pair) {
+    std::ostringstream lineage;
+    lineage << pair.source << "[" << pair.value_start << ".." << pair.value_end << "]";
+    return lineage.str();
+}
+
+std::vector<ShapedField> shaped_fields_from_pairs(const std::vector<VuplusGateReport::KeyPair>& pairs) {
+    std::vector<ShapedField> fields;
+    for (const VuplusGateReport::KeyPair& pair : pairs) {
+        if (pair.key.find('{') != std::string::npos || pair.value.find('{') != std::string::npos ||
+            pair.value.find('[') != std::string::npos) {
+            continue;
+        }
+        ShapedField field;
+        field.field = pair.key;
+        field.value = pair.value;
+        field.type = infer_shape_type(pair.value);
+        field.source = pair.source;
+        field.lineage = lineage_for_pair(pair);
+        field.semantic_meaning = semantic_for_field(pair.key);
+        field.mapped_signal = mapped_signal_for_field(pair.key, pair.value);
+        field.confidence = field.semantic_meaning == "unclassified operational field" ? 0.64 : 0.88;
+        if (!field.mapped_signal.empty()) {
+            field.confidence += 0.03;
+        }
+        if (field.confidence > 0.94) {
+            field.confidence = 0.94;
+        }
+        fields.push_back(std::move(field));
+    }
+    return fields;
+}
+
+std::vector<ShapingRule> shaping_rules_from_fields(const std::vector<ShapedField>& fields) {
+    std::vector<ShapingRule> rules;
+    for (const ShapedField& field : fields) {
+        if (field.semantic_meaning == "unclassified operational field") {
+            continue;
+        }
+        const auto duplicate = std::find_if(rules.begin(), rules.end(), [&](const ShapingRule& rule) {
+            return rule.source == field.source && rule.field == field.field;
+        });
+        if (duplicate != rules.end()) {
+            continue;
+        }
+        ShapingRule rule;
+        rule.source = field.source;
+        rule.field = field.field;
+        rule.type = field.type;
+        rule.semantic_meaning = field.semantic_meaning;
+        rule.mapped_signal = field.mapped_signal;
+        rule.confidence = field.confidence;
+        rules.push_back(std::move(rule));
+    }
+    return rules;
+}
+
+std::optional<KeyCustodyMap> key_custody_from_text(const std::string& lowered,
+                                                   const std::vector<VuplusGateReport::KeyPair>& pairs) {
+    const bool encrypted = lowered.find("encrypted") != std::string::npos ||
+        lowered.find("ciphertext") != std::string::npos ||
+        lowered.find("tls") != std::string::npos ||
+        lowered.find("pkcs12") != std::string::npos ||
+        lowered.find(".p12") != std::string::npos ||
+        lowered.find(".pfx") != std::string::npos;
+    if (!encrypted) {
+        return std::nullopt;
+    }
+    KeyCustodyMap custody;
+    custody.encrypted_evidence = true;
+    custody.visible_anchor = key_pair_value(pairs, "server");
+    if (custody.visible_anchor.empty()) {
+        custody.visible_anchor = key_pair_value(pairs, "host.name");
+    }
+    if (custody.visible_anchor.empty()) {
+        custody.visible_anchor = key_pair_value(pairs, "host");
+    }
+    if (custody.visible_anchor.empty()) {
+        custody.visible_anchor = "visible_server_or_log_source";
+    }
+    custody.route_hypothesis = {"server", "queue", "consumer", "app", "log-source"};
+    custody.status = "operator_approval_required";
+    custody.allowed_evidence = {"certificate fingerprint", "mtime", "owner", "path class", "key reference id"};
+    custody.forbidden_evidence = {"private key material", "secret contents", "decrypted payload without approval"};
+    custody.next_action = "Backtrace the server, queue, consumer, and log-source route; ask an approved operator to provide a key reference or run an approved decryptor locally.";
+    return custody;
+}
+
+std::vector<EventViewerRetention> event_viewer_retention_from_pairs(const std::vector<VuplusGateReport::KeyPair>& pairs) {
+    constexpr std::size_t kMinEventLogBytes = 1073741824ULL;
+    std::vector<EventViewerRetention> records;
+    for (const VuplusGateReport::KeyPair& pair : pairs) {
+        const std::string key = lowercase_basic(pair.key);
+        if (key == "channel") {
+            EventViewerRetention record;
+            record.channel = pair.value;
+            record.retention_mode = "unknown";
+            record.evidence_lines.push_back("channel=" + pair.value);
+            records.push_back(std::move(record));
+            continue;
+        }
+        if (records.empty()) {
+            continue;
+        }
+        EventViewerRetention& current = records.back();
+        if (key == "maxsizebytes" || key == "max_size_bytes" || key == "maxbytes") {
+            current.max_size_bytes = parse_size_value(pair.value).value_or(0);
+            current.below_minimum = current.max_size_bytes < kMinEventLogBytes;
+            current.elevated_change_required = current.below_minimum;
+            current.evidence_lines.push_back("maxSizeBytes=" + std::to_string(current.max_size_bytes));
+        } else if (key == "retentionmode" || key == "retention" || key == "logmode") {
+            current.retention_mode = pair.value;
+            current.evidence_lines.push_back("retentionMode=" + pair.value);
+        }
+    }
+    for (EventViewerRetention& record : records) {
+        if (record.below_minimum) {
+            record.recommendation = "CAB required: raise `" + record.channel +
+                "` Event Viewer max size to at least 1073741824 bytes; example `wevtutil sl " +
+                record.channel + " /ms:1073741824` requires elevated Admin/SYSTEM approval.";
+        } else {
+            record.recommendation = "Retention healthy: `" + record.channel +
+                "` is at or above the 1GB evidence-retention floor.";
+        }
+    }
+    return records;
+}
+
+std::vector<SessionCorrelation> session_correlations_from_text(const std::string& lowered,
+                                                               const std::vector<VuplusGateReport::KeyPair>& pairs) {
+    std::vector<SessionCorrelation> correlations;
+    if (lowered.find("ssh") == std::string::npos &&
+        lowered.find("lastlog") == std::string::npos &&
+        lowered.find("who -a") == std::string::npos &&
+        lowered.find("tty") == std::string::npos &&
+        lowered.find("pts/") == std::string::npos) {
+        return correlations;
+    }
+
+    SessionCorrelation correlation;
+    correlation.actor = key_pair_value(pairs, "actor");
+    if (correlation.actor.empty()) {
+        correlation.actor = key_pair_value(pairs, "user");
+    }
+    if (correlation.actor.empty()) {
+        correlation.actor = "unknown";
+    }
+    correlation.source = key_pair_value(pairs, "sourceIp");
+    if (correlation.source.empty()) {
+        correlation.source = key_pair_value(pairs, "source");
+    }
+    if (correlation.source.empty()) {
+        correlation.source = "local_log_evidence";
+    }
+    correlation.tty = key_pair_value(pairs, "tty");
+    if (correlation.tty.empty()) {
+        correlation.tty = lowered.find("pts/") != std::string::npos ? "pts/*" : "unknown";
+    }
+    correlation.first_seen = key_pair_value(pairs, "firstSeen");
+    correlation.last_seen = key_pair_value(pairs, "lastSeen");
+    correlation.confidence = lowered.find("lastlog") != std::string::npos ? 0.78 : 0.62;
+    correlation.evidence_refs.push_back("auth/syslog/session evidence");
+    if (lowered.find("unmatched") != std::string::npos ||
+        (lowered.find("ssh") != std::string::npos && lowered.find("lastlog") == std::string::npos)) {
+        correlation.anomaly_rationale = "SSH/auth evidence did not have a matching lastlog/session confirmation in the artifact.";
+        correlation.confidence = 0.82;
+    } else {
+        correlation.anomaly_rationale = "Syslog/auth evidence was cross-referenced with session/lastlog-style evidence.";
+    }
+    correlations.push_back(std::move(correlation));
+    return correlations;
+}
+
+std::vector<HeuristicSignal> heuristic_signals_from_text(const std::string& lowered,
+                                                         const std::vector<VuplusGateReport::KeyPair>& pairs) {
+    std::vector<HeuristicSignal> signals;
+    const auto add = [&](std::string id, std::string category, std::string severity, double confidence, std::string rationale) {
+        HeuristicSignal signal;
+        signal.id = std::move(id);
+        signal.category = std::move(category);
+        signal.severity = std::move(severity);
+        signal.confidence = confidence;
+        signal.rationale = std::move(rationale);
+        signal.evidence_refs.push_back("local heuristic/RUM artifact");
+        signals.push_back(std::move(signal));
+    };
+
+    if (lowered.find("rum") != std::string::npos || lowered.find("behavior") != std::string::npos ||
+        lowered.find("latency") != std::string::npos || lowered.find("error burst") != std::string::npos) {
+        if (lowered.find("latency") != std::string::npos || !key_pair_value(pairs, "p95LatencyMs").empty()) {
+            add("rum.latency_spike", "rum", "medium", 0.74,
+                "Encoded RUM-style latency evidence suggests a user-impacting response-time spike.");
+        }
+        if (lowered.find("error") != std::string::npos || !key_pair_value(pairs, "errorRate").empty()) {
+            add("rum.error_burst", "rum", "medium", 0.72,
+                "Encoded RUM-style error evidence suggests a clustered user-facing failure pattern.");
+        }
+        if (lowered.find("session") != std::string::npos || lowered.find("navigation") != std::string::npos) {
+            add("behavior.session_anomaly", "behavior", "low", 0.66,
+                "Behavioral session/navigation evidence is present for future Citizen-AI pattern recognition.");
+        }
+    }
+    return signals;
+}
+
+AlarmCabRecommendation make_alarm_cab(const VuplusGateReport& report) {
+    AlarmCabRecommendation cab;
+    cab.alarm_id = key_pair_value(report.key_pairs, "alarmId");
+    if (cab.alarm_id.empty()) {
+        cab.alarm_id = key_pair_value(report.key_pairs, "alarm_id");
+    }
+    if (cab.alarm_id.empty()) {
+        cab.alarm_id = has_vg_signal(report, "queue.XXB") ? "P1-RMQ-2B-XXB-STOPPED-REPORTING"
+                                                          : "OMNIX-VG-CAB-RECOMMENDATION";
+    }
+    cab.recommendation_status = "recommendation_only";
+    cab.proposed_change = "Review the Vuplus Gate recommendation and approve only after owner validation.";
+    cab.approval_requirement = "Operator/CAB approval required; OmniX will not execute this change.";
+    cab.owner = "Engineer Infra";
+    cab.timestamp = key_pair_value(report.key_pairs, "timestamp");
+    cab.threshold_window = key_pair_value(report.key_pairs, "thresholdWindow");
+    if (cab.threshold_window.empty()) {
+        cab.threshold_window = "initial_vuplus_gate_window";
+    }
+    cab.blast_radius = report.operational_blast_radius;
+    cab.rollback_impact = report.rollback_impact;
+    cab.signals = report.signals;
+    cab.validation_checks = {
+        "Confirm evidence source and owner approval.",
+        "Validate affected asset state before action.",
+        "Record before/after metrics and logs.",
+        "Use `omnix next latest --compact` after CAB review."
+    };
+    for (const VuplusGateReport::KeyPair& pair : report.key_pairs) {
+        const std::string key = lowercase_basic(pair.key);
+        if (key == "host" || key == "server" || key == "queue" || key == "service" ||
+            key == "app" || key == "database" || key == "mount" || key == "customer" || key == "site") {
+            cab.affected_assets.push_back(pair.key + "=" + pair.value);
+        }
+    }
+    for (const EventViewerRetention& retention : report.event_viewer_retention) {
+        if (retention.below_minimum) {
+            if (cab.alarm_id == "OMNIX-VG-CAB-RECOMMENDATION") {
+                cab.alarm_id = "OMNIX-EVENTVIEWER-RETENTION-" + retention.channel;
+            }
+            cab.proposed_change = "Raise Windows Event Viewer channel `" + retention.channel +
+                "` to at least 1GB retention.";
+            cab.approval_requirement = "Requires elevated Administrator/SYSTEM approval and change-control review.";
+            cab.affected_assets.push_back("eventviewer.channel=" + retention.channel);
+            cab.validation_checks.push_back("Run `wevtutil gl " + retention.channel +
+                                            "` after approval to confirm maxSize >= 1073741824.");
+            break;
+        }
+    }
+    if (cab.affected_assets.empty()) {
+        cab.affected_assets.push_back("unknown_asset");
+    }
+    return cab;
+}
+
+std::size_t find_vg_json_value_end(const std::string& text, std::size_t value_start) {
+    while (value_start < text.size() && std::isspace(static_cast<unsigned char>(text[value_start]))) {
+        ++value_start;
+    }
+    if (value_start >= text.size()) {
+        return value_start;
+    }
+
+    const char first = text[value_start];
+    if (first == '"') {
+        bool escaped = false;
+        for (std::size_t index = value_start + 1; index < text.size(); ++index) {
+            const char c = text[index];
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == '"') {
+                return index + 1;
+            }
+        }
+        return text.size();
+    }
+
+    if (first == '{' || first == '[') {
+        int depth = 0;
+        bool in_string = false;
+        bool escaped = false;
+        for (std::size_t index = value_start; index < text.size(); ++index) {
+            const char c = text[index];
+            if (in_string) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    in_string = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                in_string = true;
+            } else if (c == '{' || c == '[') {
+                ++depth;
+            } else if (c == '}' || c == ']') {
+                --depth;
+                if (depth <= 0) {
+                    return index + 1;
+                }
+            }
+        }
+        return text.size();
+    }
+
+    std::size_t index = value_start;
+    while (index < text.size()) {
+        const char c = text[index];
+        if (c == ',' || c == '}' || c == ']' || c == '\n' || c == '\r') {
+            break;
+        }
+        ++index;
+    }
+    return index;
+}
+
+void append_vg_key_pair(VuplusGateReport& report,
+                        std::string key,
+                        std::string value,
+                        std::string source,
+                        std::size_t value_start,
+                        std::size_t value_end) {
+    if (report.key_pairs.size() >= 64) {
+        return;
+    }
+    key = trim_vg_value(std::move(key));
+    value = trim_vg_value(std::move(value));
+    if (key.empty() || value.empty()) {
+        return;
+    }
+    for (const VuplusGateReport::KeyPair& existing : report.key_pairs) {
+        if (existing.key == key && existing.value == value && existing.source == source &&
+            existing.value_start == value_start && existing.value_end == value_end) {
+            return;
+        }
+    }
+    VuplusGateReport::KeyPair pair;
+    pair.key = std::move(key);
+    pair.value = std::move(value);
+    pair.source = std::move(source);
+    pair.value_start = value_start;
+    pair.value_end = value_end;
+    report.key_pairs.push_back(std::move(pair));
+}
+
+void scan_vg_embedded_pairs(VuplusGateReport& report, const std::string& blob, const std::string& source_key) {
+    std::string token;
+    std::size_t token_start = 0;
+    const auto flush = [&](std::size_t token_end) {
+        const std::string trimmed = trim_local(token);
+        const std::size_t current_start = token_start;
+        token.clear();
+        if (trimmed.size() < 3) {
+            return;
+        }
+        const std::size_t eq = trimmed.find('=');
+        if (eq == std::string::npos || eq == 0 || eq + 1 >= trimmed.size()) {
+            return;
+        }
+        std::string key = trimmed.substr(0, eq);
+        std::string value = trimmed.substr(eq + 1);
+        while (!value.empty() && (value.back() == ',' || value.back() == ';' || value.back() == '|')) {
+            value.pop_back();
+        }
+        append_vg_key_pair(report,
+                           std::move(key),
+                           std::move(value),
+                           "embedded:" + source_key,
+                           current_start + eq + 1,
+                           token_end);
+    };
+
+    for (std::size_t index = 0; index < blob.size(); ++index) {
+        const char c = blob[index];
+        if (std::isspace(static_cast<unsigned char>(c)) || c == ';' || c == '|') {
+            flush(index);
+        } else {
+            if (token.empty()) {
+                token_start = index;
+            }
+            token.push_back(c);
+        }
+    }
+    flush(blob.size());
+}
+
+void scan_vg_json_key_pairs(VuplusGateReport& report, const std::string& text, const std::string& source) {
+    std::size_t index = 0;
+    while (index < text.size() && report.key_pairs.size() < 64) {
+        if (text[index] != '"') {
+            ++index;
+            continue;
+        }
+        const std::size_t key_start = index + 1;
+        bool escaped = false;
+        std::size_t key_end = std::string::npos;
+        for (std::size_t cursor = key_start; cursor < text.size(); ++cursor) {
+            const char c = text[cursor];
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                key_end = cursor;
+                break;
+            }
+        }
+        if (key_end == std::string::npos) {
+            break;
+        }
+        std::size_t colon = key_end + 1;
+        while (colon < text.size() && std::isspace(static_cast<unsigned char>(text[colon]))) {
+            ++colon;
+        }
+        if (colon >= text.size() || text[colon] != ':') {
+            index = key_end + 1;
+            continue;
+        }
+        std::size_t value_start = colon + 1;
+        while (value_start < text.size() && std::isspace(static_cast<unsigned char>(text[value_start]))) {
+            ++value_start;
+        }
+        const std::size_t value_end = find_vg_json_value_end(text, value_start);
+        const std::string key = text.substr(key_start, key_end - key_start);
+        const std::string value = value_end > value_start ? text.substr(value_start, value_end - value_start) : std::string{};
+        append_vg_key_pair(report, key, value, source, value_start, value_end);
+
+        const std::string lowered_key = lowercase_basic(key);
+        if (lowered_key.find("data") != std::string::npos ||
+            lowered_key.find("meta") != std::string::npos ||
+            lowered_key.find("message") != std::string::npos ||
+            lowered_key.find("original") != std::string::npos) {
+            scan_vg_embedded_pairs(report, trim_vg_value(value), key);
+        }
+        if (value_start < text.size() && (text[value_start] == '{' || text[value_start] == '[')) {
+            index = value_start + 1;
+            continue;
+        }
+        index = value_end > key_end ? value_end : key_end + 1;
+    }
+}
+
+std::string render_vuplus_gate_json(const VuplusGateReport& report) {
+    std::ostringstream out;
+    out << "{\"event_type\":\"omnix.vg.explain.v1\""
+        << ",\"segment\":\"" << local_json_escape(report.segment)
+        << "\",\"status\":\"" << local_json_escape(report.status)
+        << "\",\"mode\":\"" << local_json_escape(report.mode)
+        << "\",\"inputPath\":\"" << local_json_escape(report.input_path)
+        << "\",\"dependencyMapPath\":\"" << local_json_escape(report.dependency_map_path)
+        << "\",\"why\":\"" << local_json_escape(report.why)
+        << "\",\"signals\":[";
+    for (std::size_t index = 0; index < report.signals.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(report.signals[index]) << "\"";
+    }
+    out << "],\"confidence\":" << report.confidence
+        << ",\"historicalCorrelation\":\"" << local_json_escape(report.historical_correlation)
+        << "\",\"operationalBlastRadius\":\"" << local_json_escape(report.operational_blast_radius)
+        << "\",\"rollbackImpact\":\"" << local_json_escape(report.rollback_impact)
+        << "\",\"nextAction\":\"" << local_json_escape(report.next_action)
+        << "\",\"remediationMode\":\"" << local_json_escape(report.remediation_mode)
+        << "\",\"executionTopology\":\"" << local_json_escape(report.execution_topology)
+        << "\",\"keyPairs\":[";
+    for (std::size_t index = 0; index < report.key_pairs.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        const VuplusGateReport::KeyPair& pair = report.key_pairs[index];
+        out << "{\"key\":\"" << local_json_escape(pair.key)
+            << "\",\"value\":\"" << local_json_escape(pair.value)
+            << "\",\"source\":\"" << local_json_escape(pair.source)
+            << "\",\"valueStart\":" << pair.value_start
+            << ",\"valueEnd\":" << pair.value_end
+            << "}";
+    }
+    out << "],";
+    render_event_viewer_retention_json(out, report.event_viewer_retention);
+    out << ",";
+    render_session_correlations_json(out, report.session_correlations);
+    out << ",";
+    render_heuristic_signals_json(out, report.heuristic_signals);
+    out << ",";
+    render_shaped_fields_json(out, report.shaped_fields);
+    out << ",";
+    render_shaping_rules_json(out, report.shaping_rules);
+    out << ",";
+    render_key_custody_json(out, report.key_custody);
+    out << ",";
+    render_alarm_cab_json(out, report.alarm_cab);
+    out << ",\"warnings\":[";
+    for (std::size_t index = 0; index < report.warnings.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(report.warnings[index]) << "\"";
+    }
+    out << "]}";
+    return out.str();
+}
+
+void render_event_viewer_retention_json(std::ostringstream& out,
+                                        const std::vector<EventViewerRetention>& records) {
+    out << "\"eventViewerRetention\":[";
+    for (std::size_t index = 0; index < records.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        const EventViewerRetention& record = records[index];
+        out << "{\"channel\":\"" << local_json_escape(record.channel)
+            << "\",\"maxSizeBytes\":" << record.max_size_bytes
+            << ",\"retentionMode\":\"" << local_json_escape(record.retention_mode)
+            << "\",\"belowMinimum\":" << (record.below_minimum ? "true" : "false")
+            << ",\"elevatedChangeRequired\":" << (record.elevated_change_required ? "true" : "false")
+            << ",\"recommendation\":\"" << local_json_escape(record.recommendation)
+            << "\",\"evidence\":[";
+        for (std::size_t evidence_index = 0; evidence_index < record.evidence_lines.size(); ++evidence_index) {
+            if (evidence_index != 0) {
+                out << ",";
+            }
+            out << "\"" << local_json_escape(record.evidence_lines[evidence_index]) << "\"";
+        }
+        out << "]}";
+    }
+    out << "]";
+}
+
+void render_session_correlations_json(std::ostringstream& out,
+                                      const std::vector<SessionCorrelation>& correlations) {
+    out << "\"sessionCorrelations\":[";
+    for (std::size_t index = 0; index < correlations.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        const SessionCorrelation& correlation = correlations[index];
+        out << "{\"actor\":\"" << local_json_escape(correlation.actor)
+            << "\",\"source\":\"" << local_json_escape(correlation.source)
+            << "\",\"tty\":\"" << local_json_escape(correlation.tty)
+            << "\",\"firstSeen\":\"" << local_json_escape(correlation.first_seen)
+            << "\",\"lastSeen\":\"" << local_json_escape(correlation.last_seen)
+            << "\",\"confidence\":" << correlation.confidence
+            << ",\"anomalyRationale\":\"" << local_json_escape(correlation.anomaly_rationale)
+            << "\",\"evidenceRefs\":[";
+        for (std::size_t evidence_index = 0; evidence_index < correlation.evidence_refs.size(); ++evidence_index) {
+            if (evidence_index != 0) {
+                out << ",";
+            }
+            out << "\"" << local_json_escape(correlation.evidence_refs[evidence_index]) << "\"";
+        }
+        out << "]}";
+    }
+    out << "]";
+}
+
+void render_heuristic_signals_json(std::ostringstream& out,
+                                   const std::vector<HeuristicSignal>& signals) {
+    out << "\"heuristicSignals\":[";
+    for (std::size_t index = 0; index < signals.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        const HeuristicSignal& signal = signals[index];
+        out << "{\"id\":\"" << local_json_escape(signal.id)
+            << "\",\"category\":\"" << local_json_escape(signal.category)
+            << "\",\"severity\":\"" << local_json_escape(signal.severity)
+            << "\",\"confidence\":" << signal.confidence
+            << ",\"rationale\":\"" << local_json_escape(signal.rationale)
+            << "\",\"evidenceRefs\":[";
+        for (std::size_t evidence_index = 0; evidence_index < signal.evidence_refs.size(); ++evidence_index) {
+            if (evidence_index != 0) {
+                out << ",";
+            }
+            out << "\"" << local_json_escape(signal.evidence_refs[evidence_index]) << "\"";
+        }
+        out << "]}";
+    }
+    out << "]";
+}
+
+void render_alarm_cab_json(std::ostringstream& out, const std::optional<AlarmCabRecommendation>& cab) {
+    out << "\"alarmCab\":";
+    if (!cab.has_value()) {
+        out << "null";
+        return;
+    }
+    out << "{\"alarmId\":\"" << local_json_escape(cab->alarm_id)
+        << "\",\"recommendationStatus\":\"" << local_json_escape(cab->recommendation_status)
+        << "\",\"proposedChange\":\"" << local_json_escape(cab->proposed_change)
+        << "\",\"approvalRequirement\":\"" << local_json_escape(cab->approval_requirement)
+        << "\",\"owner\":\"" << local_json_escape(cab->owner)
+        << "\",\"timestamp\":\"" << local_json_escape(cab->timestamp)
+        << "\",\"thresholdWindow\":\"" << local_json_escape(cab->threshold_window)
+        << "\",\"blastRadius\":\"" << local_json_escape(cab->blast_radius)
+        << "\",\"rollbackImpact\":\"" << local_json_escape(cab->rollback_impact)
+        << "\",\"affectedAssets\":[";
+    for (std::size_t index = 0; index < cab->affected_assets.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(cab->affected_assets[index]) << "\"";
+    }
+    out << "],\"signals\":[";
+    for (std::size_t index = 0; index < cab->signals.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(cab->signals[index]) << "\"";
+    }
+    out << "],\"validationChecks\":[";
+    for (std::size_t index = 0; index < cab->validation_checks.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(cab->validation_checks[index]) << "\"";
+    }
+    out << "]}";
+}
+
+void render_shaped_fields_json(std::ostringstream& out, const std::vector<ShapedField>& fields) {
+    out << "\"shapedFields\":[";
+    for (std::size_t index = 0; index < fields.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        const ShapedField& field = fields[index];
+        out << "{\"field\":\"" << local_json_escape(field.field)
+            << "\",\"value\":";
+        if (field.type == "integer" || field.type == "number") {
+            out << field.value;
+        } else if (field.type == "boolean") {
+            out << lowercase_basic(field.value);
+        } else {
+            out << "\"" << local_json_escape(field.value) << "\"";
+        }
+        out << ",\"type\":\"" << local_json_escape(field.type)
+            << "\",\"source\":\"" << local_json_escape(field.source)
+            << "\",\"lineage\":\"" << local_json_escape(field.lineage)
+            << "\",\"semanticMeaning\":\"" << local_json_escape(field.semantic_meaning)
+            << "\",\"mappedSignal\":\"" << local_json_escape(field.mapped_signal)
+            << "\",\"confidence\":" << field.confidence
+            << "}";
+    }
+    out << "]";
+}
+
+void render_shaping_rules_json(std::ostringstream& out, const std::vector<ShapingRule>& rules) {
+    out << "\"shapingRules\":[";
+    for (std::size_t index = 0; index < rules.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        const ShapingRule& rule = rules[index];
+        out << "{\"match\":{\"source\":\"" << local_json_escape(rule.source)
+            << "\",\"field\":\"" << local_json_escape(rule.field)
+            << "\"},\"type\":\"" << local_json_escape(rule.type)
+            << "\",\"semanticMeaning\":\"" << local_json_escape(rule.semantic_meaning)
+            << "\",\"mappedSignal\":\"" << local_json_escape(rule.mapped_signal)
+            << "\",\"confidence\":" << rule.confidence
+            << "}";
+    }
+    out << "]";
+}
+
+void render_key_custody_json(std::ostringstream& out, const std::optional<KeyCustodyMap>& custody) {
+    out << "\"keyCustody\":";
+    if (!custody.has_value()) {
+        out << "null";
+        return;
+    }
+    out << "{\"encryptedEvidence\":" << (custody->encrypted_evidence ? "true" : "false")
+        << ",\"visibleAnchor\":\"" << local_json_escape(custody->visible_anchor)
+        << "\",\"routeHypothesis\":[";
+    for (std::size_t index = 0; index < custody->route_hypothesis.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(custody->route_hypothesis[index]) << "\"";
+    }
+    out << "],\"status\":\"" << local_json_escape(custody->status)
+        << "\",\"allowedEvidence\":[";
+    for (std::size_t index = 0; index < custody->allowed_evidence.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(custody->allowed_evidence[index]) << "\"";
+    }
+    out << "],\"forbiddenEvidence\":[";
+    for (std::size_t index = 0; index < custody->forbidden_evidence.size(); ++index) {
+        if (index != 0) {
+            out << ",";
+        }
+        out << "\"" << local_json_escape(custody->forbidden_evidence[index]) << "\"";
+    }
+    out << "],\"nextAction\":\"" << local_json_escape(custody->next_action) << "\"}";
+}
+
+VuplusGateReport run_vuplus_gate(const RequestProfile& profile) {
+    VuplusGateReport report;
+    report.mode = profile.vuplus_mode.empty() ? "doctor" : profile.vuplus_mode;
+    report.input_path = profile.vuplus_input_path;
+    report.dependency_map_path = profile.vuplus_dependency_map_path;
+    report.remediation_mode = "recommendation_only";
+
+    if (report.mode == "doctor") {
+        report.status = "vg_ready";
+        report.why = "Vuplus Gate is ready for local operational intelligence over logs, alerts, notes, thresholds, dependency maps, shutdown sequences, and recovery comparisons.";
+        report.confidence = 0.9;
+        report.historical_correlation = "Uses existing OmniX surfaces: ingest, defend detect, thresholds/GSMg, case, incident, why, next, and TZE diff.";
+        report.operational_blast_radius = "Local fixture scope: app, queue, DB, mount, ingress, package/runtime surfaces, customer/site context.";
+        report.rollback_impact = "No remediation is executed; rollback impact is advisory until a future allowlisted runbook phase.";
+        report.next_action = "Run `omnix vg explain res/ops/elastic-siem-rabbitmq-xxb.json --compact`.";
+        append_vg_signal(report, "vuplus.gate.ready");
+        append_vg_signal(report, "remediation.recommendation_only");
+        report.json = render_vuplus_gate_json(report);
+        return report;
+    }
+
+    bool input_ok = false;
+    const std::string content = read_small_text_file(report.input_path, &input_ok);
+    if (!input_ok) {
+        report.status = "vg_input_missing";
+        report.why = "Vuplus Gate could not read the requested local ops artifact.";
+        report.confidence = 0.0;
+        report.historical_correlation = "No correlation is possible without a readable local artifact.";
+        report.operational_blast_radius = "unknown";
+        report.rollback_impact = "No rollback guidance can be trusted until evidence is loaded.";
+        report.next_action = "Provide a readable artifact from `res/ops/` or an equivalent local JSON/log file.";
+        report.warnings.push_back("input_missing:" + report.input_path);
+        report.json = render_vuplus_gate_json(report);
+        return report;
+    }
+
+    std::string dependency_content;
+    if (!report.dependency_map_path.empty()) {
+        bool dependency_ok = false;
+        dependency_content = read_small_text_file(report.dependency_map_path, &dependency_ok);
+        if (!dependency_ok) {
+            report.warnings.push_back("dependency_map_missing:" + report.dependency_map_path);
+        }
+    }
+
+    scan_vg_json_key_pairs(report, content, "input");
+    if (!dependency_content.empty()) {
+        scan_vg_json_key_pairs(report, dependency_content, "dependency_map");
+    }
+    if (!report.key_pairs.empty()) {
+        append_vg_signal(report, "siem.keypair.boundary_extracted");
+    }
+
+    std::string extracted_pairs;
+    for (const VuplusGateReport::KeyPair& pair : report.key_pairs) {
+        extracted_pairs += pair.key + "=" + pair.value + "\n";
+    }
+    const std::string lowered = lowercase_basic(content + "\n" + dependency_content + "\n" + extracted_pairs);
+    report.event_viewer_retention = event_viewer_retention_from_pairs(report.key_pairs);
+    report.session_correlations = session_correlations_from_text(lowered, report.key_pairs);
+    report.heuristic_signals = heuristic_signals_from_text(lowered, report.key_pairs);
+    report.shaped_fields = shaped_fields_from_pairs(report.key_pairs);
+    if (report.mode == "shape" || profile.vuplus_learn_shape) {
+        report.shaping_rules = shaping_rules_from_fields(report.shaped_fields);
+    }
+    report.key_custody = key_custody_from_text(lowered, report.key_pairs);
+    if (!report.shaped_fields.empty()) {
+        append_vg_signal(report, "siem.shape.fields_inferred");
+        for (const ShapedField& field : report.shaped_fields) {
+            if (!field.mapped_signal.empty()) {
+                append_vg_signal(report, field.mapped_signal);
+            }
+        }
+    }
+    if (!report.shaping_rules.empty()) {
+        append_vg_signal(report, "siem.shape.rules_proposed");
+    }
+    if (report.key_custody.has_value()) {
+        append_vg_signal(report, "siem.encrypted_evidence");
+        append_vg_signal(report, "custody.operator_approval_required");
+    }
+    if (!report.event_viewer_retention.empty()) {
+        append_vg_signal(report, "eventviewer.retention.inspected");
+        for (const EventViewerRetention& retention : report.event_viewer_retention) {
+            if (retention.below_minimum) {
+                append_vg_signal(report, "eventviewer.retention.below_1gb");
+            }
+        }
+    }
+    if (!report.session_correlations.empty()) {
+        append_vg_signal(report, "session.syslog_lastlog.correlation");
+    }
+    for (const HeuristicSignal& signal : report.heuristic_signals) {
+        append_vg_signal(report, signal.id);
+    }
+    if (lowered.find("eyz-47281") != std::string::npos) {
+        append_vg_signal(report, "log.signature.EYZ-47281");
+    }
+    if (lowered.find("consumer") != std::string::npos && lowered.find("0") != std::string::npos) {
+        append_vg_signal(report, "consumer.count.zero");
+    }
+    if (lowered.find("queue=xxb") != std::string::npos || lowered.find("\"xxb\"") != std::string::npos) {
+        append_vg_signal(report, "queue.XXB");
+    }
+    if (lowered.find("rabbitmq") != std::string::npos || lowered.find("rmq") != std::string::npos) {
+        append_vg_signal(report, "broker.rabbitmq");
+    }
+    if (lowered.find("apt") != std::string::npos) {
+        append_vg_signal(report, "dependency.package.apt");
+    }
+    if (lowered.find("npm") != std::string::npos) {
+        append_vg_signal(report, "dependency.package.npm");
+    }
+    if (lowered.find("pnpm") != std::string::npos) {
+        append_vg_signal(report, "dependency.package.pnpm");
+    }
+    if (lowered.find("wget") != std::string::npos) {
+        append_vg_signal(report, "dependency.download.wget");
+    }
+    if (lowered.find("powershell") != std::string::npos) {
+        append_vg_signal(report, "dependency.script.powershell");
+    }
+    if (lowered.find("winget") != std::string::npos || lowered.find("windows_package_manager") != std::string::npos) {
+        append_vg_signal(report, "dependency.package.windows");
+    }
+    if (lowered.find("brew") != std::string::npos) {
+        append_vg_signal(report, "dependency.package.brew");
+    }
+    if (lowered.find("database") != std::string::npos || lowered.find("payments-db") != std::string::npos) {
+        append_vg_signal(report, "dependency.database");
+    }
+    if (lowered.find("mount") != std::string::npos || lowered.find("/data/payments") != std::string::npos) {
+        append_vg_signal(report, "dependency.mount");
+    }
+    if (lowered.find("ingress") != std::string::npos || lowered.find("load_balancer") != std::string::npos) {
+        append_vg_signal(report, "dependency.ingress");
+    }
+    if (lowered.find("successfulpath") != std::string::npos) {
+        append_vg_signal(report, "recovery.success_path");
+    }
+    if (lowered.find("failedpath") != std::string::npos) {
+        append_vg_signal(report, "recovery.failed_path");
+    }
+
+    report.confidence = 0.55;
+    if (has_vg_signal(report, "log.signature.EYZ-47281")) {
+        report.confidence += 0.12;
+    }
+    if (has_vg_signal(report, "consumer.count.zero")) {
+        report.confidence += 0.08;
+    }
+    if (has_vg_signal(report, "queue.XXB")) {
+        report.confidence += 0.08;
+    }
+    if (!dependency_content.empty()) {
+        report.confidence += 0.08;
+    }
+    if (has_vg_signal(report, "siem.keypair.boundary_extracted")) {
+        report.confidence += 0.04;
+    }
+    if (has_vg_signal(report, "recovery.success_path") ||
+        has_vg_signal(report, "recovery.failed_path")) {
+        report.confidence += 0.09;
+    }
+    if (has_vg_signal(report, "eventviewer.retention.below_1gb")) {
+        report.confidence += 0.08;
+    }
+    if (has_vg_signal(report, "session.syslog_lastlog.correlation")) {
+        report.confidence += 0.05;
+    }
+    if (has_vg_signal(report, "siem.shape.fields_inferred")) {
+        report.confidence += 0.04;
+    }
+    if (has_vg_signal(report, "siem.encrypted_evidence")) {
+        report.confidence += 0.04;
+    }
+    if (!report.heuristic_signals.empty()) {
+        report.confidence += 0.05;
+    }
+    if (report.confidence > 0.95) {
+        report.confidence = 0.95;
+    }
+
+    if (report.mode == "shape") {
+        report.status = "vg_shaped";
+        report.why = "Vuplus Gate inferred typed SIEM fields, semantic meanings, lineage, mapped signals, and reusable shaping rules from local evidence.";
+        report.historical_correlation = "Shaping output turns semi-structured SIEM blobs into auditable fields before threshold, CAB, incident, or encrypted-evidence routing.";
+        report.operational_blast_radius = "Data-shaping scope is local to the input artifact and does not mutate SIEM pipelines or secret material.";
+        report.rollback_impact = "Rejecting a proposed shaping rule leaves the original artifact unchanged; accepting one should be reviewed through local audit.";
+        report.next_action = "Review shapedFields and shapingRules; persist the JSON artifact with `--out` if the mapping should be reused.";
+    } else if (report.mode == "cab") {
+        report.status = "vg_cab_ready";
+        report.why = "Vuplus Gate prepared a GUI-ready Alarm CAB JSON recommendation from local operational evidence.";
+        report.historical_correlation = "CAB output preserves Vuplus signals, threshold windows, blast radius, rollback impact, and validation checks for future GUI/Web review.";
+        report.operational_blast_radius = has_vg_signal(report, "eventviewer.retention.below_1gb")
+            ? "Windows Event Viewer retention evidence can affect incident replay, escalation, and future forensic correlation."
+            : "CAB artifact blast radius is derived from the local Vuplus evidence graph.";
+        report.rollback_impact = has_vg_signal(report, "eventviewer.retention.below_1gb")
+            ? "Leaving retention below 1GB risks losing local evidence before it can be correlated."
+            : "Rollback impact remains advisory until the operator approves a concrete change.";
+        report.next_action = "Review the Alarm CAB JSON with the owner; do not execute changes until approval and validation gates are recorded.";
+        report.alarm_cab = make_alarm_cab(report);
+    } else if (report.mode == "compare") {
+        report.status = "vg_compared";
+        report.why = "Vuplus Gate compared the successful and failed recovery paths and found dependency-order risk.";
+        report.historical_correlation = "The successful path validates broker health, worker exhaustion, consumer recovery, and queue drain; the failed path jumps toward data-core actions before dependencies are quiet.";
+        report.operational_blast_radius = "ABC worker, Queue XXB, RabbitMQ node, payments DB, /data/payments mount, and customer/site workflow.";
+        report.rollback_impact = "Rolling back to the successful path lowers data-loss risk; continuing the failed path risks open pools, unacked messages, active writers, and unsafe storage actions.";
+        report.next_action = "Use `omnix why latest` or future Versus Comparator output to backtrace the missing dependency-safe transition.";
+    } else if (report.mode == "correlate") {
+        report.status = "vg_correlated";
+        report.why = "Vuplus Gate correlated the artifact with dependency and threshold-style signals.";
+        report.historical_correlation = "Package/runtime changes and operational events should be compared against the incident timeline before remediation.";
+        report.operational_blast_radius = has_vg_signal(report, "dependency.package.apt") ||
+                has_vg_signal(report, "dependency.package.npm")
+            ? "Package/runtime surface can affect app workers, queue clients, scripts, jump hosts, and incident-time reproducibility."
+            : "Dependency graph spans ingress, services, queue, DB, mount, storage, and customer/site context.";
+        report.rollback_impact = "Rollback must consider runtime package state, service dependency order, and whether queues or DB writers are still active.";
+        report.next_action = "Preserve the correlated artifact into a case, then run `omnix next latest --compact` for the immediate operator step.";
+    } else {
+        report.status = "vg_explained";
+        report.why = has_vg_signal(report, "eventviewer.retention.below_1gb")
+            ? "Windows Event Viewer retention evidence is below the 1GB floor; OmniX recommends CAB review rather than automatic mutation."
+            : has_vg_signal(report, "log.signature.EYZ-47281")
+            ? "Queue XXB evidence points to app-worker memory exhaustion: RabbitMQ appears healthy, consumers dropped to zero, and EYZ-47281 appeared in worker logs."
+            : "Vuplus Gate explained the local ops artifact from observable logs, alerts, notes, and dependency signals.";
+        report.historical_correlation = "Matches the Queue XXB threshold/GSMg pattern: app worker exhaustion beats RabbitMQ node failure when broker health is green and consumers are zero.";
+        report.operational_blast_radius = "Queue XXB -> abc-worker.service -> payments-db -> /data/payments -> CUST8 / NY_HOME_HEATING_OIL.";
+        report.rollback_impact = "Waiting increases backlog and oldest-message age; restarting without validation risks unmeasured loss; escalating without evidence slows recovery.";
+        report.next_action = "Recommend worker restart runbook only after operator review; validate service active, consumers reattached, queue depth drains, and no new heap error appears.";
+    }
+
+    if (!report.alarm_cab.has_value() && has_vg_signal(report, "eventviewer.retention.below_1gb")) {
+        report.alarm_cab = make_alarm_cab(report);
+        report.next_action = "Review the Event Viewer retention Alarm CAB recommendation; elevated approval is required before changing channel size.";
+    }
+
+    if (report.signals.empty()) {
+        report.status = "vg_unsupported_artifact";
+        report.why = "Vuplus Gate read the file but did not recognize supported ops signals in this V1 artifact.";
+        report.confidence = 0.2;
+        report.historical_correlation = "No supported local fixture pattern matched.";
+        report.operational_blast_radius = "unknown";
+        report.rollback_impact = "Unknown until the artifact is shaped into logs, alerts, dependency maps, or recovery comparison evidence.";
+        report.next_action = "Shape the input as Elastic SIEM JSON, local syslog/auth evidence, package activity, dependency map, or recovery comparison.";
+    }
+
+    report.json = render_vuplus_gate_json(report);
+    return report;
+}
+
+bool export_vuplus_gate_json(VuplusGateReport& report, const std::string& path) {
+    if (path.empty()) {
+        return true;
+    }
+    std::ofstream output(path);
+    if (!output) {
+        report.warnings.push_back("Unable to write Vuplus Gate JSON to `" + path + "`.");
+        report.json = render_vuplus_gate_json(report);
+        return false;
+    }
+    output << report.json << "\n";
+    report.artifact_path = path;
+    return true;
+}
+
+DefenseDetectionReport run_defense_detection(const RequestProfile& profile,
+                                             const DefenseDiagnosticRequest& request) {
+    DefenseDetectionReport report;
+    report.mode = request.mode.empty() ? "all" : request.mode;
+    report.since_window = profile.defense_since_window.empty() ? "24h" : profile.defense_since_window;
+    report.quiet_hours = profile.defense_quiet_hours;
+    report.admin_user = profile.defense_admin_user;
+    report.max_lines = profile.defense_max_lines == 0 ? 40 : profile.defense_max_lines;
+    report.eventviewer_channels = profile.defense_channels;
+    report.source_path = profile.defense_source_path;
+    report.execution_topology = "standalone_local_node";
+    report.status = "defense_detection_complete";
+    report.warnings.push_back("Detection-only mode: OmniX did not kill processes, alter services, change firewall state, or mutate packets.");
+    report.warnings.push_back("Defense environmental intelligence remains local-only; OmniX does not send this evidence to configured API providers.");
+    report.warnings.push_back("Stealth/PID hiding is intentionally unsupported; this detector stays transparent and auditable.");
+
+    const auto run_mode = [&](const std::string& mode) {
+        if (mode == "env") {
+            collect_env_detection(report);
+        } else if (mode == "sessions") {
+            collect_session_detection(report);
+        } else if (mode == "persistence") {
+            collect_persistence_detection(report);
+        } else if (mode == "packages") {
+            collect_package_detection(report);
+        } else if (mode == "services") {
+            collect_service_detection(report);
+        } else if (mode == "logs") {
+            collect_log_detection(report);
+        } else if (mode == "eventviewer") {
+            collect_eventviewer_detection(report);
+        }
+    };
+
+    if (report.mode == "all") {
+        for (std::string_view mode : {"env", "sessions", "persistence", "packages", "services", "logs", "eventviewer"}) {
+            run_mode(std::string(mode));
+        }
+    } else {
+        run_mode(report.mode);
+    }
+
+    if (report.signals.empty()) {
+        report.status = "defense_detection_empty";
+        report.summary = "No local environmental change evidence was returned for the requested detector.";
+    } else {
+        std::sort(report.signals.begin(), report.signals.end(), [](const DefenseDetectionSignal& left,
+                                                                   const DefenseDetectionSignal& right) {
+            if (severity_rank(left.severity) != severity_rank(right.severity)) {
+                return severity_rank(left.severity) > severity_rank(right.severity);
+            }
+            return left.confidence > right.confidence;
+        });
+        report.summary = "Detected " + std::to_string(report.signals.size()) +
+            " local environmental signal(s) using read-only evidence.";
+    }
+    report.proposed_actions.push_back("Review the top signal rationale before containment.");
+    report.proposed_actions.push_back("If network transit is relevant, explicitly run `omnix gg search --port <port>` or `omnix tview port <port>`.");
+    for (const EventViewerRetention& retention : report.event_viewer_retention) {
+        if (retention.below_minimum) {
+            AlarmCabRecommendation cab;
+            cab.alarm_id = "OMNIX-EVENTVIEWER-RETENTION-" + retention.channel;
+            cab.recommendation_status = "recommendation_only";
+            cab.proposed_change = "Raise Windows Event Viewer channel `" + retention.channel + "` to at least 1GB retention.";
+            cab.approval_requirement = "Requires elevated Administrator/SYSTEM approval; OmniX does not mutate Event Viewer settings.";
+            cab.owner = report.admin_user.empty() ? "Windows Administrator" : report.admin_user;
+            cab.threshold_window = "eventviewer_retention_floor_1gb";
+            cab.blast_radius = "Windows Event Viewer channel `" + retention.channel + "` and future incident evidence retention.";
+            cab.rollback_impact = "Leaving retention below 1GB risks losing forensic/log evidence before Vuplus Gate can correlate incidents.";
+            cab.affected_assets.push_back("eventviewer.channel=" + retention.channel);
+            cab.signals.push_back("eventviewer.retention.below_1gb");
+            cab.validation_checks.push_back("After approval, confirm `wevtutil gl " + retention.channel + "` reports maxSize >= 1073741824.");
+            report.alarm_cab = cab;
+            break;
+        }
     }
     return report;
 }
@@ -714,10 +2584,16 @@ std::string dispatch_module_for(RequestIntent intent) {
             return "PacketCaptureEngine";
         case RequestIntent::DefenseDiagnostic:
             return "DefenseDiagnosticEngine";
+        case RequestIntent::DefenseDetection:
+            return "DefenseEnvironmentDetectEngine";
+        case RequestIntent::VuplusGate:
+            return "VuplusGate";
         case RequestIntent::NeuralMath:
             return "NeuralMathEngine";
         case RequestIntent::NeuralRoute:
             return "NeuralSignalRouter";
+        case RequestIntent::TensorAction:
+            return "TensorFramework";
         case RequestIntent::SetPersonaMode:
             return "PersonaEngine";
         case RequestIntent::DoctorProject:
@@ -2574,7 +4450,10 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     if (!routed_profile.project_reference.empty()) {
         resolution.primary_target = routed_profile.project_reference;
     }
-    if (!routed_profile.memory_view.empty()) {
+    if (!routed_profile.memory_view.empty() &&
+        !((resolution.intent == RequestIntent::DefenseDiagnostic ||
+           resolution.intent == RequestIntent::DefenseDetection) &&
+          routed_profile.memory_view == "history")) {
         resolution.memory_view = routed_profile.memory_view;
     }
     if (!routed_profile.analyst_reference.empty()) {
@@ -2593,7 +4472,9 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         resolution.memory_view = routed_profile.tze_compare_reference;
     }
     if (routed_profile.tool_mode != ToolCommandMode::None || !routed_profile.requested_tool_name.empty()) {
-        resolution.intent = RequestIntent::ToolAction;
+        resolution.intent = routed_profile.resolved_intent == RequestIntent::TensorAction
+            ? RequestIntent::TensorAction
+            : RequestIntent::ToolAction;
         resolution.primary_target = routed_profile.requested_tool_name;
     }
     if (!routed_profile.packet_capture_mode.empty() || routed_profile.packet_port > 0 ||
@@ -2607,7 +4488,11 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         }
     }
     if (!routed_profile.defense_mode.empty() || routed_profile.defense_port > 0 || routed_profile.defense_pid > 0) {
-        resolution.intent = RequestIntent::DefenseDiagnostic;
+        if (routed_profile.resolved_intent == RequestIntent::DefenseDetection) {
+            resolution.intent = RequestIntent::DefenseDetection;
+        } else {
+            resolution.intent = RequestIntent::DefenseDiagnostic;
+        }
         if (resolution.primary_target.empty()) {
             resolution.primary_target = routed_profile.defense_target;
         }
@@ -2618,6 +4503,15 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     if (resolution.intent == RequestIntent::DefenseDiagnostic && routed_profile.defense_mode.empty()) {
         routed_profile.defense_mode = resolution.memory_view.empty() ? "summary" : resolution.memory_view;
         routed_profile.defense_target = resolution.primary_target;
+    }
+    if (resolution.intent == RequestIntent::DefenseDetection && routed_profile.defense_mode.empty()) {
+        routed_profile.defense_mode = resolution.memory_view.empty() ? "all" : resolution.memory_view;
+        routed_profile.defense_target = resolution.primary_target;
+    }
+    if (!routed_profile.vuplus_mode.empty()) {
+        resolution.intent = RequestIntent::VuplusGate;
+        resolution.primary_target = routed_profile.vuplus_input_path;
+        resolution.memory_view = routed_profile.vuplus_mode;
     }
     if (!routed_profile.persona_mode.empty()) {
         resolution.intent = RequestIntent::SetPersonaMode;
@@ -2636,7 +4530,7 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     }
     routed_profile.resolved_intent = resolution.intent;
 
-    if (resolution.intent == RequestIntent::ToolAction &&
+    if ((resolution.intent == RequestIntent::ToolAction || resolution.intent == RequestIntent::TensorAction) &&
         routed_profile.tool_mode == ToolCommandMode::None &&
         routed_profile.requested_tool_name.empty()) {
         std::string tool_name;
@@ -2654,6 +4548,18 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         } else if (!tool_route_detail.empty()) {
             blocked_tool_route_detail = tool_route_detail;
         }
+    }
+
+    const bool defense_detection_local_only =
+        resolution.intent == RequestIntent::DefenseDetection && routed_profile.assist_requested;
+    const bool vuplus_gate_local_only =
+        resolution.intent == RequestIntent::VuplusGate && routed_profile.assist_requested;
+    if (defense_detection_local_only) {
+        routed_profile.assist_requested = false;
+        report.assist_status = "assist_bypassed";
+    } else if (vuplus_gate_local_only) {
+        routed_profile.assist_requested = false;
+        report.assist_status = "assist_bypassed";
     }
 
     const bool command_assist_eligible =
@@ -2804,7 +4710,17 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
     if (provider_->configured() && (routed_profile.assist_requested || resolution.intent == RequestIntent::ProbeProvider)) {
         provider_gate_probe = provider_->probe();
     }
-    if (provider_->configured()) {
+    if (defense_detection_local_only) {
+        provider_stage_status = "local_defense_only";
+        provider_stage_detail =
+            "Defense environmental intelligence is local-only; API/provider assist was bypassed for this request.";
+        provider_stage_outputs = {"api_assist_disallowed", "local_evidence_only"};
+    } else if (vuplus_gate_local_only) {
+        provider_stage_status = "local_vuplus_only";
+        provider_stage_detail =
+            "Vuplus Gate operational intelligence is local-only; API/provider assist was bypassed for this request.";
+        provider_stage_outputs = {"api_assist_disallowed", "local_ops_evidence_only"};
+    } else if (provider_->configured()) {
         if (routed_profile.assist_requested) {
             if (provider_gate_probe.has_value() && provider_gate_probe->status == "ready") {
                 provider_stage_status = "assist_ready";
@@ -3254,7 +5170,68 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
         report.answer_explanation = report.defense_diagnostic_report->summary;
         report.next_action = "Use the proposed actions manually only after validating the evidence.";
         report.storage_writes.push_back("x.Store(defense.diagnostic -> " + report.answer_status + ")");
-    } else if (resolution.intent == RequestIntent::ToolAction) {
+    } else if (resolution.intent == RequestIntent::DefenseDetection) {
+        const DefenseDiagnosticRequest detection_request = defense_detection_request_from_profile(routed_profile, resolution);
+        report.defense_detection_report = run_defense_detection(routed_profile, detection_request);
+        if (!routed_profile.output_path.empty()) {
+            if (export_defense_detection_json(*report.defense_detection_report, routed_profile.output_path)) {
+                report.produced_artifact = routed_profile.output_path;
+                push_unique(report.memory_writes, routed_profile.output_path);
+                report.storage_writes.push_back("x.Store(defense.detect.json -> " + routed_profile.output_path + ")");
+            }
+        }
+        report.answer_status = report.defense_detection_report->status;
+        report.answer_explanation = report.defense_detection_report->summary;
+        report.next_action = report.defense_detection_report->proposed_actions.empty()
+            ? "Review detection evidence before any containment."
+            : report.defense_detection_report->proposed_actions.front();
+        std::vector<std::string> outputs;
+        if (!report.defense_detection_report->signals.empty()) {
+            const DefenseDetectionSignal& top = report.defense_detection_report->signals.front();
+            outputs.push_back(top.category + ":" + top.id + " severity=" + top.severity);
+            if (!top.recommended_next_action.empty()) {
+                outputs.push_back(top.recommended_next_action);
+            }
+        }
+        report.tze_stages.push_back({
+            "x.Defense.EnvironmentDetect",
+            "Collect bounded local environmental change evidence",
+            "DefenseEnvironmentDetectEngine",
+            report.answer_status,
+            report.answer_explanation,
+            {report.defense_detection_report->mode, "since=" + report.defense_detection_report->since_window},
+            outputs,
+        });
+        report.storage_writes.push_back("x.Store(defense.detect -> " + report.answer_status + ")");
+    } else if (resolution.intent == RequestIntent::VuplusGate) {
+        report.vuplus_gate_report = run_vuplus_gate(routed_profile);
+        if (!routed_profile.output_path.empty()) {
+            export_vuplus_gate_json(*report.vuplus_gate_report, routed_profile.output_path);
+            if (!report.vuplus_gate_report->artifact_path.empty()) {
+                report.produced_artifact = report.vuplus_gate_report->artifact_path;
+                push_unique(report.memory_writes, report.vuplus_gate_report->artifact_path);
+                report.storage_writes.push_back("x.Store(vuplus.gate.json -> " + report.vuplus_gate_report->artifact_path + ")");
+            }
+        }
+        report.answer_status = report.vuplus_gate_report->status;
+        report.answer_explanation = report.vuplus_gate_report->why;
+        report.next_action = report.vuplus_gate_report->next_action;
+        std::vector<std::string> outputs = report.vuplus_gate_report->signals;
+        outputs.push_back("confidence=" + std::to_string(report.vuplus_gate_report->confidence));
+        outputs.push_back("remediation=" + report.vuplus_gate_report->remediation_mode);
+        report.tze_stages.push_back({
+            "x.Vuplus.Gate",
+            "Explain and correlate local operational intelligence evidence",
+            "VuplusGate",
+            report.answer_status,
+            report.answer_explanation,
+            {report.vuplus_gate_report->mode,
+             report.vuplus_gate_report->input_path,
+             report.vuplus_gate_report->dependency_map_path},
+            outputs,
+        });
+        report.storage_writes.push_back("x.Store(vuplus.gate -> " + report.answer_status + ")");
+    } else if (resolution.intent == RequestIntent::ToolAction || resolution.intent == RequestIntent::TensorAction) {
         tool_flow_.run(routed_profile, memory, report, builder_, tools_, memory_);
         if (report.tool_invocation_report.has_value() &&
             report.tool_invocation_report->logical_name == "nmap") {
@@ -3263,6 +5240,25 @@ ProcessingReport SessionCoordinator::run(const RequestProfile& profile) const {
                 report.next_action = "Investigate the open loopback TCP service with `omnix tview port " +
                     std::to_string(*open_port) + "`.";
             }
+        }
+        if (resolution.intent == RequestIntent::TensorAction) {
+            std::vector<std::string> outputs;
+            if (report.tool_invocation_report.has_value()) {
+                outputs.push_back("tool=" + report.tool_invocation_report->logical_name);
+                outputs.push_back("status=" + report.tool_invocation_report->status);
+                if (!report.tool_invocation_report->output_excerpt.empty()) {
+                    outputs.push_back(first_non_empty_line(report.tool_invocation_report->output_excerpt.front()));
+                }
+            }
+            report.tze_stages.push_back({
+                "x.Tensor.Framework",
+                "Route native tensor literacy and local model-context actions",
+                "TensorFramework",
+                report.answer_status,
+                report.answer_explanation,
+                routed_profile.tool_arguments,
+                outputs,
+            });
         }
     } else if (resolution.intent == RequestIntent::ReplayTzeRun) {
         const std::string run_id = !routed_profile.tze_run_reference.empty() ? routed_profile.tze_run_reference : resolution.primary_target;

@@ -1,4 +1,5 @@
 #include "tze/processing_engine.hpp"
+#include "tze/instance_identity.hpp"
 #include "tze/reasoning_provider.hpp"
 #include "tze/shell_lexicon.hpp"
 #include "xpp/emitter.hpp"
@@ -7,10 +8,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <ctime>
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -65,6 +70,13 @@ std::string replace_all_copy(std::string value, std::string_view needle, std::st
     return value;
 }
 
+std::string lowercase_copy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
 std::string human_readable_stage_id(std::string_view stage_id) {
     if (stage_id == "xProcessingCache") {
         return "Cache.PrepareWorkspace";
@@ -106,6 +118,112 @@ std::string human_readable_storage_text(std::string_view value) {
         return "Memory.StoreArtifact(" + translate_storage_names(inner) + ") (legacy=" + raw + ")";
     }
     return translate_storage_names(raw);
+}
+
+std::string json_escape(std::string_view value) {
+    std::ostringstream out;
+    for (char c : value) {
+        switch (c) {
+            case '"':
+                out << "\\\"";
+                break;
+            case '\\':
+                out << "\\\\";
+                break;
+            case '\n':
+                out << "\\n";
+                break;
+            case '\r':
+                out << "\\r";
+                break;
+            case '\t':
+                out << "\\t";
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    out << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<int>(static_cast<unsigned char>(c)) << std::dec;
+                } else {
+                    out << c;
+                }
+                break;
+        }
+    }
+    return out.str();
+}
+
+std::string now_timestamp_cli() {
+    using clock = std::chrono::system_clock;
+    const std::time_t raw = clock::to_time_t(clock::now());
+    std::tm local{};
+#if defined(__APPLE__) || defined(__unix__)
+    localtime_r(&raw, &local);
+#else
+    local = *std::localtime(&raw);
+#endif
+    std::ostringstream out;
+    out << std::put_time(&local, "%Y-%m-%dT%H:%M:%S");
+    return out.str();
+}
+
+std::string read_text_file_local(const std::filesystem::path& path) {
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("Unable to read file: " + path.string());
+    }
+    std::ostringstream out;
+    out << input.rdbuf();
+    return out.str();
+}
+
+void write_text_file_local(const std::filesystem::path& path, std::string_view content) {
+    if (!path.parent_path().empty()) {
+        std::filesystem::create_directories(path.parent_path());
+    }
+    std::ofstream output(path);
+    if (!output) {
+        throw std::runtime_error("Unable to write file: " + path.string());
+    }
+    output << content;
+}
+
+std::string trim_cli(std::string_view value) {
+    std::size_t start = 0;
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+        ++start;
+    }
+    std::size_t end = value.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return std::string(value.substr(start, end - start));
+}
+
+std::filesystem::path default_memory_root_path() {
+    const char* home = std::getenv("HOME");
+    if (home != nullptr && *home != '\0') {
+        return std::filesystem::path(home) / ".omnix";
+    }
+    return std::filesystem::current_path() / ".omnix";
+}
+
+std::filesystem::path memory_root_for(const CommonCliOptions& options) {
+    return options.memory_root_path.empty() ? default_memory_root_path()
+                                            : std::filesystem::path(options.memory_root_path);
+}
+
+std::filesystem::path salt_control_root_for(const CommonCliOptions& options) {
+    return memory_root_for(options) / "salt_control";
+}
+
+bool command_available(std::string_view name) {
+#if defined(__APPLE__) || defined(__linux__) || defined(__unix__)
+    const std::string command = "command -v " + std::string(name) + " >/dev/null 2>&1";
+    return std::system(command.c_str()) == 0;
+#else
+    (void)name;
+    return false;
+#endif
 }
 
 std::filesystem::path find_project_root(std::filesystem::path start) {
@@ -168,6 +286,7 @@ void print_usage() {
     std::cout << "  omnix analyze <case|source> [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
     std::cout << "  omnix decide <case|source> [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
     std::cout << "  omnix defend diag <cpu|memory|logs|pid|port> [target] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix defend detect <env|sessions|persistence|packages|services|logs|eventviewer|all> [--since 24h] [--quiet-hours HH:MM-HH:MM] [--admin-user name] [--channels list] [--source file] [--max-lines n] [--out file.json] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix decide feedback <case-id> <decision-id> <helpful|not-helpful> [--note text] [--memory-root dir]\n";
     std::cout << "  omnix decide outcome <case-id> <decision-id> <success|failed|partial> [--note text] [--memory-root dir]\n";
     std::cout << "  omnix case <id|source> [--assist] [--compact|--verbose] [--memory-root dir] [--source-map file]\n";
@@ -188,13 +307,19 @@ void print_usage() {
     std::cout << "  omnix preflight <project-or-path> [--assist] [--compact|--verbose] [--memory-root dir] [--target name] [--install-prefix dir] [--recipe id] [--ref git-ref] [--offline] [--local-only]\n";
     std::cout << "  omnix doctor <project-or-path> [--compact|--verbose] [--memory-root dir] [--recipe id] [--offline] [--local-only]\n";
     std::cout << "  omnix provider probe [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix id [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix api status|doctor|configure <openai|ollama>|template <openai|ollama|huggingface> [--compact|--verbose]\n";
+    std::cout << "  omnix jinja inspect|render|plan|execute <file.j2> [--vars vars.json] [--out file] [--confirm] [--compact|--verbose]\n";
+    std::cout << "  omnix node doctor|id|status|heartbeat|enroll [--out file.json] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix master doctor|init|node list|node approve <fingerprint>|job plan <type>|job dispatch|job status [--target node] [--out file.json] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix persona mode <premise|cynic|professional|neutral> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix why [latest|run-id] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix next [latest|run-id] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix context reset [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix link install|remove|doctor [--with-tze] [--with-gg] [--prefix dir] [--force]\n";
+    std::cout << "  omnix vg doctor|shape|explain|correlate|compare|cab [artifact.json] [--learn-shape] [--dependency-map file] [--out report.json] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix gg doctor|search|run|audit|actions [args...] [--compact|--verbose] [--memory-root dir]\n";
+    std::cout << "  omnix tensor doctor|inspect|validate|run mlp|ask [args...] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix nn math perceptron --dataset or|and|xor [--epochs n] [--learning-rate r] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix nn route tview <file.jsonl> [--out routes.jsonl] [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tview port <port> [--interface name] [--count n] [--seconds n] [--payload-bytes n] [--out file.jsonl] [--compact|--verbose] [--memory-root dir]\n";
@@ -222,7 +347,7 @@ void print_usage() {
     std::cout << "  omnix tool locate <name> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tool doctor <name> [--compact|--verbose] [--memory-root dir]\n";
     std::cout << "  omnix tool <name> -- <args...> [--compact|--verbose] [--memory-root dir]\n";
-    std::cout << "    Built-in analyst modules: inspect-log, inspect-build, inspect-host, report-case, text-pipeline, mlp-lens, thresholds, symlink, gg\n";
+    std::cout << "    Built-in analyst modules: inspect-log, inspect-build, inspect-host, report-case, text-pipeline, mlp-lens, tensor, thresholds, symlink, gg\n";
     std::cout << "  omnix legacy coverage [file]\n";
     std::cout << "  omnix legacy report [file]\n";
     std::cout << "  omnix map <file>\n";
@@ -485,6 +610,9 @@ std::string compact_summary(const tze::ProcessingReport& report) {
     if (report.neural_route_report.has_value() && !report.neural_route_report->summary.empty()) {
         return report.neural_route_report->summary;
     }
+    if (report.vuplus_gate_report.has_value() && !report.vuplus_gate_report->why.empty()) {
+        return report.vuplus_gate_report->why;
+    }
     if (report.recursive_diff_report.has_value() && !report.recursive_diff_report->best_estimate_answer.empty()) {
         return report.recursive_diff_report->best_estimate_answer;
     }
@@ -527,7 +655,8 @@ bool use_verbose_output(OutputMode mode, bool prefer_verbose) {
 
 void print_processing_report_compact(const tze::ProcessingReport& report) {
     if (report.tool_invocation_report.has_value() &&
-        report.tool_invocation_report->logical_name == "mlp-lens" &&
+        (report.tool_invocation_report->logical_name == "mlp-lens" ||
+         report.tool_invocation_report->logical_name == "tensor") &&
         !report.tool_invocation_report->output_excerpt.empty()) {
         std::cout << report.tool_invocation_report->output_excerpt.front() << "\n";
         return;
@@ -638,6 +767,115 @@ void print_processing_report_compact(const tze::ProcessingReport& report) {
         }
         if (!defense.proposed_actions.empty()) {
             std::cout << "next-defense: " << defense.proposed_actions.front() << "\n";
+        }
+    }
+    if (report.defense_detection_report.has_value()) {
+        const tze::DefenseDetectionReport& detection = *report.defense_detection_report;
+        std::cout << "signals: " << detection.signals.size() << "\n";
+        if (!detection.signals.empty()) {
+            const tze::DefenseDetectionSignal& top = detection.signals.front();
+            std::cout << "top-signal: " << top.category << "/" << top.id
+                      << " severity=" << top.severity
+                      << " confidence=" << top.confidence << "\n";
+            if (!top.recommended_next_action.empty()) {
+                std::cout << "next-defense: " << top.recommended_next_action << "\n";
+            }
+        } else if (!detection.proposed_actions.empty()) {
+            std::cout << "next-defense: " << detection.proposed_actions.front() << "\n";
+        }
+        if (!detection.artifact_path.empty()) {
+            std::cout << "evidence: " << detection.artifact_path << "\n";
+        }
+        if (!detection.event_viewer_retention.empty()) {
+            for (const tze::EventViewerRetention& retention : detection.event_viewer_retention) {
+                std::cout << "eventviewer: " << retention.channel
+                          << " maxSizeBytes=" << retention.max_size_bytes
+                          << " belowMinimum=" << (retention.below_minimum ? "true" : "false") << "\n";
+            }
+        }
+        if (!detection.session_correlations.empty()) {
+            std::cout << "session-correlations: " << detection.session_correlations.size() << "\n";
+        }
+        if (detection.alarm_cab.has_value()) {
+            std::cout << "alarm-cab: " << detection.alarm_cab->alarm_id
+                      << " status=" << detection.alarm_cab->recommendation_status << "\n";
+        }
+    }
+    if (report.vuplus_gate_report.has_value()) {
+        const tze::VuplusGateReport& vg = *report.vuplus_gate_report;
+        std::cout << "segment: " << vg.segment << "\n";
+        std::cout << "mode: " << vg.mode << "\n";
+        std::cout << "why: " << vg.why << "\n";
+        std::cout << "signals: " << vg.signals.size() << "\n";
+        for (const std::string& signal : vg.signals) {
+            std::cout << "signal: " << signal << "\n";
+        }
+        if (!vg.key_pairs.empty()) {
+            std::cout << "key-pairs: " << vg.key_pairs.size() << "\n";
+            const std::size_t limit = std::min<std::size_t>(vg.key_pairs.size(), 24);
+            for (std::size_t index = 0; index < limit; ++index) {
+                const tze::VuplusGateReport::KeyPair& pair = vg.key_pairs[index];
+                std::cout << "key-pair: " << pair.key << "=" << pair.value
+                          << " source=" << pair.source
+                          << " value-range=" << pair.value_start << ".." << pair.value_end << "\n";
+            }
+            if (vg.key_pairs.size() > limit) {
+                std::cout << "key-pair: ...\n";
+            }
+        }
+        std::cout << "confidence: " << vg.confidence << "\n";
+        std::cout << "historical-correlation: " << vg.historical_correlation << "\n";
+        std::cout << "operational-blast-radius: " << vg.operational_blast_radius << "\n";
+        std::cout << "rollback-impact: " << vg.rollback_impact << "\n";
+        std::cout << "remediation-mode: " << vg.remediation_mode << "\n";
+        std::cout << "execution-topology: " << vg.execution_topology << "\n";
+        if (!vg.event_viewer_retention.empty()) {
+            for (const tze::EventViewerRetention& retention : vg.event_viewer_retention) {
+                std::cout << "eventviewer: " << retention.channel
+                          << " maxSizeBytes=" << retention.max_size_bytes
+                          << " belowMinimum=" << (retention.below_minimum ? "true" : "false") << "\n";
+            }
+        }
+        if (!vg.session_correlations.empty()) {
+            std::cout << "session-correlations: " << vg.session_correlations.size() << "\n";
+        }
+        if (!vg.heuristic_signals.empty()) {
+            std::cout << "heuristic-signals: " << vg.heuristic_signals.size() << "\n";
+            for (const tze::HeuristicSignal& signal : vg.heuristic_signals) {
+                std::cout << "heuristic: " << signal.id << " confidence=" << signal.confidence << "\n";
+            }
+        }
+        if (!vg.shaped_fields.empty()) {
+            std::cout << "shaped-fields: " << vg.shaped_fields.size() << "\n";
+            const std::size_t limit = std::min<std::size_t>(vg.shaped_fields.size(), 16);
+            for (std::size_t index = 0; index < limit; ++index) {
+                const tze::ShapedField& field = vg.shaped_fields[index];
+                std::cout << "shape: " << field.field
+                          << " type=" << field.type
+                          << " semantic=" << field.semantic_meaning
+                          << " signal=" << field.mapped_signal
+                          << " lineage=" << field.lineage << "\n";
+            }
+            if (vg.shaped_fields.size() > limit) {
+                std::cout << "shape: ...\n";
+            }
+        }
+        if (!vg.shaping_rules.empty()) {
+            std::cout << "shaping-rules: " << vg.shaping_rules.size() << "\n";
+        }
+        if (vg.key_custody.has_value()) {
+            std::cout << "key-custody: " << vg.key_custody->status
+                      << " anchor=" << vg.key_custody->visible_anchor << "\n";
+        }
+        if (vg.alarm_cab.has_value()) {
+            std::cout << "alarm-cab: " << vg.alarm_cab->alarm_id
+                      << " status=" << vg.alarm_cab->recommendation_status << "\n";
+        }
+        if (!vg.next_action.empty()) {
+            std::cout << "next-vg: " << vg.next_action << "\n";
+        }
+        if (!vg.artifact_path.empty()) {
+            std::cout << "vg-artifact: " << vg.artifact_path << "\n";
         }
     }
     if (report.neural_math_report.has_value()) {
@@ -1412,6 +1650,208 @@ void print_processing_report_verbose(const tze::ProcessingReport& report) {
         if (!defense.warnings.empty()) {
             std::cout << "Defense warnings:\n";
             for (const std::string& warning : defense.warnings) {
+                std::cout << " - " << warning << "\n";
+            }
+        }
+    }
+    if (report.defense_detection_report.has_value()) {
+        const tze::DefenseDetectionReport& detection = *report.defense_detection_report;
+        std::cout << "Defense detection: " << detection.status << "\n";
+        std::cout << "Defense detection summary: " << detection.summary << "\n";
+        std::cout << "Defense detection mode: " << detection.mode << "\n";
+        if (!detection.since_window.empty()) {
+            std::cout << "Defense detection since: " << detection.since_window << "\n";
+        }
+        if (!detection.quiet_hours.empty()) {
+            std::cout << "Defense detection quiet hours: " << detection.quiet_hours << "\n";
+        }
+        if (!detection.admin_user.empty()) {
+            std::cout << "Defense detection admin user: " << detection.admin_user << "\n";
+        }
+        if (!detection.artifact_path.empty()) {
+            std::cout << "Defense detection artifact: " << detection.artifact_path << "\n";
+        }
+        if (!detection.signals.empty()) {
+            std::cout << "Defense detection signals:\n";
+            for (const tze::DefenseDetectionSignal& signal : detection.signals) {
+                std::cout << " - " << signal.category << "/" << signal.id
+                          << " severity=" << signal.severity
+                          << " confidence=" << signal.confidence << "\n";
+                if (!signal.rationale.empty()) {
+                    std::cout << "   rationale: " << signal.rationale << "\n";
+                }
+                if (!signal.recommended_next_action.empty()) {
+                    std::cout << "   next: " << signal.recommended_next_action << "\n";
+                }
+                std::size_t emitted = 0;
+                for (const std::string& line : signal.evidence_lines) {
+                    std::cout << "   evidence: " << line << "\n";
+                    if (++emitted >= 8) {
+                        if (signal.evidence_lines.size() > emitted) {
+                            std::cout << "   evidence: ...\n";
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        if (!detection.proposed_actions.empty()) {
+            std::cout << "Defense detection proposed actions:\n";
+            for (const std::string& action : detection.proposed_actions) {
+                std::cout << " - " << action << "\n";
+            }
+        }
+        if (!detection.event_viewer_retention.empty()) {
+            std::cout << "Defense Event Viewer retention:\n";
+            for (const tze::EventViewerRetention& retention : detection.event_viewer_retention) {
+                std::cout << " - " << retention.channel
+                          << " maxSizeBytes=" << retention.max_size_bytes
+                          << " retentionMode=" << retention.retention_mode
+                          << " belowMinimum=" << (retention.below_minimum ? "true" : "false") << "\n";
+                if (!retention.recommendation.empty()) {
+                    std::cout << "   recommendation: " << retention.recommendation << "\n";
+                }
+            }
+        }
+        if (!detection.session_correlations.empty()) {
+            std::cout << "Defense session correlations:\n";
+            for (const tze::SessionCorrelation& correlation : detection.session_correlations) {
+                std::cout << " - actor=" << correlation.actor
+                          << " source=" << correlation.source
+                          << " tty=" << correlation.tty
+                          << " confidence=" << correlation.confidence << "\n";
+                if (!correlation.anomaly_rationale.empty()) {
+                    std::cout << "   rationale: " << correlation.anomaly_rationale << "\n";
+                }
+            }
+        }
+        if (detection.alarm_cab.has_value()) {
+            std::cout << "Defense Alarm CAB: " << detection.alarm_cab->alarm_id << "\n";
+            std::cout << " - Proposed change: " << detection.alarm_cab->proposed_change << "\n";
+            std::cout << " - Approval: " << detection.alarm_cab->approval_requirement << "\n";
+        }
+        if (!detection.warnings.empty()) {
+            std::cout << "Defense detection warnings:\n";
+            for (const std::string& warning : detection.warnings) {
+                std::cout << " - " << warning << "\n";
+            }
+        }
+    }
+    if (report.vuplus_gate_report.has_value()) {
+        const tze::VuplusGateReport& vg = *report.vuplus_gate_report;
+        std::cout << "Vuplus Gate status: " << vg.status << "\n";
+        std::cout << "Vuplus Gate mode: " << vg.mode << "\n";
+        std::cout << "Vuplus Gate input: " << vg.input_path << "\n";
+        if (!vg.dependency_map_path.empty()) {
+            std::cout << "Vuplus Gate dependency map: " << vg.dependency_map_path << "\n";
+        }
+        std::cout << "Vuplus why: " << vg.why << "\n";
+        std::cout << "Vuplus confidence: " << vg.confidence << "\n";
+        std::cout << "Vuplus historical correlation: " << vg.historical_correlation << "\n";
+        std::cout << "Vuplus operational blast radius: " << vg.operational_blast_radius << "\n";
+        std::cout << "Vuplus rollback impact: " << vg.rollback_impact << "\n";
+        std::cout << "Vuplus remediation mode: " << vg.remediation_mode << "\n";
+        std::cout << "Vuplus execution topology: " << vg.execution_topology << "\n";
+        if (!vg.signals.empty()) {
+            std::cout << "Vuplus signals:\n";
+            for (const std::string& signal : vg.signals) {
+                std::cout << " - " << signal << "\n";
+            }
+        }
+        if (!vg.key_pairs.empty()) {
+            std::cout << "Vuplus key pairs:\n";
+            const std::size_t limit = std::min<std::size_t>(vg.key_pairs.size(), 16);
+            for (std::size_t index = 0; index < limit; ++index) {
+                const tze::VuplusGateReport::KeyPair& pair = vg.key_pairs[index];
+                std::cout << " - " << pair.key << "=" << pair.value
+                          << " | source=" << pair.source
+                          << " | value-range=" << pair.value_start << ".." << pair.value_end << "\n";
+            }
+            if (vg.key_pairs.size() > limit) {
+                std::cout << " - ...\n";
+            }
+        }
+        if (!vg.event_viewer_retention.empty()) {
+            std::cout << "Vuplus Event Viewer retention:\n";
+            for (const tze::EventViewerRetention& retention : vg.event_viewer_retention) {
+                std::cout << " - " << retention.channel
+                          << " maxSizeBytes=" << retention.max_size_bytes
+                          << " belowMinimum=" << (retention.below_minimum ? "true" : "false") << "\n";
+                if (!retention.recommendation.empty()) {
+                    std::cout << "   recommendation: " << retention.recommendation << "\n";
+                }
+            }
+        }
+        if (!vg.session_correlations.empty()) {
+            std::cout << "Vuplus session correlations:\n";
+            for (const tze::SessionCorrelation& correlation : vg.session_correlations) {
+                std::cout << " - actor=" << correlation.actor
+                          << " source=" << correlation.source
+                          << " tty=" << correlation.tty
+                          << " confidence=" << correlation.confidence << "\n";
+                if (!correlation.anomaly_rationale.empty()) {
+                    std::cout << "   rationale: " << correlation.anomaly_rationale << "\n";
+                }
+            }
+        }
+        if (!vg.heuristic_signals.empty()) {
+            std::cout << "Vuplus heuristic signals:\n";
+            for (const tze::HeuristicSignal& signal : vg.heuristic_signals) {
+                std::cout << " - " << signal.id
+                          << " severity=" << signal.severity
+                          << " confidence=" << signal.confidence << "\n";
+                if (!signal.rationale.empty()) {
+                    std::cout << "   rationale: " << signal.rationale << "\n";
+                }
+            }
+        }
+        if (!vg.shaped_fields.empty()) {
+            std::cout << "Vuplus shaped fields:\n";
+            const std::size_t limit = std::min<std::size_t>(vg.shaped_fields.size(), 24);
+            for (std::size_t index = 0; index < limit; ++index) {
+                const tze::ShapedField& field = vg.shaped_fields[index];
+                std::cout << " - " << field.field
+                          << "=" << field.value
+                          << " type=" << field.type
+                          << " semantic=" << field.semantic_meaning
+                          << " signal=" << field.mapped_signal
+                          << " lineage=" << field.lineage
+                          << " confidence=" << field.confidence << "\n";
+            }
+            if (vg.shaped_fields.size() > limit) {
+                std::cout << " - ...\n";
+            }
+        }
+        if (!vg.shaping_rules.empty()) {
+            std::cout << "Vuplus shaping rules:\n";
+            for (const tze::ShapingRule& rule : vg.shaping_rules) {
+                std::cout << " - match(source=" << rule.source
+                          << ", field=" << rule.field
+                          << ") type=" << rule.type
+                          << " semantic=" << rule.semantic_meaning
+                          << " signal=" << rule.mapped_signal << "\n";
+            }
+        }
+        if (vg.key_custody.has_value()) {
+            std::cout << "Vuplus key custody:\n";
+            std::cout << " - status: " << vg.key_custody->status << "\n";
+            std::cout << " - visible anchor: " << vg.key_custody->visible_anchor << "\n";
+            std::cout << " - next: " << vg.key_custody->next_action << "\n";
+        }
+        if (vg.alarm_cab.has_value()) {
+            std::cout << "Vuplus Alarm CAB: " << vg.alarm_cab->alarm_id << "\n";
+            std::cout << " - Proposed change: " << vg.alarm_cab->proposed_change << "\n";
+            std::cout << " - Approval: " << vg.alarm_cab->approval_requirement << "\n";
+        }
+        if (!vg.next_action.empty()) {
+            std::cout << "Vuplus next action: " << vg.next_action << "\n";
+        }
+        if (!vg.artifact_path.empty()) {
+            std::cout << "Vuplus artifact: " << vg.artifact_path << "\n";
+        }
+        if (!vg.warnings.empty()) {
+            std::cout << "Vuplus warnings:\n";
+            for (const std::string& warning : vg.warnings) {
                 std::cout << " - " << warning << "\n";
             }
         }
@@ -2628,6 +3068,79 @@ int run_link(const std::vector<std::string>& args) {
     throw std::runtime_error("link supports install, remove, and doctor.");
 }
 
+bool vuplus_success_status(const std::string& status) {
+    return status == "vg_ready" ||
+        status == "vg_shaped" ||
+        status == "vg_explained" ||
+        status == "vg_correlated" ||
+        status == "vg_compared" ||
+        status == "vg_cab_ready";
+}
+
+int run_vg(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.empty()) {
+        throw std::runtime_error("vg requires doctor, shape, explain, correlate, compare, or cab.");
+    }
+
+    const std::string mode = positional.front();
+    if (mode != "doctor" && mode != "shape" && mode != "explain" && mode != "correlate" && mode != "compare" && mode != "cab") {
+        throw std::runtime_error("vg supports doctor, shape, explain, correlate, compare, and cab.");
+    }
+
+    std::string input_path;
+    std::string dependency_map_path;
+    bool learn_shape = false;
+    std::vector<std::string> remaining;
+    for (std::size_t index = 1; index < positional.size(); ++index) {
+        if (positional[index] == "--dependency-map") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("vg --dependency-map requires a file path.");
+            }
+            dependency_map_path = positional[++index];
+            continue;
+        }
+        if (positional[index] == "--learn-shape") {
+            learn_shape = true;
+            continue;
+        }
+        remaining.push_back(positional[index]);
+    }
+    if (mode != "doctor") {
+        if (remaining.empty()) {
+            throw std::runtime_error("vg " + mode + " requires an ops artifact path.");
+        }
+        input_path = remaining.front();
+    }
+
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.raw_prompt = "vg " + mode + (input_path.empty() ? std::string{} : " " + input_path);
+    profile.resolved_intent = tze::RequestIntent::VuplusGate;
+    profile.vuplus_mode = mode;
+    profile.vuplus_input_path = input_path;
+    profile.vuplus_dependency_map_path = dependency_map_path;
+    profile.vuplus_learn_shape = learn_shape;
+    profile.source_map_path.clear();
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    if (options.output_mode == OutputMode::Verbose) {
+        print_processing_report(report, options.output_mode, false);
+    } else if (options.output_mode == OutputMode::Compact) {
+        print_processing_report(report, options.output_mode, false);
+    } else if (report.vuplus_gate_report.has_value()) {
+        std::cout << report.vuplus_gate_report->json << "\n";
+    } else {
+        print_processing_report(report, OutputMode::Compact, false);
+    }
+
+    if (!report.vuplus_gate_report.has_value()) {
+        return 1;
+    }
+    return vuplus_success_status(report.vuplus_gate_report->status) ? 0 : 1;
+}
+
 int run_tview(const std::vector<std::string>& args) {
     const TViewCliInvocation invocation = parse_tview_invocation(args);
     tze::RequestProfile profile = make_base_profile(invocation.options);
@@ -2718,25 +3231,95 @@ int run_nn(const std::vector<std::string>& args) {
 int run_defend(const std::vector<std::string>& args) {
     std::vector<std::string> positional;
     const CommonCliOptions options = parse_common_options(args, 2, &positional);
-    if (positional.size() < 2 || positional.front() != "diag") {
-        throw std::runtime_error("defend currently supports `defend diag <cpu|memory|logs|pid|port> [target]`.");
+    if (positional.empty() || (positional.front() != "diag" && positional.front() != "detect")) {
+        throw std::runtime_error("defend supports `defend diag <cpu|memory|logs|pid|port>` or `defend detect <env|sessions|persistence|packages|services|logs|eventviewer|all>`.");
+    }
+
+    const bool detect = positional.front() == "detect";
+    if (positional.size() < 2) {
+        throw std::runtime_error(detect
+            ? "defend detect requires one of env, sessions, persistence, packages, services, logs, eventviewer, or all."
+            : "defend diag requires one of cpu, memory, logs, pid, or port.");
     }
     const std::string mode = positional[1];
+    std::string since_window = "24h";
+    std::string quiet_hours;
+    std::string admin_user;
+    std::string channels;
+    std::string source_path;
+    std::size_t max_lines = 40;
     std::vector<std::string> target_parts;
     for (std::size_t index = 2; index < positional.size(); ++index) {
-        target_parts.push_back(positional[index]);
+        const std::string& arg = positional[index];
+        if (detect && arg == "--since") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("--since requires a value.");
+            }
+            since_window = positional[++index];
+            continue;
+        }
+        if (detect && arg == "--quiet-hours") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("--quiet-hours requires a value.");
+            }
+            quiet_hours = positional[++index];
+            continue;
+        }
+        if (detect && arg == "--admin-user") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("--admin-user requires a value.");
+            }
+            admin_user = positional[++index];
+            continue;
+        }
+        if (detect && arg == "--channels") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("--channels requires a comma-separated value.");
+            }
+            channels = positional[++index];
+            continue;
+        }
+        if (detect && arg == "--source") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("--source requires a local fixture path.");
+            }
+            source_path = positional[++index];
+            continue;
+        }
+        if (detect && arg == "--max-lines") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("--max-lines requires a value.");
+            }
+            max_lines = static_cast<std::size_t>(std::stoull(positional[++index]));
+            continue;
+        }
+        target_parts.push_back(arg);
     }
     const std::string target = join_positional_arguments(target_parts);
 
     tze::RequestProfile profile = make_base_profile(options);
-    profile.raw_prompt = "defend diag " + mode + (target.empty() ? std::string{} : " " + target);
-    profile.resolved_intent = tze::RequestIntent::DefenseDiagnostic;
+    profile.raw_prompt = std::string("defend ") + (detect ? "detect " : "diag ") + mode +
+        (target.empty() ? std::string{} : " " + target);
+    profile.resolved_intent = detect ? tze::RequestIntent::DefenseDetection
+                                     : tze::RequestIntent::DefenseDiagnostic;
     profile.defense_mode = mode;
     profile.defense_target = target;
-    if (mode == "port" && !target.empty()) {
+    profile.defense_since_window = since_window;
+    profile.defense_quiet_hours = quiet_hours;
+    profile.defense_admin_user = admin_user;
+    profile.defense_max_lines = max_lines;
+    profile.defense_channels = channels;
+    profile.defense_source_path = source_path;
+    if (!detect && mode == "port" && !target.empty()) {
         profile.defense_port = std::stoi(target);
-    } else if (mode == "pid" && !target.empty()) {
+    } else if (!detect && mode == "pid" && !target.empty()) {
         profile.defense_pid = std::stoi(target);
+    }
+    if (detect) {
+        const std::vector<std::string> valid = {"env", "sessions", "persistence", "packages", "services", "logs", "eventviewer", "all"};
+        if (std::find(valid.begin(), valid.end(), mode) == valid.end()) {
+            throw std::runtime_error("defend detect requires one of env, sessions, persistence, packages, services, logs, eventviewer, or all.");
+        }
     }
     if (profile.source_map_path == "res/tze.txt") {
         const std::filesystem::path candidate = optional_source_file();
@@ -2746,9 +3329,16 @@ int run_defend(const std::vector<std::string>& args) {
     tze::ProcessingEngine engine;
     const tze::ProcessingReport report = engine.process(profile);
     print_processing_report(report, options.output_mode, false);
+    if (detect) {
+        return report.defense_detection_report.has_value() &&
+               (report.defense_detection_report->status == "defense_detection_complete" ||
+                report.defense_detection_report->status == "defense_detection_empty")
+            ? 0
+            : 1;
+    }
     return report.defense_diagnostic_report.has_value() &&
-           (report.defense_diagnostic_report->status == "defense_diagnostic_complete" ||
-            report.defense_diagnostic_report->status == "defense_diagnostic_empty")
+               (report.defense_diagnostic_report->status == "defense_diagnostic_complete" ||
+                report.defense_diagnostic_report->status == "defense_diagnostic_empty")
         ? 0
         : 1;
 }
@@ -3090,6 +3680,454 @@ int run_context(const std::vector<std::string>& args) {
         throw std::runtime_error("context currently supports `context reset`.");
     }
     return reset_runtime_context(options);
+}
+
+int run_identity(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    (void)positional;
+    const tze::InstanceIdentityReport report = tze::resolve_instance_identity(options.memory_root_path);
+    if (options.output_mode == OutputMode::Compact) {
+        std::cout << "instance_identity_ready: " << report.instance_id << "\n";
+        std::cout << "fingerprint: " << report.fingerprint << "\n";
+        std::cout << "arch: " << report.architecture << "\n";
+        std::cout << "mode: " << report.mode << "\n";
+        std::cout << "warning: " << report.warning << "\n";
+        return 0;
+    }
+
+    std::cout << "OmniX Instance Identity\n";
+    std::cout << " - Status: " << report.status << "\n";
+    std::cout << " - Instance ID: " << report.instance_id << "\n";
+    std::cout << " - Fingerprint: " << report.fingerprint << "\n";
+    std::cout << " - Architecture: " << report.architecture << "\n";
+    std::cout << " - Platform: " << report.platform << "\n";
+    std::cout << " - Host hint hash: " << report.host_hint_hash << "\n";
+    std::cout << " - Mode: " << report.mode << "\n";
+    std::cout << " - Salt path: " << report.salt_path << "\n";
+    std::cout << " - Generated new salt: " << (report.generated_new_salt ? "yes" : "no") << "\n";
+    std::cout << " - Components:\n";
+    for (const std::string& component : report.components) {
+        std::cout << "   * " << component << "\n";
+    }
+    std::cout << " - Warning: " << report.warning << "\n";
+    return 0;
+}
+
+std::map<std::string, std::string> parse_flat_json_vars(const std::filesystem::path& path) {
+    const std::string text = read_text_file_local(path);
+    std::map<std::string, std::string> vars;
+    std::size_t index = 0;
+    while ((index = text.find('"', index)) != std::string::npos) {
+        const std::size_t key_end = text.find('"', index + 1);
+        if (key_end == std::string::npos) {
+            break;
+        }
+        const std::string key = text.substr(index + 1, key_end - index - 1);
+        const std::size_t colon = text.find(':', key_end + 1);
+        if (colon == std::string::npos) {
+            break;
+        }
+        std::size_t value_start = colon + 1;
+        while (value_start < text.size() && std::isspace(static_cast<unsigned char>(text[value_start]))) {
+            ++value_start;
+        }
+        std::string value;
+        if (value_start < text.size() && text[value_start] == '"') {
+            const std::size_t value_end = text.find('"', value_start + 1);
+            if (value_end == std::string::npos) {
+                break;
+            }
+            value = text.substr(value_start + 1, value_end - value_start - 1);
+            index = value_end + 1;
+        } else {
+            std::size_t value_end = value_start;
+            while (value_end < text.size() && text[value_end] != ',' && text[value_end] != '}') {
+                ++value_end;
+            }
+            value = trim_cli(text.substr(value_start, value_end - value_start));
+            index = value_end;
+        }
+        if (!key.empty()) {
+            vars[key] = value;
+        }
+    }
+    return vars;
+}
+
+std::vector<std::string> extract_jinja_variables(std::string_view text) {
+    std::vector<std::string> variables;
+    std::size_t index = 0;
+    while ((index = text.find("{{", index)) != std::string::npos) {
+        const std::size_t end = text.find("}}", index + 2);
+        if (end == std::string::npos) {
+            break;
+        }
+        std::string expr = trim_cli(text.substr(index + 2, end - index - 2));
+        if (const std::size_t pipe = expr.find('|'); pipe != std::string::npos) {
+            expr = trim_cli(expr.substr(0, pipe));
+        }
+        if (!expr.empty() && std::find(variables.begin(), variables.end(), expr) == variables.end()) {
+            variables.push_back(expr);
+        }
+        index = end + 2;
+    }
+    return variables;
+}
+
+std::vector<std::string> detect_jinja_risks(std::string_view text) {
+    std::vector<std::string> risks;
+    const std::string lowered = lowercase_copy(std::string(text));
+    if (lowered.find("{%") != std::string::npos) {
+        risks.push_back("control_blocks_present");
+    }
+    if (lowered.find("salt[") != std::string::npos || lowered.find("__salt__") != std::string::npos) {
+        risks.push_back("salt_execution_reference");
+    }
+    if (lowered.find("cmd.run") != std::string::npos || lowered.find("cmd.run_all") != std::string::npos) {
+        risks.push_back("command_execution_reference");
+    }
+    if (lowered.find("sudo ") != std::string::npos || lowered.find("systemctl ") != std::string::npos) {
+        risks.push_back("rendered_shell_surface");
+    }
+    return risks;
+}
+
+std::string render_jinja_passthrough(std::string text,
+                                     const std::map<std::string, std::string>& vars,
+                                     std::vector<std::string>* unresolved) {
+    std::size_t index = 0;
+    while ((index = text.find("{{", index)) != std::string::npos) {
+        const std::size_t end = text.find("}}", index + 2);
+        if (end == std::string::npos) {
+            break;
+        }
+        const std::string original = text.substr(index, end - index + 2);
+        std::string expr = trim_cli(text.substr(index + 2, end - index - 2));
+        if (const std::size_t pipe = expr.find('|'); pipe != std::string::npos) {
+            expr = trim_cli(expr.substr(0, pipe));
+        }
+        auto found = vars.find(expr);
+        if (found == vars.end() && expr.rfind("grains.", 0) == 0) {
+            found = vars.find(expr.substr(7));
+        }
+        if (found == vars.end()) {
+            if (unresolved != nullptr) {
+                unresolved->push_back(expr);
+            }
+            index = end + 2;
+            continue;
+        }
+        text.replace(index, original.size(), found->second);
+        index += found->second.size();
+    }
+    return text;
+}
+
+std::string classify_jinja_plan(std::string_view rendered) {
+    const std::string lowered = lowercase_copy(std::string(rendered));
+    if (lowered.find("sudo ") != std::string::npos || lowered.find("systemctl ") != std::string::npos ||
+        lowered.find("curl ") != std::string::npos || lowered.find("wget ") != std::string::npos) {
+        return "shell_plan";
+    }
+    if (lowered.find("runbook") != std::string::npos || lowered.find("validation") != std::string::npos) {
+        return "runbook_plan";
+    }
+    if (rendered.find(':') != std::string::npos && rendered.find('\n') != std::string::npos) {
+        return "config_plan";
+    }
+    return rendered.empty() ? "unknown_manual_review" : "text_artifact";
+}
+
+int run_jinja(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.size() < 2) {
+        throw std::runtime_error("jinja requires inspect|render|plan|execute <file.j2>.");
+    }
+    const std::string command = positional[0];
+    const std::filesystem::path template_path = positional[1];
+    std::filesystem::path vars_path;
+    bool confirm = false;
+    for (std::size_t index = 2; index < positional.size(); ++index) {
+        if (positional[index] == "--vars") {
+            if (index + 1 >= positional.size()) {
+                throw std::runtime_error("--vars requires a JSON file.");
+            }
+            vars_path = positional[++index];
+        } else if (positional[index] == "--confirm") {
+            confirm = true;
+        } else {
+            throw std::runtime_error("unexpected jinja argument `" + positional[index] + "`.");
+        }
+    }
+    const std::string source = read_text_file_local(template_path);
+    const std::vector<std::string> variables = extract_jinja_variables(source);
+    const std::vector<std::string> risks = detect_jinja_risks(source);
+    const std::map<std::string, std::string> vars = vars_path.empty() ? std::map<std::string, std::string>{}
+                                                                     : parse_flat_json_vars(vars_path);
+    std::vector<std::string> unresolved;
+    const std::string rendered = render_jinja_passthrough(source, vars, &unresolved);
+    const std::string plan_type = classify_jinja_plan(rendered);
+    const bool safe = risks.empty() && unresolved.empty();
+
+    if (command == "execute") {
+        std::cout << "jinja_execute_rejected: Jinja execution is disabled for arbitrary rendered text in this phase.\n";
+        std::cout << "plan-type: " << plan_type << "\n";
+        std::cout << "confirm-present: " << (confirm ? "yes" : "no") << "\n";
+        std::cout << "next: Use `omnix jinja plan <file.j2> --vars <vars.json>` and convert safe output into an allowlisted runbook.\n";
+        return 1;
+    }
+
+    if (command == "render" || command == "plan") {
+        if (!options.output_path.empty()) {
+            write_text_file_local(options.output_path, rendered);
+        }
+    }
+
+    if (options.output_mode == OutputMode::Compact) {
+        if (command == "inspect") {
+            std::cout << "jinja_inspected: " << variables.size() << " variable(s), " << risks.size() << " risk marker(s).\n";
+        } else if (command == "render") {
+            std::cout << "jinja_rendered: rendered with built-in passthrough renderer.\n";
+        } else if (command == "plan") {
+            std::cout << "jinja_planned: " << plan_type << "\n";
+        } else {
+            throw std::runtime_error("jinja supports inspect, render, plan, and execute.");
+        }
+        std::cout << "template: " << template_path.string() << "\n";
+        if (!options.output_path.empty()) {
+            std::cout << "artifact: " << options.output_path << "\n";
+        }
+        std::cout << "status: " << (safe ? "safe" : "manual_review") << "\n";
+        return safe ? 0 : 0;
+    }
+
+    std::cout << "OmniX Jinja Passthrough\n";
+    std::cout << " - Status: " << (safe ? "safe" : "manual_review") << "\n";
+    std::cout << " - Template: " << template_path << "\n";
+    std::cout << " - Renderer: built_in_passthrough\n";
+    std::cout << " - Plan type: " << plan_type << "\n";
+    std::cout << " - Variables:\n";
+    for (const std::string& variable : variables) {
+        std::cout << "   * " << variable << "\n";
+    }
+    if (!unresolved.empty()) {
+        std::cout << " - Unresolved variables:\n";
+        for (const std::string& variable : unresolved) {
+            std::cout << "   * " << variable << "\n";
+        }
+    }
+    if (!risks.empty()) {
+        std::cout << " - Risk markers:\n";
+        for (const std::string& risk : risks) {
+            std::cout << "   * " << risk << "\n";
+        }
+    }
+    if (command == "render" || command == "plan") {
+        std::cout << " - Rendered preview:\n" << rendered << "\n";
+    }
+    if (!options.output_path.empty()) {
+        std::cout << " - Artifact: " << options.output_path << "\n";
+    }
+    return 0;
+}
+
+std::string render_node_heartbeat_json(const tze::InstanceIdentityReport& identity) {
+    std::ostringstream out;
+    out << "{\"event_type\":\"omnix.node.heartbeat.v1\""
+        << ",\"timestamp\":\"" << json_escape(now_timestamp_cli()) << "\""
+        << ",\"nodeId\":\"" << json_escape(identity.instance_id) << "\""
+        << ",\"fingerprint\":\"" << json_escape(identity.fingerprint) << "\""
+        << ",\"trustStatus\":\"local_unenrolled\""
+        << ",\"grains\":{"
+        << "\"platform\":\"" << json_escape(identity.platform) << "\","
+        << "\"architecture\":\"" << json_escape(identity.architecture) << "\","
+        << "\"omnixVersion\":\"" << json_escape(OMNIX_VERSION) << "\","
+        << "\"tview\":true,"
+        << "\"defendDetect\":true,"
+        << "\"gg\":" << (command_available("ghostline_cli") || std::filesystem::exists("build/vendor/ghostline-gate/ghostline_cli") ? "true" : "false") << ","
+        << "\"vi\":" << (command_available("vi") ? "true" : "false") << ","
+        << "\"vim\":" << (command_available("vim") ? "true" : "false") << ","
+        << "\"nvim\":" << (command_available("nvim") ? "true" : "false") << ","
+        << "\"brew\":" << (command_available("brew") ? "true" : "false") << ","
+        << "\"aptGet\":" << (command_available("apt-get") ? "true" : "false")
+        << "},\"healthSummary\":\"local node profile ready; no daemon or remote execution active\"}";
+    return out.str();
+}
+
+int run_node(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.empty()) {
+        throw std::runtime_error("node requires doctor, id, status, heartbeat, or enroll.");
+    }
+    const std::string command = positional.front();
+    const tze::InstanceIdentityReport identity = tze::resolve_instance_identity(options.memory_root_path);
+    const std::filesystem::path root = salt_control_root_for(options);
+
+    if (command == "doctor") {
+        std::cout << "node_ready: OmniX node profile support is available without a daemon.\n";
+        std::cout << "node-id: " << identity.instance_id << "\n";
+        std::cout << "next: Run `omnix node heartbeat --out <file>` or `omnix node enroll --out <file>`.\n";
+        return 0;
+    }
+    if (command == "id") {
+        std::cout << "node_identity_ready: " << identity.instance_id << "\n";
+        std::cout << "fingerprint: " << identity.fingerprint << "\n";
+        return 0;
+    }
+    if (command == "status") {
+        std::cout << "node_status: local_unenrolled\n";
+        std::cout << "node-id: " << identity.instance_id << "\n";
+        std::cout << "master: not_configured\n";
+        std::cout << "daemon: not_required_v1\n";
+        return 0;
+    }
+    if (command == "heartbeat") {
+        const std::string heartbeat = render_node_heartbeat_json(identity);
+        const std::filesystem::path out_path = options.output_path.empty()
+            ? (root / "node-heartbeat.json")
+            : std::filesystem::path(options.output_path);
+        write_text_file_local(out_path, heartbeat + "\n");
+        std::cout << "node_heartbeat_written: " << out_path.string() << "\n";
+        std::cout << "node-id: " << identity.instance_id << "\n";
+        return 0;
+    }
+    if (command == "enroll") {
+        const std::filesystem::path out_path = options.output_path.empty()
+            ? (root / "enrollment-request.json")
+            : std::filesystem::path(options.output_path);
+        std::ostringstream out;
+        out << "{\"event_type\":\"omnix.node.enrollment.v1\",\"timestamp\":\"" << json_escape(now_timestamp_cli())
+            << "\",\"nodeId\":\"" << json_escape(identity.instance_id)
+            << "\",\"fingerprint\":\"" << json_escape(identity.fingerprint)
+            << "\",\"status\":\"pending_master_approval\"}\n";
+        write_text_file_local(out_path, out.str());
+        std::cout << "node_enrollment_written: " << out_path.string() << "\n";
+        std::cout << "fingerprint: " << identity.fingerprint << "\n";
+        return 0;
+    }
+    throw std::runtime_error("node supports doctor, id, status, heartbeat, and enroll.");
+}
+
+std::string job_id_for(std::string_view job_type, std::string_view target) {
+    return "job-" + std::to_string(std::hash<std::string>{}(std::string(job_type) + "|" + std::string(target) + "|" + now_timestamp_cli()));
+}
+
+int run_master(const std::vector<std::string>& args) {
+    std::vector<std::string> positional;
+    const CommonCliOptions options = parse_common_options(args, 2, &positional);
+    if (positional.empty()) {
+        throw std::runtime_error("master requires doctor, init, node, or job.");
+    }
+    const std::filesystem::path root = salt_control_root_for(options);
+    const std::filesystem::path nodes_path = root / "nodes.jsonl";
+    const std::filesystem::path jobs_dir = root / "jobs";
+    const std::string command = positional[0];
+
+    if (command == "doctor") {
+        std::cout << "master_ready: file-spool master design is available; network transport is deferred.\n";
+        std::cout << "root: " << root.string() << "\n";
+        std::cout << "next: Run `omnix master init`, then approve explicit node fingerprints.\n";
+        return 0;
+    }
+    if (command == "init") {
+        std::filesystem::create_directories(jobs_dir);
+        write_text_file_local(root / "master.json",
+                              "{\"event_type\":\"omnix.master.config.v1\",\"mode\":\"file_spool\",\"remoteShell\":false}\n");
+        std::cout << "master_initialized: " << root.string() << "\n";
+        return 0;
+    }
+    if (command == "node") {
+        if (positional.size() < 2) {
+            throw std::runtime_error("master node requires list or approve <fingerprint>.");
+        }
+        if (positional[1] == "list") {
+            std::cout << "master_nodes: " << nodes_path.string() << "\n";
+            std::ifstream input(nodes_path);
+            std::string line;
+            bool any = false;
+            while (std::getline(input, line)) {
+                if (!line.empty()) {
+                    any = true;
+                    std::cout << line << "\n";
+                }
+            }
+            if (!any) {
+                std::cout << "node_list_empty: no approved nodes yet.\n";
+            }
+            return 0;
+        }
+        if (positional[1] == "approve") {
+            if (positional.size() < 3) {
+                throw std::runtime_error("master node approve requires a fingerprint.");
+            }
+            std::filesystem::create_directories(root);
+            std::ofstream output(nodes_path, std::ios::app);
+            output << "{\"event_type\":\"omnix.master.node.v1\",\"fingerprint\":\"" << json_escape(positional[2])
+                   << "\",\"trustStatus\":\"approved\",\"approvedAt\":\"" << json_escape(now_timestamp_cli()) << "\"}\n";
+            std::cout << "node_approved: " << positional[2] << "\n";
+            return 0;
+        }
+        throw std::runtime_error("master node supports list and approve.");
+    }
+    if (command == "job") {
+        if (positional.size() < 2) {
+            throw std::runtime_error("master job requires plan, dispatch, or status.");
+        }
+        if (positional[1] == "plan") {
+            if (positional.size() < 3) {
+                throw std::runtime_error("master job plan requires a job type.");
+            }
+            std::string target = options.build_target.empty() ? "local" : options.build_target;
+            for (std::size_t index = 3; index < positional.size(); ++index) {
+                if (positional[index] == "--target") {
+                    if (index + 1 >= positional.size()) {
+                        throw std::runtime_error("--target requires a node id.");
+                    }
+                    target = positional[++index];
+                }
+            }
+            const std::string job_type = positional[2];
+            const std::vector<std::string> allowed = {
+                "defend.detect", "tview.doctor", "gg.search", "thresholds.evaluate", "jinja.render", "jinja.plan"
+            };
+            if (std::find(allowed.begin(), allowed.end(), job_type) == allowed.end()) {
+                throw std::runtime_error("master job plan supports only read-only/planning job types in this phase.");
+            }
+            const std::string id = job_id_for(job_type, target);
+            const std::filesystem::path job_path = options.output_path.empty() ? (jobs_dir / (id + ".json"))
+                                                                               : std::filesystem::path(options.output_path);
+            std::ostringstream out;
+            out << "{\"event_type\":\"omnix.master.job.v1\",\"jobId\":\"" << json_escape(id)
+                << "\",\"jobType\":\"" << json_escape(job_type)
+                << "\",\"target\":\"" << json_escape(target)
+                << "\",\"status\":\"planned_not_dispatched\",\"createdAt\":\"" << json_escape(now_timestamp_cli())
+                << "\",\"remoteMutation\":false}\n";
+            write_text_file_local(job_path, out.str());
+            std::cout << "master_job_planned: " << id << "\n";
+            std::cout << "artifact: " << job_path.string() << "\n";
+            return 0;
+        }
+        if (positional[1] == "dispatch") {
+            std::cout << "master_dispatch_disabled: network dispatch is deferred; file-spool job plans are created but not remotely executed.\n";
+            return 1;
+        }
+        if (positional[1] == "status") {
+            std::cout << "master_job_status: file-spool\n";
+            if (std::filesystem::exists(jobs_dir)) {
+                for (const auto& entry : std::filesystem::directory_iterator(jobs_dir)) {
+                    if (entry.is_regular_file()) {
+                        std::cout << "job: " << entry.path().string() << "\n";
+                    }
+                }
+            }
+            return 0;
+        }
+        throw std::runtime_error("master job supports plan, dispatch, and status.");
+    }
+    throw std::runtime_error("master supports doctor, init, node, and job.");
 }
 
 int run_next(const std::vector<std::string>& args) {
@@ -3923,6 +4961,17 @@ int run_shell(const std::vector<std::string>& args) {
         tze::RequestProfile profile = make_base_profile(state.options);
         profile.assist_requested = state.assist_enabled;
         profile.raw_prompt = expanded;
+        if (expanded == "tensor" || expanded.rfind("tensor ", 0) == 0) {
+            std::vector<std::string> tensor_tokens = split_whitespace(expanded);
+            if (!tensor_tokens.empty()) {
+                tensor_tokens.erase(tensor_tokens.begin());
+            }
+            profile.resolved_intent = tze::RequestIntent::TensorAction;
+            profile.tool_mode = tze::ToolCommandMode::Run;
+            profile.requested_tool_name = "tensor";
+            profile.tool_arguments = std::move(tensor_tokens);
+            profile.verbose_output = state.options.output_mode == OutputMode::Verbose;
+        }
         if (profile.source_map_path == "res/tze.txt") {
             const std::filesystem::path candidate = optional_source_file();
             if (!candidate.empty()) {
@@ -4000,6 +5049,34 @@ int run_tool(const std::vector<std::string>& args) {
             ? 0
             : 1;
     }
+    return report.tool_invocation_report.has_value() && report.tool_invocation_report->status == "ok" ? 0 : 1;
+}
+
+int run_tensor(const std::vector<std::string>& args) {
+    std::vector<std::string> tensor_arguments;
+    const CommonCliOptions options = parse_common_options(args, 2, &tensor_arguments);
+    tze::RequestProfile profile = make_base_profile(options);
+    profile.resolved_intent = tze::RequestIntent::TensorAction;
+    profile.tool_mode = tze::ToolCommandMode::Run;
+    profile.requested_tool_name = "tensor";
+    profile.tool_arguments = tensor_arguments;
+    profile.verbose_output = options.output_mode == OutputMode::Verbose;
+    profile.raw_prompt = "tensor";
+    if (!tensor_arguments.empty()) {
+        profile.raw_prompt += " " + join_positional_arguments(tensor_arguments);
+    }
+    if (profile.source_map_path == "res/tze.txt") {
+        const std::filesystem::path candidate = optional_source_file();
+        if (!candidate.empty()) {
+            profile.source_map_path = candidate.string();
+        } else {
+            profile.source_map_path.clear();
+        }
+    }
+
+    tze::ProcessingEngine engine;
+    const tze::ProcessingReport report = engine.process(profile);
+    print_processing_report(report, options.output_mode, false);
     return report.tool_invocation_report.has_value() && report.tool_invocation_report->status == "ok" ? 0 : 1;
 }
 
@@ -4181,8 +5258,24 @@ int main(int argc, char** argv) {
             return run_provider(args);
         }
 
+        if (command == "id") {
+            return run_identity(args);
+        }
+
         if (command == "api") {
             return run_api(args);
+        }
+
+        if (command == "jinja") {
+            return run_jinja(args);
+        }
+
+        if (command == "node") {
+            return run_node(args);
+        }
+
+        if (command == "master") {
+            return run_master(args);
         }
 
         if (command == "why") {
@@ -4201,6 +5294,10 @@ int main(int argc, char** argv) {
             return run_link(args);
         }
 
+        if (command == "vg") {
+            return run_vg(args);
+        }
+
         if (command == "tview") {
             return run_tview(args);
         }
@@ -4211,6 +5308,10 @@ int main(int argc, char** argv) {
 
         if (command == "gg") {
             return run_gg(args);
+        }
+
+        if (command == "tensor") {
+            return run_tensor(args);
         }
 
         if (command == "nn") {

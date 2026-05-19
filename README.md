@@ -37,6 +37,8 @@ Project planning and architecture tracks live in:
   - `tool list`, `tool locate`, `tool doctor`, `tool <name> -- <args...>`
 - OmniXTView packet viewer:
   - `tview doctor`, `tview port <port>`, `tview pcap <file>`
+- Vuplus Gate operational intelligence:
+  - `vg doctor`, `vg shape <artifact>`, `vg explain <artifact>`, `vg correlate <artifact>`, `vg compare <artifact>`, `vg cab <artifact>`
 - Managed builds:
   - `doctor`, `preflight`, `build`
 - Local shell:
@@ -101,9 +103,13 @@ Inspect provider readiness:
 
 ```bash
 ./build/omnix provider probe
+./build/omnix id --compact
 ./build/omnix api status --compact
 ./build/omnix api template huggingface
+./build/omnix node heartbeat --compact
 ```
+
+`omnix id` emits a stable local OmniX instance ID derived from CPU architecture, platform, host hint hash, OmniX version, and a persisted local salt. It is SGX-inspired local software identity only, not Intel SGX, TPM, Secure Enclave, or remote attestation.
 
 Explain the last run with the Recursive Why/Diff engine:
 
@@ -123,6 +129,17 @@ Reset volatile learned/runtime context when a temporary association gets sticky:
 ```
 
 This clears cached definitions, history, language/uAC state, and assist learning while keeping source glossary entries, TZE ledgers, cases, recipes, tools, and persona intact.
+
+Plan Salt-style local automation artifacts without turning OmniX into a remote shell:
+
+```bash
+./build/omnix jinja inspect ./example.j2 --vars ./vars.json --compact
+./build/omnix jinja plan ./example.j2 --vars ./vars.json --compact
+./build/omnix master init --compact
+./build/omnix master job plan defend.detect --target local --compact
+```
+
+Jinja/node/master support is file-based and explicit in this phase. `jinja execute` refuses arbitrary rendered shell text, node enrollment requires a fingerprint, and master jobs are planned before any future dispatch path.
 
 Author a local-path build recipe through the X++ module phase:
 
@@ -185,6 +202,16 @@ what should I do next
 ./build/omnix tview pcap /path/to/capture.pcap --port 5000 --out /tmp/omnix-tview.jsonl
 ./build/omnix defend diag cpu
 ./build/omnix defend diag port 5000
+./build/omnix defend detect all --quiet-hours 22:00-06:00 --admin-user "$USER" --out /tmp/omnix-env-detect.json --compact
+./build/omnix vg explain res/ops/elastic-siem-rabbitmq-xxb.json --compact
+./build/omnix vg correlate res/ops/package-manager-activity.json --dependency-map res/ops/dependency-map-outage-window.json --compact
+./build/omnix vg compare res/ops/recovery-comparison-worker-restart.json --compact
+./build/omnix jinja inspect ./example.j2 --vars ./vars.json --compact
+./build/omnix node status --compact
+./build/omnix master job status --compact
+./build/omnix tensor inspect res/mlp_lens/tiny_mlp_bundle.json --compact
+./build/omnix tensor run mlp res/mlp_lens/tiny_mlp_bundle.json --input "server secure" --compact
+./build/omnix tensor ask --model deepnimsec-omni:latest --kb res/local_glossary.tsv "What is local tensor literacy?" --compact
 ```
 
 ## Repository Layout
@@ -224,13 +251,24 @@ For the OpenAI profile, copy `.env.example` to `.env`, fill in the key and model
 ./scripts/omnix_openai.sh omnix tview port 5000
 ./scripts/omnix_openai.sh defend diag cpu
 ./scripts/omnix_openai.sh defend diag port 5000
+./scripts/omnix_openai.sh defend detect env --compact
 ```
 
 OpenAI freeform answers are a final `ask --assist` fallback after local memory, definitions, command routing, and guarded tool planning miss. Freeform answers may explain, calculate, or propose OmniX commands, but they do not claim local evidence was collected unless OmniX actually ran the command.
 
 TView JSONL exports are local SIEM-ready packet events (`omnix.tview.packet.v1`) with stable `NET.TCP.*`
 analysis codes. Defensive commands are diagnostic-first: OmniX may recommend a manual PID kill, service stop, or
-port-closure path, but it does not perform destructive action in this slice.
+port-closure path, but it does not perform destructive action in this slice. `defend detect` extends this with
+read-only local environmental change detection across PATH/shell startup files, sessions, persistence, package
+activity, services, logs, and Windows Event Viewer retention metadata; it stays transparent and never implements
+stealth, PID hiding, or auto-remediation.
+
+Vuplus Gate (`vg`) is the local operational intelligence segment for explaining incidents from logs, alerts,
+thresholds, dependency maps, outage/shutdown order, notes, recovery comparisons, syslog/lastlog correlations,
+and heuristic/RUM-like behavior signals. It answers why, based on what signals, confidence, historical correlation,
+operational blast radius, rollback impact, and next action while remaining recommendation-only in V1. `vg shape`
+turns messy SIEM/meta-tag blobs into typed fields, lineage, semantic meanings, mapped signals, and auditable shaping
+rules. `vg cab` writes GUI-ready Alarm CAB JSON for change-control review.
 
 ## GitHub Readiness
 

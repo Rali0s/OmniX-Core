@@ -1,0 +1,132 @@
+{
+  "event_type": "omnix.ops.package_activity_fixture.v1",
+  "purpose": "Dependency map and anomaly-shaping fixture for package/script surfaces.",
+  "quietHours": "22:00-06:00",
+  "adminUser": "premise",
+  "activities": [
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:21:03-05:00",
+      "source": "apt.history",
+      "host": "XYZ_CLASSC1_CUST8",
+      "actor": "root",
+      "service": "apt",
+      "eventType": "package_install",
+      "severity": "warning",
+      "evidenceExcerpt": "apt-get install -y openjdk-17-jre-headless",
+      "contentHash": "sha256:fixture-apt-openjdk",
+      "confidence": 0.82,
+      "dependencySurface": "apt",
+      "oddHour": true
+    },
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:22:40-05:00",
+      "source": "npm.global.log",
+      "host": "XYZ_CLASSC1_CUST8",
+      "actor": "abc",
+      "service": "npm",
+      "eventType": "global_package_script",
+      "severity": "warning",
+      "evidenceExcerpt": "npm install -g queue-inspector --unsafe-perm",
+      "contentHash": "sha256:fixture-npm-global",
+      "confidence": 0.76,
+      "dependencySurface": "npm",
+      "oddHour": true
+    },
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:23:05-05:00",
+      "source": "pnpm.store.log",
+      "host": "XYZ_CLASSC1_CUST8",
+      "actor": "abc",
+      "service": "pnpm",
+      "eventType": "workspace_dependency_change",
+      "severity": "info",
+      "evidenceExcerpt": "pnpm add @abc/queue-client@2.4.1",
+      "contentHash": "sha256:fixture-pnpm-client",
+      "confidence": 0.72,
+      "dependencySurface": "pnpm",
+      "oddHour": true
+    },
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:24:12-05:00",
+      "source": "shell.history.shaped",
+      "host": "XYZ_CLASSC1_CUST8",
+      "actor": "premise",
+      "service": "wget",
+      "eventType": "downloaded_script",
+      "severity": "warning",
+      "evidenceExcerpt": "wget https://example.invalid/tools/check-queue.sh -O /tmp/check-queue.sh",
+      "contentHash": "sha256:fixture-wget-script",
+      "confidence": 0.67,
+      "dependencySurface": "wget",
+      "oddHour": true
+    },
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:25:09-05:00",
+      "source": "powershell.transcript",
+      "host": "WIN-JUMP-01",
+      "actor": "DOMAIN\\premise",
+      "service": "PowerShell",
+      "eventType": "script_execution",
+      "severity": "warning",
+      "evidenceExcerpt": "Invoke-WebRequest -Uri https://example.invalid/diag.ps1 -OutFile C:\\Temp\\diag.ps1",
+      "contentHash": "sha256:fixture-powershell-iwr",
+      "confidence": 0.7,
+      "dependencySurface": "PowerShell",
+      "oddHour": true
+    },
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:26:44-05:00",
+      "source": "windows.package_manager.fixture",
+      "host": "WIN-JUMP-01",
+      "actor": "DOMAIN\\premise",
+      "service": "winget",
+      "eventType": "package_install",
+      "severity": "info",
+      "evidenceExcerpt": "winget install Microsoft.Sysinternals",
+      "contentHash": "sha256:fixture-winget-sysinternals",
+      "confidence": 0.68,
+      "dependencySurface": "windows_package_manager",
+      "oddHour": true
+    },
+    {
+      "schema": "OperationalEvent",
+      "timestamp": "2026-01-14T02:27:33-05:00",
+      "source": "brew.analytics.local",
+      "host": "macbookpro-operator",
+      "actor": "premise",
+      "service": "brew",
+      "eventType": "package_install",
+      "severity": "info",
+      "evidenceExcerpt": "brew install jq",
+      "contentHash": "sha256:fixture-brew-jq",
+      "confidence": 0.74,
+      "dependencySurface": "brew",
+      "oddHour": true
+    }
+  ],
+  "remediationRecommendation": {
+    "schema": "RemediationRecommendation",
+    "actionId": "review-odd-hour-package-activity",
+    "actionType": "recommendation_only",
+    "recommendation": "Correlate package/script activity with alarm timeline before changing services.",
+    "safetyGates": [
+      "confirm admin user identity",
+      "confirm maintenance or incident ticket",
+      "hash downloaded scripts before use",
+      "do not execute unknown scripts"
+    ],
+    "dataLossRisk": "unknown_until_correlated",
+    "validationChecks": [
+      "package activity is linked to an approved ticket",
+      "no new persistence entries appeared",
+      "no package manager changed application runtime during active incident without approval"
+    ],
+    "escalationRequired": true
+  }
+}

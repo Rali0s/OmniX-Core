@@ -1,0 +1,21 @@
+{
+  "event_type": "omnix.ops.windows_eventviewer_retention.v1",
+  "sourceSystem": "windows.eventviewer.fixture",
+  "channels": [
+    {
+      "channel": "Security",
+      "maxSizeBytes": 1073741824,
+      "retentionMode": "overwrite_as_needed"
+    },
+    {
+      "channel": "System",
+      "maxSizeBytes": 1073741824,
+      "retentionMode": "overwrite_as_needed"
+    },
+    {
+      "channel": "Application",
+      "maxSizeBytes": 1073741824,
+      "retentionMode": "overwrite_as_needed"
+    }
+  ]
+}

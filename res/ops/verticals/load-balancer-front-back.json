@@ -1,0 +1,17 @@
+{
+  "event_type": "omnix.ops.vertical.load_balancer.v1",
+  "sourceSystem": "offline-scale-fixture",
+  "description": "Load balancer front-end/back-end fixture for CAB, blast radius, and shutdown-window analysis.",
+  "loadBalancer": {
+    "load_balancer": "lb-cust8-public",
+    "provider": "gcp",
+    "frontend": "https:443",
+    "vip": "203.0.113.42",
+    "target_group": "app-pool-cust8",
+    "backend": "XYZ_CLASSC1_CUST8:8443,XYZ_CLASSC2_CUST8:8443",
+    "health_status": "partial_unhealthy",
+    "drain_state": "not_drained",
+    "rollbackImpact": "Re-enabling ingress before queue drain can create duplicate customer submissions."
+  },
+  "event.original": "[data] load_balancer=lb-cust8-public frontend=https:443 backend=XYZ_CLASSC1_CUST8:8443 target_group=app-pool-cust8 health_status=partial_unhealthy drain_state=not_drained customer=CUST8 site=NY_HOME_HEATING_OIL"
+}

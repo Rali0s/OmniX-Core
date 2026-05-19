@@ -1,0 +1,39 @@
+{
+  "event_type": "omnix.ops.vertical.terraform_gcp_plan.v1",
+  "sourceSystem": "offline-scale-fixture",
+  "description": "Terraform/GCP compute creation analysis fixture. This is a future cloud vertical shape, not a provider call.",
+  "terraformPlan": {
+    "terraform_action": "create",
+    "provider": "google",
+    "gcp_project": "cust8-lab-memory-replica",
+    "region": "us-east4",
+    "network": "vpc-cust8-lab",
+    "subnet": "subnet-app-runtime",
+    "resources": [
+      {
+        "resource_type": "google_compute_instance",
+        "resource_name": "xyz-classc1-cust8-replica",
+        "machine_type": "e2-standard-4",
+        "disk": "pd-balanced:100GB",
+        "tags": ["omnix-minion", "app-worker"]
+      },
+      {
+        "resource_type": "google_compute_firewall",
+        "resource_name": "allow-lb-to-app",
+        "firewall_rule": "allow tcp:8443 from lb-cust8-public"
+      },
+      {
+        "resource_type": "google_compute_backend_service",
+        "resource_name": "app-pool-cust8",
+        "backend": "xyz-classc1-cust8-replica"
+      }
+    ],
+    "event.original": "[data] terraform_action=create provider=google gcp_project=cust8-lab-memory-replica resource_type=google_compute_instance machine_type=e2-standard-4 network=vpc-cust8-lab subnet=subnet-app-runtime firewall_rule=allow-lb-to-app"
+  },
+  "safety": {
+    "credentials": "none",
+    "terraformApply": false,
+    "cloudApiCalls": false,
+    "analysisOnly": true
+  }
+}

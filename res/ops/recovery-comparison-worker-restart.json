@@ -1,0 +1,57 @@
+{
+  "event_type": "omnix.ops.recovery_comparison.v1",
+  "id": "recovery-comparison-rmq-xxb-worker-restart",
+  "incidentId": "incident-rmq-xxb-20260114",
+  "schema": "RecoveryComparison",
+  "successfulPath": {
+    "id": "success-worker-restart-validated",
+    "steps": [
+      "confirm RabbitMQ node is healthy",
+      "confirm Queue XXB depth is rising",
+      "confirm consumer count is zero",
+      "match EYZ-47281 heap signature in worker logs",
+      "confirm messages are persistent and estimated restart loss is <= 3",
+      "recommend abc-worker.service restart",
+      "validate service active",
+      "validate consumers reattach",
+      "validate queue depth drains and oldest message age decreases",
+      "preserve evidence and developer escalation packet"
+    ],
+    "outcome": "service_recovered",
+    "confidence": 0.88
+  },
+  "failedPath": {
+    "id": "failed-db-first-maintenance-path",
+    "steps": [
+      "database stop attempted before ingress drain",
+      "applications kept open connection pools",
+      "queue producers kept publishing",
+      "consumer count remained zero",
+      "queue unacked count was not checked",
+      "mount writers remained active"
+    ],
+    "outcome": "unsafe_recovery_path",
+    "confidence": 0.91
+  },
+  "missingStep": [
+    "close app connection pools before database action",
+    "verify queue unacked count before stopping consumers",
+    "validate mount writers before unmount/detach"
+  ],
+  "wrongOrder": [
+    "database stop came before ingress drain, producer pause, queue drain, and app stop"
+  ],
+  "skippedDependency": [
+    "abc-api.service -> payments-db",
+    "abc-worker.service -> XXB",
+    "payments-db -> /data/payments"
+  ],
+  "outcomeDelta": "The successful path treats the app worker as the likely cause and validates recovery. The failed path jumps to data-core actions before quiescing ingress, queues, apps, connection pools, and mounts.",
+  "nextAction": "Use Recursive Why/Diff or future Versus Comparator to highlight the missing dependency-safe transition before recommending any shutdown action.",
+  "operatorExplanation": {
+    "currentState": "Queue XXB incident can be explained by app worker heap exhaustion.",
+    "likelyGoal": "Recover message processing without data loss.",
+    "differenceFound": "The safe path validates broker health and worker exhaustion before restart. The unsafe path stops the database before dependent services are quiet.",
+    "whyItMatters": "Infrastructure recovery is dependency-safe state transition, not component status in isolation."
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "event_type": "omnix.ops.dependency_map.v1",
+  "id": "dependency-map-cust8-rmq-xxb-maintenance",
+  "customer": "CUST8",
+  "site": "NY_HOME_HEATING_OIL",
+  "dependencyMap": {
+    "schema": "DependencyMap",
+    "ingress": [
+      {
+        "id": "lb-public-01",
+        "kind": "load_balancer",
+        "dependsOn": [],
+        "shutdownRole": "drain_first"
+      },
+      {
+        "id": "apache-web-01",
+        "kind": "http_host",
+        "dependsOn": [
+          "lb-public-01"
+        ],
+        "shutdownRole": "stop_new_https_input"
+      }
+    ],
+    "services": [
+      {
+        "id": "abc-api.service",
+        "kind": "api_service",
+        "dependsOn": [
+          "apache-web-01",
+          "payments-db",
+          "XXB"
+        ],
+        "packageRuntimeDependencies": [
+          "openjdk-17",
+          "npm:@abc/queue-client",
+          "pnpm:@abc/runtime"
+        ]
+      },
+      {
+        "id": "abc-worker.service",
+        "kind": "queue_consumer",
+        "dependsOn": [
+          "XXB",
+          "payments-db",
+          "/data/payments"
+        ],
+        "packageRuntimeDependencies": [
+          "openjdk-17",
+          "npm:queue-inspector"
+        ]
+      }
+    ],
+    "queues": [
+      {
+        "id": "XXB",
+        "kind": "rabbitmq_queue",
+        "producers": [
+          "abc-api.service",
+          "abc-scheduler.service"
+        ],
+        "consumers": [
+          "abc-worker.service"
+        ],
+        "safeDrainDepth": 0,
+        "requiresUnackedZero": true
+      }
+    ],
+    "databases": [
+      {
+        "id": "payments-db",
+        "kind": "database",
+        "dependsOn": [
+          "/data/payments"
+        ],
+        "mustHaveClosedPools": [
+          "abc-api.service",
+          "abc-worker.service"
+        ],
+        "mustHaveActiveWriters": 0
+      }
+    ],
+    "mounts": [
+      {
+        "id": "/data/payments",
+        "kind": "fstab_mount",
+        "blockDevice": "detached-block-payments-01",
+        "mustHaveActiveWriters": 0
+      }
+    ],
+    "packageSurfaces": [
+      "apt",
+      "npm",
+      "pnpm",
+      "wget",
+      "PowerShell",
+      "windows_package_manager",
+      "brew"
+    ]
+  },
+  "shutdownSequencePlan": {
+    "schema": "ShutdownSequencePlan",
+    "maintenanceState": "MAINTENANCE_PENDING",
+    "muteScope": "internal_sensors_only",
+    "ingressDrain": [
+      "lb-public-01",
+      "apache-web-01"
+    ],
+    "queueDrain": [
+      "stop producers for XXB",
+      "wait for XXB ready depth to reach safe threshold",
+      "verify XXB unacked messages are zero"
+    ],
+    "appStop": [
+      "abc-api.service",
+      "abc-scheduler.service",
+      "abc-worker.service"
+    ],
+    "dbStop": [
+      "payments-db only after connection pools and active writers are zero"
+    ],
+    "mountDetach": [
+      "sync",
+      "unmount /data/payments only after writers are zero",
+      "detach detached-block-payments-01 after filesystem validation"
+    ],
+    "restartOrder": [
+      "attach storage",
+      "mount filesystems",
+      "start database",
+      "start application services",
+      "start queue consumers",
+      "enable producers",
+      "restore ingress",
+      "unmute internal sensors"
+    ]
+  },
+  "remediationRecommendation": {
+    "schema": "RemediationRecommendation",
+    "actionId": "controlled-shutdown-review-only",
+    "actionType": "recommendation_only",
+    "recommendation": "Use this dependency map to plan or validate outage order; do not execute shutdown actions from this fixture.",
+    "safetyGates": [
+      "maintenance ticket approved",
+      "backups verified",
+      "external ingress drained",
+      "queue ready and unacked counts safe",
+      "app connection pools closed",
+      "database active writers zero",
+      "mount active writers zero"
+    ],
+    "dataLossRisk": "blocked_until_all_safety_gates_pass",
+    "validationChecks": [
+      "client input is stopped before data-core actions",
+      "sensor muting is internal-only",
+      "startup follows reverse dependency order"
+    ],
+    "escalationRequired": true
+  }
+}

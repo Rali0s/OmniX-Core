@@ -1,0 +1,23 @@
+{
+  "event_type": "omnix.ops.vertical.ansible_inventory.v1",
+  "sourceSystem": "offline-scale-fixture",
+  "description": "Ansible inventory/control fixture for mapping desired state, roles, and affected hosts without running Ansible.",
+  "inventory": {
+    "ansible_controller": "ops-control-01",
+    "playbook": "deploy_abc_worker.yml",
+    "role": "abc_worker",
+    "ansible_group": "app_workers",
+    "inventory_host": "XYZ_CLASSC1_CUST8",
+    "hostVars": {
+      "service": "abc-worker.service",
+      "queue": "XXB",
+      "storage_mount": "/data/payments",
+      "package_manager": "apt"
+    },
+    "event.original": "[data] ansible_group=app_workers inventory_host=XYZ_CLASSC1_CUST8 playbook=deploy_abc_worker.yml role=abc_worker service=abc-worker.service queue=XXB package_manager=apt"
+  },
+  "safety": {
+    "ansibleExecution": false,
+    "analysisOnly": true
+  }
+}

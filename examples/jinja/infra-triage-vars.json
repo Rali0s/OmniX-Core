@@ -1,0 +1,8 @@
+{
+  "alarm_id": "P1-RMQ-2B-XXB-STOPPED-REPORTING",
+  "site": "NY_HOME_HEATING_OIL",
+  "node_id": "XYZ_CLASSC1_CUST8",
+  "service_name": "abc-worker.service",
+  "queue_name": "XXB",
+  "owner": "Engineer Infra"
+}

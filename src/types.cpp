@@ -14,10 +14,16 @@ std::string_view to_string(RequestIntent intent) {
             return "packet_capture";
         case RequestIntent::DefenseDiagnostic:
             return "defense_diagnostic";
+        case RequestIntent::DefenseDetection:
+            return "defense_detection";
+        case RequestIntent::VuplusGate:
+            return "vuplus_gate";
         case RequestIntent::NeuralMath:
             return "neural_math";
         case RequestIntent::NeuralRoute:
             return "neural_route";
+        case RequestIntent::TensorAction:
+            return "tensor_action";
         case RequestIntent::SetPersonaMode:
             return "set_persona_mode";
         case RequestIntent::AuthorBuildRecipe:
